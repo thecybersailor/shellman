@@ -34,13 +34,13 @@ func (s *localWSProjectsStore) RemoveProject(projectID string) error          { 
 
 type localWSPaneService struct{}
 
-func (s *localWSPaneService) CreateSiblingPane(targetTaskID string) (string, error) {
+func (s *localWSPaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
 	return "e2e:0.1", nil
 }
-func (s *localWSPaneService) CreateChildPane(targetTaskID string) (string, error) {
+func (s *localWSPaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string, error) {
 	return "e2e:0.2", nil
 }
-func (s *localWSPaneService) CreateRootPane() (string, error) { return "e2e:0.0", nil }
+func (s *localWSPaneService) CreateRootPaneInDir(cwd string) (string, error) { return "e2e:0.0", nil }
 
 func TestStartLocalAgentLoop_RespondsToTmuxList(t *testing.T) {
 	srv, err := appserver.NewServer(appserver.Deps{

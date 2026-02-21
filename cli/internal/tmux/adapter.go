@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"strconv"
@@ -469,6 +470,17 @@ func (a *Adapter) CreateSiblingPane(target string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (a *Adapter) CreateSiblingPaneInDir(target, cwd string) (string, error) {
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("pane cwd is required")
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (a *Adapter) CreateChildPane(target string) (string, error) {
 	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
 	if err == nil {
@@ -483,8 +495,36 @@ func (a *Adapter) CreateChildPane(target string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (a *Adapter) CreateChildPaneInDir(target, cwd string) (string, error) {
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("pane cwd is required")
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	if err == nil {
+		return strings.TrimSpace(string(out)), nil
+	}
+
+	// Fallback to full-window split when target pane is too small for a local vertical split.
+	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	if err2 != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (a *Adapter) CreateRootPane() (string, error) {
 	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
+func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("pane cwd is required")
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
 	if err != nil {
 		return "", err
 	}

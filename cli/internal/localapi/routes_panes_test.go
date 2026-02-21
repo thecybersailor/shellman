@@ -22,22 +22,28 @@ type fakePaneService struct {
 	rootCount    int
 	lastSibling  string
 	lastChild    string
+	lastSiblingCWD string
+	lastChildCWD   string
+	lastRootCWD    string
 }
 
-func (f *fakePaneService) CreateSiblingPane(targetTaskID string) (string, error) {
+func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
 	f.siblingCount++
 	f.lastSibling = targetTaskID
+	f.lastSiblingCWD = cwd
 	return "pane_sibling_1", nil
 }
 
-func (f *fakePaneService) CreateChildPane(targetTaskID string) (string, error) {
+func (f *fakePaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string, error) {
 	f.childCount++
 	f.lastChild = targetTaskID
+	f.lastChildCWD = cwd
 	return "pane_child_1", nil
 }
 
-func (f *fakePaneService) CreateRootPane() (string, error) {
+func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) {
 	f.rootCount++
+	f.lastRootCWD = cwd
 	return "pane_root_1", nil
 }
 
@@ -101,6 +107,12 @@ func TestPaneCreationRoutes(t *testing.T) {
 	}
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST child expected 200, got %d", resp.StatusCode)
+	}
+	if paneSvc.lastSiblingCWD != filepath.Clean(repo) {
+		t.Fatalf("expected sibling pane cwd=%q, got %q", filepath.Clean(repo), paneSvc.lastSiblingCWD)
+	}
+	if paneSvc.lastChildCWD != filepath.Clean(repo) {
+		t.Fatalf("expected child pane cwd=%q, got %q", filepath.Clean(repo), paneSvc.lastChildCWD)
 	}
 
 	store := projectstate.NewStore(repo)
@@ -241,6 +253,9 @@ func TestProjectRootPaneCreationRoute(t *testing.T) {
 	}
 	if paneSvc.rootCount != 1 {
 		t.Fatalf("expected root pane service called once, got %d", paneSvc.rootCount)
+	}
+	if paneSvc.lastRootCWD != filepath.Clean(repo) {
+		t.Fatalf("expected root pane cwd=%q, got %q", filepath.Clean(repo), paneSvc.lastRootCWD)
 	}
 
 	store := projectstate.NewStore(repo)

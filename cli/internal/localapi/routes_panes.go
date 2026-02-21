@@ -84,7 +84,7 @@ func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, "TASK_CREATE_FAILED", err.Error())
 		return
 	}
-	paneID, err := s.deps.PaneService.CreateRootPane()
+	paneID, err := s.deps.PaneService.CreateRootPaneInDir(repoRoot)
 	if err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
 		respondError(w, http.StatusInternalServerError, "PANE_CREATE_FAILED", err.Error())
@@ -167,6 +167,11 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
 		return
 	}
+	repoRoot, err := s.findProjectRepoRoot(projectID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", err.Error())
+		return
+	}
 	panes, err := store.LoadPanes()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "PANES_LOAD_FAILED", err.Error())
@@ -189,9 +194,9 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 
 	paneID := ""
 	if relation == "sibling" {
-		paneID, err = s.deps.PaneService.CreateSiblingPane(target)
+		paneID, err = s.deps.PaneService.CreateSiblingPaneInDir(target, repoRoot)
 	} else {
-		paneID, err = s.deps.PaneService.CreateChildPane(target)
+		paneID, err = s.deps.PaneService.CreateChildPaneInDir(target, repoRoot)
 	}
 	if err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
@@ -429,6 +434,11 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
 		return
 	}
+	repoRoot, err := s.findProjectRepoRoot(projectID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", err.Error())
+		return
+	}
 	panes, err := store.LoadPanes()
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "PANES_LOAD_FAILED", err.Error())
@@ -439,10 +449,10 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 
 	paneID := ""
 	if target != "" {
-		paneID, err = s.deps.PaneService.CreateSiblingPane(target)
+		paneID, err = s.deps.PaneService.CreateSiblingPaneInDir(target, repoRoot)
 	}
 	if paneID == "" || err != nil {
-		paneID, err = s.deps.PaneService.CreateRootPane()
+		paneID, err = s.deps.PaneService.CreateRootPaneInDir(repoRoot)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "PANE_CREATE_FAILED", err.Error())
 			return

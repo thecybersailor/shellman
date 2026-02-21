@@ -188,14 +188,14 @@ func TestAdapter_PaneTitleAndCurrentCommand_UsesDisplayMessage(t *testing.T) {
 func TestAdapter_CreateSiblingPane(t *testing.T) {
 	f := &FakeExec{OutputText: "e2e:0.2\n"}
 	a := NewAdapter(f)
-	pane, err := a.CreateSiblingPane("e2e:0.0")
+	pane, err := a.CreateSiblingPaneInDir("e2e:0.0", "/tmp/repo")
 	if err != nil {
 		t.Fatalf("create sibling pane failed: %v", err)
 	}
 	if pane != "e2e:0.2" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if f.LastArgs != "tmux split-window -h -t e2e:0.0 -P -F #{session_name}:#{window_index}.#{pane_index}" {
+	if f.LastArgs != "tmux split-window -h -t e2e:0.0 -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }
@@ -203,14 +203,14 @@ func TestAdapter_CreateSiblingPane(t *testing.T) {
 func TestAdapter_CreateChildPane(t *testing.T) {
 	f := &FakeExec{OutputText: "e2e:0.3\n"}
 	a := NewAdapter(f)
-	pane, err := a.CreateChildPane("e2e:0.1")
+	pane, err := a.CreateChildPaneInDir("e2e:0.1", "/tmp/repo")
 	if err != nil {
 		t.Fatalf("create child pane failed: %v", err)
 	}
 	if pane != "e2e:0.3" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if f.LastArgs != "tmux split-window -v -t e2e:0.1 -P -F #{session_name}:#{window_index}.#{pane_index}" {
+	if f.LastArgs != "tmux split-window -v -t e2e:0.1 -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }
@@ -218,15 +218,26 @@ func TestAdapter_CreateChildPane(t *testing.T) {
 func TestAdapter_CreateRootPane(t *testing.T) {
 	f := &FakeExec{OutputText: "e2e:5.0\n"}
 	a := NewAdapter(f)
-	pane, err := a.CreateRootPane()
+	pane, err := a.CreateRootPaneInDir("/tmp/repo")
 	if err != nil {
 		t.Fatalf("create root pane failed: %v", err)
 	}
 	if pane != "e2e:5.0" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if f.LastArgs != "tmux new-window -P -F #{session_name}:#{window_index}.#{pane_index}" {
+	if f.LastArgs != "tmux new-window -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
+	}
+}
+
+func TestAdapter_CreateSiblingPaneInDir_RejectsEmptyCWD(t *testing.T) {
+	f := &FakeExec{}
+	a := NewAdapter(f)
+	if _, err := a.CreateSiblingPaneInDir("e2e:0.0", ""); err == nil {
+		t.Fatal("expected error when cwd is empty")
+	}
+	if f.LastArgs != "" {
+		t.Fatalf("expected no tmux call for empty cwd, got %q", f.LastArgs)
 	}
 }
 
