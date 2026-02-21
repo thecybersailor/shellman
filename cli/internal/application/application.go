@@ -34,17 +34,30 @@ func StartApplication(_ context.Context, opts StartOptions) (*Application, error
 		port = 4621
 	}
 	localBaseURL := fmt.Sprintf("http://%s:%d", host, port)
+	if customURL := strings.TrimSpace(opts.Hooks.LocalAPIURL); customURL != "" {
+		localBaseURL = customURL
+	}
+	bootstrapPath := bootstrapPathName
+	if customTag := strings.TrimSpace(opts.Hooks.BootstrapTag); customTag != "" {
+		bootstrapPath = customTag
+	}
 
 	app := &Application{
 		localAPIBaseURL: localBaseURL,
 		dbDSN:           strings.TrimSpace(opts.DBDSN),
-		bootstrapPath:   bootstrapPathName,
+		bootstrapPath:   bootstrapPath,
 		runFn: func(context.Context) error {
 			return nil
 		},
 		shutdownFn: func(context.Context) error {
 			return nil
 		},
+	}
+	if opts.Hooks.Run != nil {
+		app.runFn = opts.Hooks.Run
+	}
+	if opts.Hooks.Shutdown != nil {
+		app.shutdownFn = opts.Hooks.Shutdown
 	}
 	return app, nil
 }

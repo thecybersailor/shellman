@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"shellman/cli/internal/agentloop"
+	"shellman/cli/internal/application"
 	"shellman/cli/internal/appserver"
 	"shellman/cli/internal/bridge"
 	"shellman/cli/internal/command"
@@ -49,6 +50,7 @@ var statusInputIgnoreWindow = 2 * time.Second
 var traceStreamEnabled = false
 var streamHistoryLines = 2000
 var runtimeTmuxSocket = ""
+var startApplication = application.StartApplication
 
 type registerClient interface {
 	Register() (turn.RegisterResponse, error)
@@ -145,6 +147,29 @@ func runByMode(ctx context.Context, cfg config.Config, runTurn func(context.Cont
 }
 
 func run(
+	ctx context.Context,
+	out io.Writer,
+	errOut io.Writer,
+	register registerClient,
+	dialer wsDialer,
+	tmuxService bridge.TmuxService,
+) error {
+	app, err := startApplication(ctx, application.StartOptions{
+		Mode: "turn",
+		Hooks: application.Hooks{
+			Run: func(runCtx context.Context) error {
+				return runLegacy(runCtx, out, errOut, register, dialer, tmuxService)
+			},
+			BootstrapTag: "cmd.main.turn",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return app.Run(ctx)
+}
+
+func runLegacy(
 	ctx context.Context,
 	out io.Writer,
 	errOut io.Writer,
@@ -376,6 +401,30 @@ func enrichGatewayHTTPMessage(msg protocol.Message, activePaneTarget string) pro
 }
 
 func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
+	app, err := startApplication(ctx, application.StartOptions{
+		Mode:       "local",
+		LocalHost:  cfg.LocalHost,
+		LocalPort:  cfg.LocalPort,
+		TmuxSocket: cfg.TmuxSocket,
+		WebUI: application.WebUIOptions{
+			Mode:        cfg.WebUIMode,
+			DevProxyURL: cfg.WebUIDevProxyURL,
+			DistDir:     cfg.WebUIDistDir,
+		},
+		Hooks: application.Hooks{
+			Run: func(runCtx context.Context) error {
+				return runLocalLegacy(runCtx, out, cfg)
+			},
+			BootstrapTag: "cmd.main.local",
+		},
+	})
+	if err != nil {
+		return err
+	}
+	return app.Run(ctx)
+}
+
+func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error {
 	configDir, err := global.DefaultConfigDir()
 	if err != nil {
 		return err
