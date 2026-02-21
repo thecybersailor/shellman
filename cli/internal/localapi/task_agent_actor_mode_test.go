@@ -211,6 +211,106 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissUsesDefaultMode(t *t
 	}
 }
 
+func TestResolveTaskAgentToolModeAndNamesRealtime_StateMachineKeepsAIModeOnNode(t *testing.T) {
+	store := projectstate.NewStore(t.TempDir())
+	taskID := fmt.Sprintf("t_mode_realtime_node_%d", time.Now().UTC().UnixNano())
+	mode := projectstate.SidecarModeAutopilot
+	dbCommand := "zsh"
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		SidecarMode:    &mode,
+		CurrentCommand: &dbCommand,
+	}); err != nil {
+		t.Fatalf("upsert task failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		taskID: {
+			TaskID:     taskID,
+			PaneID:     "1",
+			PaneTarget: "sess:1.1",
+		},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+	seq := []string{"pane-title\tcodex\tabc\n", "pane-title\tnode\tabc\n", "pane-title\tzsh\tabc\n"}
+	call := 0
+	srv := NewServer(Deps{
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.TrimSpace(name) != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			if call >= len(seq) {
+				return []byte(seq[len(seq)-1]), nil
+			}
+			out := seq[call]
+			call++
+			return []byte(out), nil
+		},
+	})
+	gotMode1, _, _ := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode1 != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("first mode expected ai-agent, got=%q", gotMode1)
+	}
+	gotMode2, gotCommand2, gotTools2 := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode2 != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("second mode expected ai-agent on node, got=%q command=%q tools=%v", gotMode2, gotCommand2, gotTools2)
+	}
+	if !containsString(gotTools2, "task.input_prompt") {
+		t.Fatalf("node-in-ai-state should keep task.input_prompt, got tools=%v", gotTools2)
+	}
+	gotMode3, _, _ := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode3 != string(taskAgentToolModeShell) {
+		t.Fatalf("third mode expected shell after zsh, got=%q", gotMode3)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNamesRealtime_NodeWithoutAIStateStaysDefault(t *testing.T) {
+	store := projectstate.NewStore(t.TempDir())
+	taskID := fmt.Sprintf("t_mode_realtime_plain_node_%d", time.Now().UTC().UnixNano())
+	mode := projectstate.SidecarModeAutopilot
+	dbCommand := "zsh"
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		SidecarMode:    &mode,
+		CurrentCommand: &dbCommand,
+	}); err != nil {
+		t.Fatalf("upsert task failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		taskID: {
+			TaskID:     taskID,
+			PaneID:     "1",
+			PaneTarget: "sess:1.1",
+		},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+	srv := NewServer(Deps{
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.TrimSpace(name) != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			return []byte("pane-title\tnode\tabc\n"), nil
+		},
+	})
+	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode != string(taskAgentToolModeDefault) {
+		t.Fatalf("plain node without ai-enter state expected default, got=%q command=%q tools=%v", gotMode, gotCommand, gotTools)
+	}
+}
+
+func containsString(items []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, item := range items {
+		if strings.TrimSpace(item) == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testing.T) {
 	currentCommand := "codex --ask"
 	wantFullTools := []string{

@@ -671,7 +671,94 @@ func isAutoProcessTurnSource(source string) bool {
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
 	_, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
 	currentCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID))
-	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source)
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source)
+	taskID = strings.TrimSpace(taskID)
+	if strings.TrimSpace(mode) == string(taskAgentToolModeDefault) && isNodeLikeCommand(currentCommand) {
+		if s.getTaskAgentMode(taskID) == taskAgentToolModeAIAgent {
+			mode = string(taskAgentToolModeAIAgent)
+			tools = buildTaskAgentToolsForResolvedMode(taskAgentToolModeAIAgent, sidecarMode, source)
+		}
+	}
+	s.setTaskAgentMode(taskID, taskAgentToolMode(mode))
+	return mode, gotCommand, tools
+}
+
+func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, source string) []string {
+	fullTools := []string{
+		"task.current.set_flag",
+		"task.child.get_context",
+		"task.child.get_tty_output",
+		"task.child.spawn",
+		"task.child.send_message",
+		"task.parent.report",
+	}
+	switch mode {
+	case taskAgentToolModeAIAgent:
+		fullTools = append(fullTools, "task.input_prompt", "readfile", "write_stdin")
+	case taskAgentToolModeShell:
+		fullTools = append(fullTools, "exec_command", "readfile", "write_stdin")
+	default:
+		fullTools = append(fullTools, "readfile", "write_stdin")
+	}
+
+	if !isAutoProcessTurnSource(source) {
+		return fullTools
+	}
+	switch normalizeSidecarMode(sidecarMode) {
+	case projectstate.SidecarModeAdvisor:
+		return []string{}
+	case projectstate.SidecarModeObserver:
+		return []string{"task.current.set_flag"}
+	case projectstate.SidecarModeAutopilot:
+		return fullTools
+	default:
+		return []string{}
+	}
+}
+
+func isNodeLikeCommand(command string) bool {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return false
+	}
+	parts := strings.Fields(command)
+	if len(parts) == 0 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(parts[0]), "node")
+}
+
+func (s *Server) getTaskAgentMode(taskID string) taskAgentToolMode {
+	if s == nil {
+		return taskAgentToolModeDefault
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return taskAgentToolModeDefault
+	}
+	s.taskAgentModeMu.Lock()
+	defer s.taskAgentModeMu.Unlock()
+	mode, ok := s.taskAgentModeByTask[taskID]
+	if !ok {
+		return taskAgentToolModeDefault
+	}
+	return mode
+}
+
+func (s *Server) setTaskAgentMode(taskID string, mode taskAgentToolMode) {
+	if s == nil {
+		return
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return
+	}
+	s.taskAgentModeMu.Lock()
+	if s.taskAgentModeByTask == nil {
+		s.taskAgentModeByTask = map[string]taskAgentToolMode{}
+	}
+	s.taskAgentModeByTask[taskID] = mode
+	s.taskAgentModeMu.Unlock()
 }
 
 func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID string) string {
