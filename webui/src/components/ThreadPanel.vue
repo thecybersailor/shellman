@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -17,6 +18,7 @@ import {
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import type { TaskMessage } from "@/stores/shellman";
+const { t } = useI18n();
 
 const props = defineProps<{
   taskId?: string;
@@ -274,7 +276,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
       <Input
         v-model="draftTitle"
         data-test-id="shellman-task-title-input"
-        placeholder="Task title"
+        :placeholder="t('thread.taskTitlePlaceholder')"
         class="border-0 bg-transparent dark:bg-transparent focus-visible:border focus-visible:border-ring px-2 py-0.5 h-7"
       />
     </div>
@@ -283,7 +285,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
       <Textarea
         v-model="draftDescription"
         data-test-id="shellman-task-description-input"
-        placeholder="Task description"
+        :placeholder="t('thread.taskDescriptionPlaceholder')"
         class="border-0 bg-transparent dark:bg-transparent focus-visible:border focus-visible:border-ring px-2 py-1 min-h-12"
       />
       <div class="mt-1 flex-1 min-h-0 overflow-hidden border border-border/60 rounded-md p-1.5 bg-background/40 flex flex-col">
@@ -336,7 +338,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
         </Conversation>
         <PromptInput :key="`prompt-${scopeKey}`" class="mt-2" :initial-input="promptDraft" @submit="onPromptSubmit">
           <PromptInputBody>
-            <PromptInputTextarea data-test-id="shellman-shellman-input" placeholder="Talk to ShellMan..." @input="onPromptInput" />
+            <PromptInputTextarea data-test-id="shellman-shellman-input" :placeholder="t('thread.talkPlaceholder')" @input="onPromptInput" />
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools />
@@ -353,7 +355,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
           data-test-id="shellman-shellman-autopilot-switch"
           @update:model-value="onAutopilotUpdate"
         />
-        <label class="text-[11px] text-muted-foreground/80">Autopilot</label>
+        <label class="text-[11px] text-muted-foreground/80">{{ t("thread.autopilot") }}</label>
       </div>
       <div>Pane: {{ props.paneUuid || "-" }}</div>
     </div>

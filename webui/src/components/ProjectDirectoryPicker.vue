@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/shellman";
+const { t } = useI18n();
 
 const props = defineProps<{
   show: boolean;
@@ -133,7 +135,7 @@ async function onSelectCurrent() {
     <Input
       v-model="searchQ"
       data-test-id="shellman-dir-search-input"
-      placeholder="Search sub-directories"
+      :placeholder="t('projectDirectoryPicker.searchPlaceholder')"
     />
 
     <div class="space-y-2">
@@ -185,7 +187,7 @@ async function onSelectCurrent() {
         :disabled="!currentPath || loading"
         @click="onSelectCurrent"
       >
-        Select Current
+        {{ t("projectDirectoryPicker.selectCurrent") }}
       </Button>
     </div>
 

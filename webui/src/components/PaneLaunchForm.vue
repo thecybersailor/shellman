@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 type ProviderProgram = "codex" | "claude" | "cursor";
@@ -12,7 +14,7 @@ const props = withDefaults(defineProps<{
   defaultProgram?: LaunchProgram;
   providers?: Array<{ id: ProviderProgram; display_name: string; command: string }>;
 }>(), {
-  submitLabel: "Reopen",
+  submitLabel: "",
   defaultProgram: "shell",
   providers: () => []
 });
@@ -72,10 +74,10 @@ function submitLaunch() {
 <template>
   <form data-test-id="shellman-pane-launch-form" class="px-2 space-y-2.5" @submit.prevent="submitLaunch">
     <div class="space-y-1 max-w-sm">
-      <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">Program</label>
+      <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">{{ t("paneLaunch.program") }}</label>
       <Select v-model="program" class="">
         <SelectTrigger data-test-id="shellman-pane-launch-program" class="w-full">
-          <SelectValue placeholder="Select program" />
+          <SelectValue :placeholder="t('paneLaunch.selectProgram')" />
         </SelectTrigger>
         <SelectContent>
           <SelectItem
@@ -90,13 +92,13 @@ function submitLaunch() {
     </div>
 
     <div v-if="requiresPrompt" class="space-y-1">
-      <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">Initial Prompt</label>
+      <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">{{ t("paneLaunch.initialPrompt") }}</label>
       <Textarea
         v-model="prompt"
         data-test-id="shellman-pane-launch-prompt"
         class="resize-y"
         rows="3"
-        placeholder="Input initial prompt..."
+        :placeholder="t('paneLaunch.inputPrompt')"
       />
     </div>
 
@@ -106,7 +108,7 @@ function submitLaunch() {
       class="min-w-32"
       :disabled="!canSubmit"
     >
-      {{ props.submitLabel }}
+      {{ props.submitLabel || t("paneLaunch.reopen") }}
     </Button>
   </form>
 </template>

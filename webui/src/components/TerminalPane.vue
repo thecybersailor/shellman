@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { CanvasAddon } from "@xterm/addon-canvas";
 import { Card, CardContent } from "@/components/ui/card";
 import TaskHeader from "@/components/TaskHeader.vue";
 import PaneLaunchForm from "@/components/PaneLaunchForm.vue";
+const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 
@@ -47,7 +49,7 @@ let onDataSeq = 0;
 let cursorMoveSeq = 0;
 let terminalInput: HTMLTextAreaElement | null = null;
 let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
-const launchSubmitLabel = computed(() => (props.isNoPaneTask ? "Start" : "Reopen"));
+const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.reopen")));
 
 interface BufferSnapshot {
   cursorX: number | null;

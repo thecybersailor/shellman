@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
 import type { TerminalFrame } from "@/stores/shellman";
 import ProjectInfoPanel from "./ProjectInfoPanel.vue";
@@ -14,6 +15,7 @@ import {
   Moon
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
+const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 
@@ -143,7 +145,7 @@ function onProjectPanelActiveTabChange(next: string) {
             <ChevronLeft class="h-6 w-6" />
           </Button>
           <div class="flex flex-col">
-            <span class="text-[10px] font-mono leading-none text-muted-foreground/50 uppercase tracking-widest mb-0.5">Session</span>
+            <span class="text-[10px] font-mono leading-none text-muted-foreground/50 uppercase tracking-widest mb-0.5">{{ t("common.session") }}</span>
             <TaskTitleResolver
               :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
               :current-command="props.selectedCurrentCommand ?? ''"

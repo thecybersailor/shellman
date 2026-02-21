@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { Terminal } from "lucide-vue-next";
+import { useI18n } from "vue-i18n";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import TaskTitleResolver from "@/components/TaskTitleResolver.vue";
+const { t } = useI18n();
 
 const props = defineProps<{
   taskId?: string;
@@ -46,7 +48,7 @@ function onOpenSessionDetail() {
         >
           {{ props.taskDescription }}
         </div>
-        <div v-else class="text-[10px] text-muted-foreground/30 italic">No description</div>
+        <div v-else class="text-[10px] text-muted-foreground/30 italic">{{ t("task.noDescription") }}</div>
       </div>
     </CardTitle>
   </CardHeader>

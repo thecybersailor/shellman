@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
 import { Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
@@ -415,7 +417,7 @@ watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
         <InputGroupTextarea
           v-model="commitMessage"
           class="min-h-[32px] font-mono text-xs!"
-          placeholder="Type commit message..."
+          :placeholder="t('scm.typeCommitMessage')"
           data-test-id="shellman-scm-commit-message"
         />
         <InputGroupAddon align="block-end" class="w-full justify-end gap-2 p-2">
@@ -462,7 +464,7 @@ watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
             <span class="mr-2 opacity-70 font-mono text-[10px]">{{ file.status }}</span>
             <span class="truncate">{{ file.path }}</span>
           </Button>
-          <div v-if="files.length === 0" class="text-xs text-muted-foreground px-2 py-1">No changed files.</div>
+          <div v-if="files.length === 0" class="text-xs text-muted-foreground px-2 py-1">{{ t("scm.noChangedFiles") }}</div>
         </div>
       </ScrollArea>
     </section>
@@ -471,7 +473,7 @@ watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
       <ScrollArea class="flex-1 min-h-0 border rounded-md bg-muted/20" :horizontal="true">
         <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-addon-diff-loading">loading...</div>
         <div v-else-if="diffRows.length === 0" class="text-xs text-muted-foreground p-3" data-test-id="shellman-addon-file-content">
-          No changes.
+          {{ t("scm.noChanges") }}
         </div>
         <div v-else class="shellman-diff" data-test-id="shellman-addon-file-content">
           <div

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +8,7 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Copy, FilePenLine, Folder, FolderOpen, File } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
+const { t } = useI18n();
 
 type FileTreeEntry = {
   name: string;
@@ -307,9 +309,9 @@ async function copyPath() {
   }
   try {
     await navigator.clipboard.writeText(selectedFilePath.value);
-    toast.success("已复制文件路径");
+    toast.success(t("filePanel.copiedFilePath"));
   } catch {
-    toast.error("复制失败");
+    toast.error(t("filePanel.copyFailed"));
   }
 }
 
@@ -344,7 +346,7 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
       <Input
         v-model="searchQuery"
         data-test-id="shellman-file-search-input"
-        placeholder="按文件名搜索..."
+        :placeholder="t('filePanel.searchByFileName')"
       />
     </section>
 
@@ -378,7 +380,7 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                   <span class="truncate">{{ node.entry.name }}</span>
                 </Button>
                 <div v-if="displayNodes.length === 0" class="text-xs text-muted-foreground px-2 py-1">
-                  No files.
+                  {{ t("filePanel.noFiles") }}
                 </div>
               </div>
             </ScrollArea>
@@ -417,15 +419,15 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
             </div>
             <ScrollArea class="flex-1 min-h-0 border rounded-md bg-muted/20" :horizontal="true">
               <div v-if="previewLoading" class="text-xs text-muted-foreground p-3">loading...</div>
-              <div v-else-if="!selectedFilePath" class="text-xs text-muted-foreground p-3">点击文件树进行预览</div>
+              <div v-else-if="!selectedFilePath" class="text-xs text-muted-foreground p-3">{{ t("filePanel.clickTreeToPreview") }}</div>
               <pre v-else-if="previewMode === 'txt'" class="p-3 text-xs font-mono whitespace-pre">{{ selectedFileContent }}</pre>
               <div v-else-if="previewMode === 'image'" class="p-3">
-                <img :src="previewRawURL" alt="preview image" class="max-w-full max-h-[52vh] object-contain" />
+                <img :src="previewRawURL" :alt="t('filePanel.previewImage')" class="max-w-full max-h-[52vh] object-contain" />
               </div>
               <div v-else-if="previewMode === 'video'" class="p-3">
                 <video :src="previewRawURL" controls class="max-w-full max-h-[52vh]" />
               </div>
-              <div v-else class="text-xs text-muted-foreground p-3">不支持预览</div>
+              <div v-else class="text-xs text-muted-foreground p-3">{{ t("filePanel.previewNotSupported") }}</div>
             </ScrollArea>
           </div>
         </ResizablePanel>

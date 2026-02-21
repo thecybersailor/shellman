@@ -1,10 +1,12 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import SCMPanel from "./SCMPanel.vue";
 import FilePanel from "./FilePanel.vue";
 import ThreadPanel from "./ThreadPanel.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import shellmanIcon from "@/asserts/icon.svg";
 import type { TaskMessage } from "@/stores/shellman";
+const { t } = useI18n();
 
 type ProjectPanelTab = "diff" | "file" | "thread";
 
@@ -73,9 +75,9 @@ function onTabChange(next: string | number) {
   <div class="h-full p-2">
     <Tabs :model-value="props.activeTab" class="h-full flex flex-col" @update:model-value="onTabChange">
       <TabsList class="w-full grid grid-cols-3">
-        <TabsTrigger value="thread" class="text-xs">Thread</TabsTrigger>
-        <TabsTrigger value="diff" class="text-xs">Diff</TabsTrigger>
-        <TabsTrigger value="file" class="text-xs">File</TabsTrigger>
+        <TabsTrigger value="thread" class="text-xs">{{ t("projectInfo.thread") }}</TabsTrigger>
+        <TabsTrigger value="diff" class="text-xs">{{ t("projectInfo.diff") }}</TabsTrigger>
+        <TabsTrigger value="file" class="text-xs">{{ t("projectInfo.file") }}</TabsTrigger>
       </TabsList>
       <TabsContent value="thread" force-mount class="flex-1 min-h-0 mt-2">
         <div

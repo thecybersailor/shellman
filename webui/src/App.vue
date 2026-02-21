@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import TerminalPane from "./components/TerminalPane.vue";
 import ProjectInfoPanel from "./components/ProjectInfoPanel.vue";
@@ -28,6 +29,7 @@ import { Sun, Moon } from "lucide-vue-next";
 import shellmanIcon from "@/asserts/icon.svg";
 import { useColorMode } from "@vueuse/core";
 import { toast } from "vue-sonner";
+const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 
@@ -183,7 +185,7 @@ const showReopenPaneButton = computed(() => {
   if (selectedTaskIsNoPane.value) {
     return true;
   }
-  return store.state.terminalFrame.mode === "reset" && store.state.terminalFrame.data.includes("Session ended. Pane is no longer available.");
+  return store.state.terminalFrame.mode === "reset" && store.state.terminalFrame.data.includes(t("app.sessionEndedPaneUnavailable"));
 });
 const projectEntryError = ref("");
 const taskActionError = ref("");
@@ -215,7 +217,7 @@ watch(() => route.params.sessionId, async (newId) => {
 async function onCreateChild(taskId: string) {
   try {
     taskActionError.value = "";
-    await store.createChildTask(taskId, `Child of ${taskId}`);
+    await store.createChildTask(taskId, t("app.childOfTask", { taskId }));
   } catch (err) {
     taskActionError.value = err instanceof Error ? err.message : "CHILD_CREATE_FAILED";
     notifyError(taskActionError.value);
@@ -700,7 +702,7 @@ onBeforeUnmount(() => {
         v-model="fileViewerContent"
         data-test-id="shellman-file-viewer-textarea"
         class="flex-1 min-h-[70vh] resize-none font-mono text-xs"
-        :placeholder="fileViewerLoading ? 'loading...' : 'No content'"
+        :placeholder="fileViewerLoading ? t('common.loading') : t('common.noContent')"
       />
     </SheetContent>
   </Sheet>
@@ -733,15 +735,15 @@ onBeforeUnmount(() => {
   <AlertDialog v-model:open="showRemoveProjectDialog">
     <AlertDialogContent data-test-id="shellman-remove-project-confirm">
       <AlertDialogHeader>
-        <AlertDialogTitle>Remove project?</AlertDialogTitle>
+        <AlertDialogTitle>{{ t("app.removeProjectTitle") }}</AlertDialogTitle>
         <AlertDialogDescription>
-          This will remove <span class="font-mono">{{ pendingRemoveProjectId }}</span> from active projects.
+          {{ t("app.removeProjectDescriptionPrefix") }} <span class="font-mono">{{ pendingRemoveProjectId }}</span> {{ t("app.removeProjectDescriptionSuffix") }}
         </AlertDialogDescription>
       </AlertDialogHeader>
       <AlertDialogFooter>
-        <AlertDialogCancel>Cancel</AlertDialogCancel>
+        <AlertDialogCancel>{{ t("common.cancel") }}</AlertDialogCancel>
         <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="onConfirmRemoveProject">
-          Remove
+          {{ t("common.remove") }}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

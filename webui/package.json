@@ -34,12 +34,14 @@
     "tailwind-merge": "^3.4.1",
     "tokenlens": "^1.3.1",
     "vue": "3.5.13",
+    "vue-i18n": "^11.2.8",
     "vue-router": "^4.6.4",
     "vue-sonner": "^2.0.9",
     "vue-stick-to-bottom": "^0.1.0",
     "vue-stream-markdown": "^0.5.1"
   },
   "devDependencies": {
+    "@cybersailor/i18n-detect-vue": "^0.1.0",
     "@playwright/test": "^1.58.2",
     "@tailwindcss/vite": "^4.1.18",
     "@types/node": "^25.2.3",

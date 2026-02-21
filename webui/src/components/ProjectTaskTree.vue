@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
@@ -28,6 +29,7 @@ import {
   X,
   LoaderCircle
 } from "lucide-vue-next";
+const { t } = useI18n();
 
 export type TaskStatus =
   | "pending"
@@ -324,14 +326,14 @@ function onTaskDrop(taskId: string) {
   <div class="flex flex-col h-full bg-sidebar overflow-hidden">
     <!-- Header: Fixed Height -->
     <div class="shrink-0 flex items-center justify-between px-4 py-3">
-      <h2 class="text-xs font-bold text-muted-foreground/60 uppercase tracking-widest">Projects</h2>
+      <h2 class="text-xs font-bold text-muted-foreground/60 uppercase tracking-widest">{{ t("projectTaskTree.projects") }}</h2>
       <div class="flex items-center gap-0.5">
         <Button 
           variant="ghost" 
           size="icon" 
           class="h-7 w-7 text-muted-foreground hover:text-foreground hover:bg-accent/50"
           @click="emit('add-project')"
-          title="Add new project"
+          :title="t('projectTaskTree.addNewProject')"
         >
           <FolderPlus class="h-4 w-4" />
         </Button>
@@ -340,7 +342,7 @@ function onTaskDrop(taskId: string) {
           class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
           :class="filterCardOpen ? 'bg-accent/50 text-foreground' : ''"
           data-test-id="shellman-task-filter-toggle"
-          aria-label="Toggle task filters"
+          :aria-label="t('projectTaskTree.toggleTaskFilters')"
           @click="filterCardOpen = !filterCardOpen"
         >
           <ListFilter class="h-4 w-4" />
@@ -409,15 +411,15 @@ function onTaskDrop(taskId: string) {
                       <DropdownMenuContent align="end" class="w-40 bg-popover border-border/50 text-foreground">
                         <DropdownMenuItem @click="emit('edit-project', project.projectId)" class="flex items-center gap-2.5 cursor-pointer py-2">
                           <Pencil class="h-3.5 w-3.5 opacity-70" />
-                          <span class="text-sm font-medium">Edit name</span>
+                          <span class="text-sm font-medium">{{ t("projectTaskTree.editName") }}</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem @click="emit('archive-project-done', project.projectId)" class="flex items-center gap-2.5 cursor-pointer py-2">
                           <Archive class="h-3.5 w-3.5 opacity-70" />
-                          <span class="text-sm font-medium">Archive all done</span>
+                          <span class="text-sm font-medium">{{ t("projectTaskTree.archiveAllDone") }}</span>
                         </DropdownMenuItem>
                         <DropdownMenuItem @click="emit('remove-project', project.projectId)" class="flex items-center gap-2.5 text-destructive focus:text-destructive cursor-pointer py-2">
                           <X class="h-4 w-4" />
-                          <span class="text-sm font-medium">Remove</span>
+                          <span class="text-sm font-medium">{{ t("projectTaskTree.remove") }}</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -428,7 +430,7 @@ function onTaskDrop(taskId: string) {
                       size="icon"
                       class="h-5 w-5 text-muted-foreground/60 hover:text-foreground hover:bg-accent"
                       @click.stop="emit('create-root-pane', project.projectId)"
-                      :title="`Start new thread in ${project.title}`"
+                      :title="t('projectTaskTree.startNewThreadIn', { title: project.title })"
                       :data-test-id="`shellman-project-root-pane-${project.projectId}`"
                     >
                       <SquarePen class="h-3.5 w-3.5" />
@@ -517,7 +519,7 @@ function onTaskDrop(taskId: string) {
                       </div>
                   </div>
                   <div v-if="visibleTaskRows(project.tasks).length === 0" class="text-[11px] text-muted-foreground/30 italic px-2 py-2">
-                      No threads
+                      {{ t("projectTaskTree.noThreads") }}
                   </div>
                 </div>
               </AccordionContent>
@@ -534,7 +536,7 @@ function onTaskDrop(taskId: string) {
               data-test-id="shellman-orphan-toggle"
               @click="orphanOpen = !orphanOpen"
             >
-              <span>Other Tmux</span>
+              <span>{{ t("projectTaskTree.otherTmux") }}</span>
               <ChevronDown v-if="orphanOpen" class="h-3.5 w-3.5" />
               <ChevronRight v-else class="h-3.5 w-3.5" />
             </button>
@@ -555,7 +557,7 @@ function onTaskDrop(taskId: string) {
                 v-if="(props.orphanPanes ?? []).length === 0"
                 class="px-2 py-1 text-[11px] text-muted-foreground/50 italic"
               >
-                No orphan panes
+                {{ t("projectTaskTree.noOrphanPanes") }}
               </div>
             </div>
           </div>
@@ -572,7 +574,7 @@ function onTaskDrop(taskId: string) {
         @click="emit('open-settings')"
       >
         <Settings class="h-4 w-4 opacity-70" />
-        <span class="text-sm font-medium">Settings</span>
+        <span class="text-sm font-medium">{{ t("projectTaskTree.settings") }}</span>
       </Button>
     </div>
   </div>

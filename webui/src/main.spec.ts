@@ -5,4 +5,9 @@ describe("main entry", () => {
   it("loads xterm base css", () => {
     expect(mainSource).toContain('import "@xterm/xterm/css/xterm.css";');
   });
+
+  it("registers i18n plugin", () => {
+    expect(mainSource).toContain('import i18n from "./i18n";');
+    expect(mainSource).toContain("app.use(i18n);");
+  });
 });

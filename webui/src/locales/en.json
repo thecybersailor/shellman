@@ -1,0 +1,93 @@
+{
+  "common": {
+    "appName": "shellman",
+    "session": "Session",
+    "addProject": "Add Project",
+    "cancel": "Cancel",
+    "remove": "Remove",
+    "save": "Save",
+    "saving": "Saving...",
+    "loading": "loading...",
+    "noContent": "No content"
+  },
+  "projectDirectoryPicker": {
+    "title": "Add Project",
+    "description": "Browse and select the project directory from the remote file system.",
+    "pathPlaceholder": "/path/to/project",
+    "searchPlaceholder": "Search sub-directories",
+    "selectCurrent": "Select Current"
+  },
+  "task": {
+    "terminalTask": "Terminal Task",
+    "noDescription": "No description"
+  },
+  "paneLaunch": {
+    "reopen": "Reopen",
+    "program": "Program",
+    "selectProgram": "Select program",
+    "initialPrompt": "Initial Prompt",
+    "inputPrompt": "Input initial prompt..."
+  },
+  "projectInfo": {
+    "thread": "Thread",
+    "diff": "Diff",
+    "file": "File"
+  },
+  "thread": {
+    "taskTitlePlaceholder": "Task title",
+    "taskDescriptionPlaceholder": "Task description",
+    "talkPlaceholder": "Talk to ShellMan...",
+    "autopilot": "Autopilot"
+  },
+  "projectTaskTree": {
+    "projects": "Projects",
+    "addNewProject": "Add new project",
+    "toggleTaskFilters": "Toggle task filters",
+    "editName": "Edit name",
+    "archiveAllDone": "Archive all done",
+    "remove": "Remove",
+    "startNewThreadIn": "Start new thread in {title}",
+    "noThreads": "No threads",
+    "otherTmux": "Other Tmux",
+    "noOrphanPanes": "No orphan panes",
+    "settings": "Settings"
+  },
+  "scm": {
+    "typeCommitMessage": "Type commit message...",
+    "noChangedFiles": "No changed files.",
+    "noChanges": "No changes."
+  },
+  "settings": {
+    "title": "Settings",
+    "description": "Configure default behavior for new sessions.",
+    "defaultProgramForNewSession": "Default Program For New Session",
+    "selectDefaultProgram": "Select default program",
+    "helperOpenaiApi": "Helper OpenAI API",
+    "runCommandAfterTaskCompleted": "Run command after task completed",
+    "delaySelector": "Delay selector",
+    "sendImmediately": "Send immediately",
+    "idle60s": "Idle 60s",
+    "idle300s": "Idle 300s",
+    "actionInputPlaceholder": "e.g.: /Users/wanglei/.codex/notify.sh --task-id=$SHELLMAN_TASK_ID"
+  },
+  "filePanel": {
+    "copiedFilePath": "Copied file path",
+    "copyFailed": "Copy failed",
+    "searchByFileName": "Search by file name...",
+    "noFiles": "No files.",
+    "clickTreeToPreview": "Click the file tree to preview",
+    "previewImage": "preview image",
+    "previewNotSupported": "Preview not supported"
+  },
+  "terminal": {
+    "start": "Start",
+    "reopen": "Reopen"
+  },
+  "app": {
+    "sessionEndedPaneUnavailable": "Session ended. Pane is no longer available.",
+    "childOfTask": "Child of {taskId}",
+    "removeProjectTitle": "Remove project?",
+    "removeProjectDescriptionPrefix": "This will remove",
+    "removeProjectDescriptionSuffix": "from active projects."
+  }
+}

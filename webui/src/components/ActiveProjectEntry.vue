@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import ProjectDirectoryPicker from "./ProjectDirectoryPicker.vue";
 import ResponsiveOverlay from "./ResponsiveOverlay.vue";
 import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/shellman";
+const { t } = useI18n();
 
 const props = defineProps<{
   show: boolean;
@@ -40,8 +42,8 @@ function onSelectDirectory(path: string) {
 <template>
   <ResponsiveOverlay
     v-model:open="internalOpen"
-    title="Add Project"
-    description="Browse and select the project directory from the remote file system."
+    :title="t('projectDirectoryPicker.title')"
+    :description="t('projectDirectoryPicker.description')"
     dialog-content-class="z-[120] sm:max-w-[720px]"
     sheet-side="bottom"
     sheet-content-class="z-[120] h-[85vh] flex flex-col p-6"

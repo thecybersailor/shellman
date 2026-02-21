@@ -3,6 +3,7 @@
 
 .PHONY: validate-all validate-quick validate-clean validate-status validate-task-system validate-e2e-entry-guard
 .PHONY: validate-api-types validate-cli-lint validate-cli-tests validate-worker-tests validate-webui-types validate-webui-tests
+.PHONY: validate-webui-i18n-keys validate-webui-i18n-hardcoded
 
 STATUS_DIR := .build-status
 STATUS_API_TYPES := $(STATUS_DIR)/api-types.status
@@ -11,6 +12,8 @@ STATUS_CLI_TESTS := $(STATUS_DIR)/cli-tests.status
 STATUS_WORKER_TESTS := $(STATUS_DIR)/worker-tests.status
 STATUS_WEBUI_TYPES := $(STATUS_DIR)/webui-types.status
 STATUS_WEBUI_TESTS := $(STATUS_DIR)/webui-tests.status
+STATUS_WEBUI_I18N_KEYS := $(STATUS_DIR)/webui-i18n-keys.status
+STATUS_WEBUI_I18N_HARDCODED := $(STATUS_DIR)/webui-i18n-hardcoded.status
 
 CLI_SRC_FILES := $(shell find cli -type f -name '*.go' 2>/dev/null)
 CLI_SWAGGER_FILES := $(shell find cli/Makefile.swagger cli/scripts -type f 2>/dev/null)
@@ -20,11 +23,11 @@ WEBUI_FILES := $(shell find webui/src webui/package.json webui/tsconfig*.json we
 $(STATUS_DIR):
 	@mkdir -p $(STATUS_DIR)
 
-validate-all: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_TESTS)
+validate-all: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_I18N_KEYS) $(STATUS_WEBUI_I18N_HARDCODED) $(STATUS_WEBUI_TESTS)
 	@echo ""
 	@echo "✅ All validations passed!"
 
-validate-quick: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES)
+validate-quick: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_I18N_KEYS) $(STATUS_WEBUI_I18N_HARDCODED)
 	@echo ""
 	@echo "✅ Quick validation passed!"
 
@@ -42,6 +45,8 @@ validate-status:
 	@if [ -f $(STATUS_WORKER_TESTS) ]; then echo "  ✓ Worker Tests"; else echo "  ✗ Worker Tests: Not validated"; fi
 	@if [ -f $(STATUS_WEBUI_TYPES) ]; then echo "  ✓ WebUI Types"; else echo "  ✗ WebUI Types: Not validated"; fi
 	@if [ -f $(STATUS_WEBUI_TESTS) ]; then echo "  ✓ WebUI Tests"; else echo "  ✗ WebUI Tests: Not validated"; fi
+	@if [ -f $(STATUS_WEBUI_I18N_KEYS) ]; then echo "  ✓ WebUI i18n Keys"; else echo "  ✗ WebUI i18n Keys: Not validated"; fi
+	@if [ -f $(STATUS_WEBUI_I18N_HARDCODED) ]; then echo "  ✓ WebUI i18n Hardcoded"; else echo "  ✗ WebUI i18n Hardcoded: Not validated"; fi
 
 $(STATUS_API_TYPES): $(STATUS_DIR) $(CLI_SRC_FILES) $(CLI_SWAGGER_FILES)
 	@echo "🔄 Generating API types..."
@@ -82,6 +87,26 @@ $(STATUS_WEBUI_TYPES): $(STATUS_DIR) $(STATUS_API_TYPES) $(WEBUI_FILES)
 	@echo "✅ WebUI types validated"
 
 validate-webui-types: $(STATUS_WEBUI_TYPES)
+
+$(STATUS_WEBUI_I18N_KEYS): $(STATUS_DIR) $(STATUS_WEBUI_TYPES) $(WEBUI_FILES)
+	@echo "🔄 Checking WebUI i18n keys..."
+	@if [ ! -f "webui/src/locales/en.json" ]; then \
+		echo "❌ Missing language file: webui/src/locales/en.json"; \
+		exit 1; \
+	fi
+	@bun webui/scripts/check-i18n.mjs --mode keys --root webui/src --lang webui/src/locales/en.json
+	@touch $(STATUS_WEBUI_I18N_KEYS)
+	@echo "✅ WebUI i18n key check passed"
+
+validate-webui-i18n-keys: $(STATUS_WEBUI_I18N_KEYS)
+
+$(STATUS_WEBUI_I18N_HARDCODED): $(STATUS_DIR) $(STATUS_WEBUI_TYPES) $(WEBUI_FILES)
+	@echo "🔄 Checking WebUI hardcoded strings..."
+	@bun webui/scripts/check-i18n.mjs --mode hardcoded --root webui/src
+	@touch $(STATUS_WEBUI_I18N_HARDCODED)
+	@echo "✅ WebUI hardcoded string check passed"
+
+validate-webui-i18n-hardcoded: $(STATUS_WEBUI_I18N_HARDCODED)
 
 $(STATUS_WEBUI_TESTS): $(STATUS_DIR) $(STATUS_WEBUI_TYPES) $(WEBUI_FILES)
 	@echo "🔄 Running WebUI tests..."

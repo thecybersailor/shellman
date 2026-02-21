@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import ResponsiveOverlay from "./ResponsiveOverlay.vue";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
+const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 type HelperProgram = "codex" | "claude" | "cursor";
@@ -65,7 +67,7 @@ const localHelperOpenAIEndpoint = ref(props.helperOpenAIEndpoint);
 const localHelperOpenAIModel = ref(props.helperOpenAIModel);
 const localHelperOpenAIApiKey = ref(props.helperOpenAIApiKey);
 
-const actionInputPlaceholder = computed(() => "例如: /Users/wanglei/.codex/notify.sh --task-id=$SHELLMAN_TASK_ID");
+const actionInputPlaceholder = computed(() => t("settings.actionInputPlaceholder"));
 const sessionProgramOptions = computed(() => {
   const options: Array<{ id: LaunchProgram; label: string }> = [{ id: "shell", label: "shell" }];
   const seen = new Set<string>(["shell"]);
@@ -192,8 +194,8 @@ function saveSettings() {
 <template>
   <ResponsiveOverlay
     :open="props.show"
-    title="Settings"
-    description="Configure default behavior for new sessions."
+    :title="t('settings.title')"
+    :description="t('settings.description')"
     dialog-content-class="z-[120] sm:max-w-[560px]"
     sheet-side="bottom"
     sheet-content-class="z-[120] h-[60vh] flex flex-col p-6"
@@ -201,10 +203,10 @@ function saveSettings() {
   >
     <div class="space-y-4">
       <div class="space-y-1.5">
-        <label class="text-xs font-medium text-muted-foreground">Default Program For New Session</label>
+        <label class="text-xs font-medium text-muted-foreground">{{ t("settings.defaultProgramForNewSession") }}</label>
         <Select v-model="localDefaultProgram" class="w-full">
           <SelectTrigger data-test-id="shellman-settings-default-program" class="w-full">
-            <SelectValue placeholder="Select default program" />
+            <SelectValue :placeholder="t('settings.selectDefaultProgram')" />
           </SelectTrigger>
           <SelectContent class="z-[130] w-full">
             <SelectItem
@@ -218,7 +220,7 @@ function saveSettings() {
         </Select>
       </div>
       <div class="space-y-2">
-        <label class="text-xs font-medium text-muted-foreground">Helper OpenAI API</label>
+        <label class="text-xs font-medium text-muted-foreground">{{ t("settings.helperOpenaiApi") }}</label>
         <Input
           v-model="localHelperOpenAIEndpoint"
           data-test-id="shellman-settings-helper-openai-endpoint"
@@ -246,14 +248,14 @@ function saveSettings() {
             data-test-id="shellman-settings-task-completion-enable"
             @update:model-value="setTaskCompletionEnabled"
           />
-          任务完成后执行命令
+          {{ t("settings.runCommandAfterTaskCompleted") }}
         </label>
 
           <Select v-model="selectedDelayPreset">
             <SelectTrigger
               data-test-id="shellman-settings-task-completion-delay"
             >
-              <SelectValue placeholder="延迟选择器" />
+              <SelectValue :placeholder="t('settings.delaySelector')" />
             </SelectTrigger>
             <SelectContent class="z-[130]">
               <SelectItem
@@ -261,21 +263,21 @@ function saveSettings() {
                 data-test-id="shellman-settings-task-completion-delay-0"
                 @click="setDelayPreset('0')"
               >
-                立即发送
+                {{ t("settings.sendImmediately") }}
               </SelectItem>
               <SelectItem
                 value="60"
                 data-test-id="shellman-settings-task-completion-delay-60"
                 @click="setDelayPreset('60')"
               >
-                空闲60s
+                {{ t("settings.idle60s") }}
               </SelectItem>
               <SelectItem
                 value="300"
                 data-test-id="shellman-settings-task-completion-delay-300"
                 @click="setDelayPreset('300')"
               >
-                空闲300s
+                {{ t("settings.idle300s") }}
               </SelectItem>
             </SelectContent>
           </Select>
@@ -293,9 +295,9 @@ function saveSettings() {
       </div>
 
       <div class="flex items-center justify-end gap-2 pt-2">
-        <Button variant="ghost" :disabled="props.saving" @click="closePanel">Cancel</Button>
+        <Button variant="ghost" :disabled="props.saving" @click="closePanel">{{ t("common.cancel") }}</Button>
         <Button data-test-id="shellman-settings-save" :disabled="props.saving" @click="saveSettings">
-          {{ props.saving ? "Saving..." : "Save" }}
+          {{ props.saving ? t("common.saving") : t("common.save") }}
         </Button>
       </div>
     </div>
