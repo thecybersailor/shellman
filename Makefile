@@ -73,7 +73,7 @@ e2e-ui-docker:
 	docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e-runner
 
 e2e-tty:
-	cd cli && go test -tags e2e_tty ./internal/localapi -run TestTaskAgentModeRealtime_RealTmux_NoShellFallbackForUnknownCommand -count=1 -v
+	cd cli && go test -tags e2e_tty ./cmd/shellman -run TestStartApplication_RealCodexLifecycle_NonUIRequestOnly -count=1 -v
 
 # Validation targets live in Makefile.validate.
 include Makefile.validate
