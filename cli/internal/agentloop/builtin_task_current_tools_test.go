@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -81,6 +82,85 @@ func TestWriteStdinTool_RejectsInvalidTimeout(t *testing.T) {
 	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"echo hi","timeout_ms":99}`), "call_1")
 	if err == nil || err.Error() != "INVALID_TIMEOUT_MS" {
 		t.Fatalf("expected INVALID_TIMEOUT_MS, got %v", err)
+	}
+}
+
+func TestWriteStdinTool_ShellModeRejectsCommandWithoutSubmit(t *testing.T) {
+	called := false
+	tool := &WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
+			called = true
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	ctx = WithAllowedToolNames(ctx, []string{"exec_command", "write_stdin"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"echo hi"}`), "call_1")
+	if err == nil || !strings.Contains(err.Error(), "SHELL_WRITE_STDIN_COMMAND_MISSING_SUBMIT") {
+		t.Fatalf("expected missing submit error, got %v", err)
+	}
+	if called {
+		t.Fatal("executor should not be called when shell command misses submit")
+	}
+}
+
+func TestWriteStdinTool_ShellModeAllowsCommandWithCR(t *testing.T) {
+	called := false
+	tool := &WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
+			called = true
+			if input != "echo hi\r" {
+				t.Fatalf("expected raw input with CR, got %q", input)
+			}
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	ctx = WithAllowedToolNames(ctx, []string{"exec_command", "write_stdin"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"echo hi\r"}`), "call_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("executor should be called when CR is present")
+	}
+}
+
+func TestWriteStdinTool_AIAgentModeDoesNotApplyShellSubmitGuard(t *testing.T) {
+	called := false
+	tool := &WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
+			called = true
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	ctx = WithAllowedToolNames(ctx, []string{"task.input_prompt", "write_stdin"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"Please summarize this file"}`), "call_1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !called {
+		t.Fatal("executor should be called in ai_agent mode")
+	}
+}
+
+func TestWriteStdinTool_ShellModeAllowsIncompleteTypingState(t *testing.T) {
+	called := false
+	tool := &WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
+			called = true
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	ctx = WithAllowedToolNames(ctx, []string{"exec_command", "write_stdin"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"echo '"}`), "call_1")
+	if err != nil {
+		t.Fatalf("unexpected error for incomplete typing state: %v", err)
+	}
+	if !called {
+		t.Fatal("executor should be called for incomplete typing state")
 	}
 }
 

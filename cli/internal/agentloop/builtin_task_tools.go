@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"regexp"
 	"strings"
 )
 
@@ -66,6 +67,9 @@ func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, cal
 	}
 	if req.Input == "" {
 		return "", errors.New("INVALID_INPUT")
+	}
+	if shouldRejectShellCommandWithoutSubmit(ctx, req.Input) {
+		return "", errors.New("SHELL_WRITE_STDIN_COMMAND_MISSING_SUBMIT: input looks like a complete shell command; append \"\\r\" to execute, or use exec_command")
 	}
 	timeoutMs := req.TimeoutMs
 	if timeoutMs <= 0 {
@@ -475,4 +479,164 @@ func currentTaskIDFromContext(ctx context.Context) (string, error) {
 		return "", errors.New("TASK_CONTEXT_MISSING")
 	}
 	return strings.TrimSpace(scope.TaskID), nil
+}
+
+func shouldRejectShellCommandWithoutSubmit(ctx context.Context, input string) bool {
+	if !isLikelyShellToolMode(ctx) {
+		return false
+	}
+	return looksLikeCompleteShellCommandWithoutSubmit(input)
+}
+
+func isLikelyShellToolMode(ctx context.Context) bool {
+	names, ok := AllowedToolNamesFromContext(ctx)
+	if !ok {
+		return false
+	}
+	hasExecCommand := false
+	hasTaskInputPrompt := false
+	for _, raw := range names {
+		name := strings.TrimSpace(raw)
+		switch name {
+		case "exec_command":
+			hasExecCommand = true
+		case "task.input_prompt":
+			hasTaskInputPrompt = true
+		}
+	}
+	return hasExecCommand && !hasTaskInputPrompt
+}
+
+func looksLikeCompleteShellCommandWithoutSubmit(input string) bool {
+	if strings.Contains(input, "\r") || strings.Contains(input, "\n") {
+		return false
+	}
+	trimmed := strings.TrimSpace(input)
+	if trimmed == "" {
+		return false
+	}
+	if strings.ContainsRune(trimmed, '\x1b') || strings.ContainsRune(trimmed, '\t') {
+		return false
+	}
+	if strings.HasSuffix(trimmed, "\\") || endsWithShellOperator(trimmed) {
+		return false
+	}
+	if !shellTextStructureLooksComplete(trimmed) {
+		return false
+	}
+	commandToken := extractShellCommandToken(trimmed)
+	if commandToken == "" {
+		return false
+	}
+	// "/" is almost always user typing state/path, not an executable command intent.
+	if commandToken == "/" {
+		return false
+	}
+	return true
+}
+
+func endsWithShellOperator(text string) bool {
+	if text == "" {
+		return false
+	}
+	for _, suffix := range []string{"&&", "||", "|", ";", "&", "("} {
+		if strings.HasSuffix(text, suffix) {
+			return true
+		}
+	}
+	return false
+}
+
+func shellTextStructureLooksComplete(text string) bool {
+	var (
+		inSingle bool
+		inDouble bool
+		escaped  bool
+	)
+	parens := 0
+	brackets := 0
+	braces := 0
+	for _, ch := range text {
+		if escaped {
+			escaped = false
+			continue
+		}
+		if ch == '\\' && !inSingle {
+			escaped = true
+			continue
+		}
+		if inSingle {
+			if ch == '\'' {
+				inSingle = false
+			}
+			continue
+		}
+		if inDouble {
+			if ch == '"' {
+				inDouble = false
+			}
+			continue
+		}
+		switch ch {
+		case '\'':
+			inSingle = true
+		case '"':
+			inDouble = true
+		case '(':
+			parens++
+		case ')':
+			parens--
+		case '[':
+			brackets++
+		case ']':
+			brackets--
+		case '{':
+			braces++
+		case '}':
+			braces--
+		}
+		if parens < 0 || brackets < 0 || braces < 0 {
+			return false
+		}
+	}
+	return !inSingle && !inDouble && !escaped && parens == 0 && brackets == 0 && braces == 0
+}
+
+var envAssignPattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*=.*$`)
+
+func extractShellCommandToken(text string) string {
+	fields := strings.Fields(text)
+	if len(fields) == 0 {
+		return ""
+	}
+	i := 0
+	for i < len(fields) && envAssignPattern.MatchString(fields[i]) {
+		i++
+	}
+	for i < len(fields) {
+		token := strings.TrimSpace(fields[i])
+		switch token {
+		case "sudo", "command", "builtin", "time", "nohup":
+			i++
+			for i < len(fields) && strings.HasPrefix(strings.TrimSpace(fields[i]), "-") {
+				i++
+			}
+		case "env":
+			i++
+			for i < len(fields) {
+				part := strings.TrimSpace(fields[i])
+				if strings.HasPrefix(part, "-") || envAssignPattern.MatchString(part) {
+					i++
+					continue
+				}
+				break
+			}
+		default:
+			if strings.HasPrefix(token, "#") {
+				return ""
+			}
+			return token
+		}
+	}
+	return ""
 }

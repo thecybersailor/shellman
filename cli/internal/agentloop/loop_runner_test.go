@@ -117,6 +117,110 @@ func TestLoopRunner_UsesResponsesAPIAndToolRoundtrip(t *testing.T) {
 	}
 }
 
+func TestLoopRunner_FullContextReplay_InterleavesCallAndOutputWithCallIDAndID(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_a",
+						"call_id":   "call_a",
+						"name":      "task.current.set_flag",
+						"arguments": `{"flag":"success","status_message":"ok"}`,
+					},
+					{
+						"type":      "function_call",
+						"id":        "fc_b",
+						"call_id":   "call_b",
+						"name":      "write_stdin",
+						"arguments": `{"input":"pwd"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "DONE"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	if err := registry.Register(fakeNamedTool{name: "write_stdin"}); err != nil {
+		t.Fatalf("register write_stdin failed: %v", err)
+	}
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	out, err := runner.Run(context.Background(), "use tools")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected final output: %q", out)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) != 5 {
+		t.Fatalf("expected full context with 5 input items, got %#v", requestBodies[1]["input"])
+	}
+	type itemCheck struct {
+		index    int
+		wantType string
+		callID   string
+		id       string
+	}
+	checks := []itemCheck{
+		{index: 1, wantType: "function_call", callID: "call_a", id: "fc_a"},
+		{index: 2, wantType: "function_call_output", callID: "call_a"},
+		{index: 3, wantType: "function_call", callID: "call_b", id: "fc_b"},
+		{index: 4, wantType: "function_call_output", callID: "call_b"},
+	}
+	for _, check := range checks {
+		item, ok := secondInput[check.index].(map[string]any)
+		if !ok {
+			t.Fatalf("expected input[%d] is object, got %#v", check.index, secondInput[check.index])
+		}
+		if got := strings.TrimSpace(anyToString(item["type"])); got != check.wantType {
+			t.Fatalf("expected input[%d].type=%q, got %q", check.index, check.wantType, got)
+		}
+		if got := strings.TrimSpace(anyToString(item["call_id"])); got != check.callID {
+			t.Fatalf("expected input[%d].call_id=%q, got %q", check.index, check.callID, got)
+		}
+		if check.id != "" {
+			if got := strings.TrimSpace(anyToString(item["id"])); got != check.id {
+				t.Fatalf("expected input[%d].id=%q, got %q", check.index, check.id, got)
+			}
+		}
+	}
+}
+
 func anyToString(v any) string {
 	s, _ := v.(string)
 	return s
@@ -667,6 +771,136 @@ func containsString(items []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func TestClearCurrentCommandInPromptText_ClearsOnlyCurrentCommand(t *testing.T) {
+	raw := "USER_INPUT_EVENT\nterminal_screen_state_json:\n" +
+		`{"terminal_screen_state":{"current_command":"zsh","cwd":"/tmp/repo","viewport_text":"$ "}}` +
+		"\n"
+	got, changed := clearCurrentCommandInPromptText(raw)
+	if !changed {
+		t.Fatalf("expected prompt changed, got %q", got)
+	}
+	if !strings.Contains(got, `"current_command":""`) {
+		t.Fatalf("expected current_command cleared, got %q", got)
+	}
+	if !strings.Contains(got, `"cwd":"/tmp/repo"`) {
+		t.Fatalf("expected cwd preserved, got %q", got)
+	}
+	if !strings.Contains(got, `"viewport_text":"$ "`) {
+		t.Fatalf("expected viewport_text preserved, got %q", got)
+	}
+}
+
+func TestLoopRunner_ClearsStalePromptCurrentCommandOnModeChange(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		switch callCount {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "exec_command",
+						"arguments": `{"command":"codex -s danger-full-access"}`,
+					},
+				},
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_2",
+				"output": []map[string]any{
+					{
+						"type": "message",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "DONE"},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	if err := registry.Register(fakeNamedTool{name: "exec_command"}); err != nil {
+		t.Fatalf("register exec_command failed: %v", err)
+	}
+	if err := registry.Register(fakeNamedTool{name: "task.input_prompt"}); err != nil {
+		t.Fatalf("register task.input_prompt failed: %v", err)
+	}
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	resolverCalls := 0
+	ctx := WithAllowedToolNamesResolver(context.Background(), func() []string {
+		resolverCalls++
+		if resolverCalls == 1 {
+			return []string{"exec_command"}
+		}
+		return []string{"task.input_prompt", "write_stdin"}
+	})
+	prompt := "USER_INPUT_EVENT\nterminal_screen_state_json:\n" +
+		`{"terminal_screen_state":{"current_command":"zsh","cwd":"/tmp/repo","viewport_text":"$ "}}`
+	out, err := runner.Run(ctx, prompt)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) == 0 {
+		t.Fatalf("expected second input items, got %#v", requestBodies[1]["input"])
+	}
+	foundUserPrompt := false
+	for _, raw := range secondInput {
+		item, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if strings.TrimSpace(anyToString(item["type"])) != "message" {
+			continue
+		}
+		contentRaw, ok := item["content"].([]any)
+		if !ok || len(contentRaw) == 0 {
+			continue
+		}
+		part, ok := contentRaw[0].(map[string]any)
+		if !ok {
+			continue
+		}
+		text := strings.TrimSpace(anyToString(part["text"]))
+		if !strings.Contains(text, "USER_INPUT_EVENT") {
+			continue
+		}
+		foundUserPrompt = true
+		if !strings.Contains(text, `"current_command":""`) {
+			t.Fatalf("expected stale current_command cleared in second request, got %q", text)
+		}
+	}
+	if !foundUserPrompt {
+		t.Fatalf("expected USER_INPUT_EVENT message in second input, got %#v", secondInput)
+	}
 }
 
 func TestLoopRunner_ToolContract_UsesOnlyActionTools(t *testing.T) {
