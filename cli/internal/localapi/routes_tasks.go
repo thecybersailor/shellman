@@ -228,6 +228,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handlePatchTaskSidecarMode(w, r, taskID)
 	case r.Method == http.MethodPost && action == "messages":
 		s.handlePostTaskMessage(w, r, taskID)
+	case r.Method == http.MethodPost && action == "messages/stop":
+		s.handlePostTaskMessageStop(w, r, taskID)
 	case r.Method == http.MethodPost && action == "runs":
 		s.handleCreateRun(w, r, taskID)
 	case r.Method == http.MethodPost && action == "panes/sibling":
@@ -330,6 +332,35 @@ func (s *Server) handlePatchTaskSidecarMode(w http.ResponseWriter, r *http.Reque
 	respondOK(w, map[string]any{
 		"task_id":      strings.TrimSpace(taskID),
 		"sidecar_mode": mode,
+	})
+}
+
+func (s *Server) handlePostTaskMessageStop(w http.ResponseWriter, r *http.Request, taskID string) {
+	projectID, store, _, err := s.findTask(taskID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
+		return
+	}
+	taskID = strings.TrimSpace(taskID)
+	canceled := false
+	if s.taskAgentSupervisor != nil {
+		canceled = s.taskAgentSupervisor.StopTask(taskID)
+	}
+	if canceled {
+		items, listErr := store.ListTaskMessages(taskID, 200)
+		if listErr == nil {
+			for i := len(items) - 1; i >= 0; i-- {
+				if strings.TrimSpace(items[i].Role) == "assistant" && strings.TrimSpace(items[i].Status) == projectstate.StatusRunning {
+					_ = store.UpdateTaskMessage(items[i].ID, items[i].Content, projectstate.StatusCanceled, "stopped_by_user")
+					break
+				}
+			}
+		}
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+	}
+	respondOK(w, map[string]any{
+		"task_id":  taskID,
+		"canceled": canceled,
 	})
 }
 

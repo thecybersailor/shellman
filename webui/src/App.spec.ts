@@ -52,7 +52,8 @@ describe("App project entry wiring", () => {
   it("wires sidecar stop and restart context interactions", () => {
     expect(appSource).toContain("@stop-sidecar-chat=\"onStopSidecarChat\"");
     expect(appSource).toContain("@restart-sidecar-context=\"onRestartSidecarContext\"");
-    expect(appSource).toContain("await store.setTaskSidecarMode(taskId, \"observer\")");
+    expect(appSource).toContain("await store.stopTaskMessage(taskId)");
+    expect(appSource).not.toContain("await store.setTaskSidecarMode(taskId, \"observer\")");
     expect(appSource).toContain("await store.createChildTask(taskId");
     expect(appSource).toContain("await store.createRootTask(projectId");
   });

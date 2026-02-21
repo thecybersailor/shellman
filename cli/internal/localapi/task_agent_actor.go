@@ -52,6 +52,8 @@ type taskAgentLoopActor struct {
 	logger        *slog.Logger
 	sessionConfig TaskAgentSessionConfig
 	sidecarMode   string
+	runningMu     sync.Mutex
+	runningCancel context.CancelFunc
 }
 
 func newTaskAgentLoopSupervisor(
@@ -184,6 +186,37 @@ func (s *taskAgentLoopSupervisor) GetSidecarMode(taskID string) string {
 	return normalizeSidecarMode(actor.sidecarMode)
 }
 
+func (s *taskAgentLoopSupervisor) StopTask(taskID string) bool {
+	if s == nil {
+		return false
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return false
+	}
+	s.mu.Lock()
+	actor, ok := s.actors[taskID]
+	s.mu.Unlock()
+	if !ok || actor == nil {
+		return false
+	}
+	return actor.stopRunning()
+}
+
+func (a *taskAgentLoopActor) stopRunning() bool {
+	if a == nil {
+		return false
+	}
+	a.runningMu.Lock()
+	cancel := a.runningCancel
+	a.runningMu.Unlock()
+	if cancel == nil {
+		return false
+	}
+	cancel()
+	return true
+}
+
 func (a *taskAgentLoopActor) start() {
 	go func() {
 		for evt := range a.queue {
@@ -208,7 +241,16 @@ func (a *taskAgentLoopActor) start() {
 				"responses_store", evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
 				"disable_store_context", evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
 			)
-			if err := a.handler(context.Background(), evt); err != nil {
+			runCtx, cancel := context.WithCancel(context.Background())
+			a.runningMu.Lock()
+			a.runningCancel = cancel
+			a.runningMu.Unlock()
+			err := a.handler(runCtx, evt)
+			cancel()
+			a.runningMu.Lock()
+			a.runningCancel = nil
+			a.runningMu.Unlock()
+			if err != nil {
 				a.logger.Warn("task agent loop event failed", "source", strings.TrimSpace(evt.Source), "err", err)
 				continue
 			}
@@ -302,6 +344,19 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 	}
 	logger.Log("task.message.send.started", startedFields)
 	s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+
+	markCanceled := func(content string) error {
+		next := strings.TrimSpace(content)
+		_ = store.UpdateTaskMessage(assistantMessageID, next, projectstate.StatusCanceled, "stopped_by_user")
+		logger.Log("task.message.send.canceled", map[string]any{
+			"task_id":              taskID,
+			"source":               strings.TrimSpace(evt.Source),
+			"user_message_id":      userMessageID,
+			"assistant_message_id": assistantMessageID,
+		})
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		return nil
+	}
 
 	if s.deps.AgentLoopRunner == nil {
 		errText := ErrTaskAgentLoopUnavailable.Error()
@@ -464,15 +519,18 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			})
 			flushRunning(false)
 		})
-		if runErr != nil {
-			partial := strings.TrimSpace(streamState.Text)
-			next := marshalAssistantStructuredContent(streamState)
-			if partial == "" {
-				next = streamState.Text
-			}
-			_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
-			logger.Log("task.message.send.failed", map[string]any{
-				"task_id": taskID,
+			if runErr != nil {
+				partial := strings.TrimSpace(streamState.Text)
+				next := marshalAssistantStructuredContent(streamState)
+				if partial == "" {
+					next = streamState.Text
+				}
+				if errors.Is(runErr, context.Canceled) {
+					return markCanceled(next)
+				}
+				_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
+				logger.Log("task.message.send.failed", map[string]any{
+					"task_id": taskID,
 				"error":   runErr.Error(),
 				"source":  strings.TrimSpace(evt.Source),
 			})
@@ -526,12 +584,15 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			streamText.WriteString(delta)
 			flushRunning(false)
 		})
-		if runErr != nil {
-			partial := strings.TrimSpace(streamText.String())
-			next := marshalAssistantStructuredContent(assistantStructuredContent{Text: partial})
-			_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
-			logger.Log("task.message.send.failed", map[string]any{
-				"task_id": taskID,
+			if runErr != nil {
+				partial := strings.TrimSpace(streamText.String())
+				next := marshalAssistantStructuredContent(assistantStructuredContent{Text: partial})
+				if errors.Is(runErr, context.Canceled) {
+					return markCanceled(next)
+				}
+				_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
+				logger.Log("task.message.send.failed", map[string]any{
+					"task_id": taskID,
 				"error":   runErr.Error(),
 				"source":  strings.TrimSpace(evt.Source),
 			})
@@ -564,6 +625,9 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		reply, runErr = s.deps.AgentLoopRunner.Run(scopeCtx, agentPrompt)
 	}
 	if runErr != nil {
+		if errors.Is(runErr, context.Canceled) {
+			return markCanceled("")
+		}
 		_ = store.UpdateTaskMessage(assistantMessageID, "", "error", runErr.Error())
 		logger.Log("task.message.send.failed", map[string]any{
 			"task_id": taskID,

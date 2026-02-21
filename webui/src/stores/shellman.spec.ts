@@ -243,6 +243,24 @@ describe("shellman store", () => {
     expect(calls.some((c) => c.url.endsWith("/api/v1/tasks/t1/messages") && c.method === "POST")).toBe(true);
   });
 
+  it("stops running sidecar chat via messages/stop endpoint", async () => {
+    const calls: Array<{ url: string; method: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method });
+      if (url.endsWith("/api/v1/tasks/t1/messages/stop") && method === "POST") {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", canceled: true } }) } as Response;
+      }
+      return { json: async () => ({ ok: true, data: [] }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const canceled = await store.stopTaskMessage("t1");
+    expect(canceled).toBe(true);
+    expect(calls.some((c) => c.url.endsWith("/api/v1/tasks/t1/messages/stop") && c.method === "POST")).toBe(true);
+  });
+
   it("does not refetch task messages for repeated selectTask on same task", async () => {
     const calls: string[] = [];
     const fakeFetch = async (url: string) => {

@@ -449,9 +449,9 @@ async function onStopSidecarChat() {
     return;
   }
   try {
-    await store.setTaskSidecarMode(taskId, "observer");
+    await store.stopTaskMessage(taskId);
   } catch (err) {
-    notifyError(err instanceof Error ? err.message : "TASK_SIDECAR_MODE_UPDATE_FAILED");
+    notifyError(err instanceof Error ? err.message : "TASK_MESSAGE_STOP_FAILED");
   }
 }
 

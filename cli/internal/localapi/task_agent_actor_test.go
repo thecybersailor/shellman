@@ -155,3 +155,41 @@ func TestTaskAgentLoopSupervisor_SetAndGetSidecarMode(t *testing.T) {
 		t.Fatalf("expected sidecar_mode=autopilot, got %q", got)
 	}
 }
+
+func TestTaskAgentLoopSupervisor_StopTaskCancelsRunningEvent(t *testing.T) {
+	started := make(chan struct{})
+	done := make(chan error, 1)
+	supervisor := newTaskAgentLoopSupervisor(nil, func(ctx context.Context, evt TaskAgentLoopEvent) error {
+		select {
+		case <-started:
+		default:
+			close(started)
+		}
+		<-ctx.Done()
+		done <- ctx.Err()
+		return ctx.Err()
+	})
+	if err := supervisor.Enqueue(context.Background(), TaskAgentLoopEvent{
+		TaskID:         "t1",
+		DisplayContent: "x",
+		AgentPrompt:    "x",
+	}); err != nil {
+		t.Fatalf("enqueue failed: %v", err)
+	}
+	select {
+	case <-started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("event did not start")
+	}
+	if !supervisor.StopTask("t1") {
+		t.Fatal("expected stop returns true")
+	}
+	select {
+	case err := <-done:
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context canceled, got %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("running event not canceled")
+	}
+}
