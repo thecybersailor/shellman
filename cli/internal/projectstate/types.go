@@ -57,10 +57,12 @@ type TaskIndexEntry struct {
 type TaskIndex map[string]TaskIndexEntry
 
 type PaneBinding struct {
-	TaskID     string `json:"task_id"`
-	PaneUUID   string `json:"pane_uuid,omitempty"`
-	PaneID     string `json:"pane_id"`
-	PaneTarget string `json:"pane_target"`
+	TaskID             string `json:"task_id"`
+	PaneUUID           string `json:"pane_uuid,omitempty"`
+	PaneID             string `json:"pane_id"`
+	PaneTarget         string `json:"pane_target"`
+	ShellReadyRequired bool   `json:"shell_ready_required,omitempty"`
+	ShellReadyAcked    bool   `json:"shell_ready_acked,omitempty"`
 }
 
 type PanesIndex map[string]PaneBinding

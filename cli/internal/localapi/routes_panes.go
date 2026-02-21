@@ -99,7 +99,14 @@ func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	paneUUID := uuid.NewString()
-	panes[newTaskID] = projectstate.PaneBinding{TaskID: newTaskID, PaneUUID: paneUUID, PaneID: paneID, PaneTarget: paneID}
+	panes[newTaskID] = projectstate.PaneBinding{
+		TaskID:             newTaskID,
+		PaneUUID:           paneUUID,
+		PaneID:             paneID,
+		PaneTarget:         paneID,
+		ShellReadyRequired: true,
+		ShellReadyAcked:    false,
+	}
 	if err := store.SavePanes(panes); err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
 		respondError(w, http.StatusInternalServerError, "PANES_SAVE_FAILED", err.Error())
@@ -205,7 +212,14 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 	}
 
 	paneUUID := uuid.NewString()
-	panes[newTaskID] = projectstate.PaneBinding{TaskID: newTaskID, PaneUUID: paneUUID, PaneID: paneID, PaneTarget: paneID}
+	panes[newTaskID] = projectstate.PaneBinding{
+		TaskID:             newTaskID,
+		PaneUUID:           paneUUID,
+		PaneID:             paneID,
+		PaneTarget:         paneID,
+		ShellReadyRequired: true,
+		ShellReadyAcked:    false,
+	}
 	if err := store.SavePanes(panes); err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
 		respondError(w, http.StatusInternalServerError, "PANES_SAVE_FAILED", err.Error())
@@ -461,10 +475,12 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 
 	paneUUID := uuid.NewString()
 	panes[taskID] = projectstate.PaneBinding{
-		TaskID:     taskID,
-		PaneUUID:   paneUUID,
-		PaneID:     paneID,
-		PaneTarget: paneID,
+		TaskID:             taskID,
+		PaneUUID:           paneUUID,
+		PaneID:             paneID,
+		PaneTarget:         paneID,
+		ShellReadyRequired: true,
+		ShellReadyAcked:    false,
 	}
 	if err := store.SavePanes(panes); err != nil {
 		respondError(w, http.StatusInternalServerError, "PANES_SAVE_FAILED", err.Error())

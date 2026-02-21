@@ -3,6 +3,7 @@ package tmux
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -463,7 +464,11 @@ func collectActiveProcessChain(rootPID int, byPID map[int]processInfo, children 
 }
 
 func (a *Adapter) CreateSiblingPane(target string) (string, error) {
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -474,7 +479,11 @@ func (a *Adapter) CreateSiblingPaneInDir(target, cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", errors.New("pane cwd is required")
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -482,13 +491,17 @@ func (a *Adapter) CreateSiblingPaneInDir(target, cwd string) (string, error) {
 }
 
 func (a *Adapter) CreateChildPane(target string) (string, error) {
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err == nil {
 		return strings.TrimSpace(string(out)), nil
 	}
 
 	// Fallback to full-window split when target pane is too small for a local vertical split.
-	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err2 != nil {
 		return "", err
 	}
@@ -499,13 +512,17 @@ func (a *Adapter) CreateChildPaneInDir(target, cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", errors.New("pane cwd is required")
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err == nil {
 		return strings.TrimSpace(string(out)), nil
 	}
 
 	// Fallback to full-window split when target pane is too small for a local vertical split.
-	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err2 != nil {
 		return "", err
 	}
@@ -513,7 +530,11 @@ func (a *Adapter) CreateChildPaneInDir(target, cwd string) (string, error) {
 }
 
 func (a *Adapter) CreateRootPane() (string, error) {
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -524,12 +545,66 @@ func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", errors.New("pane cwd is required")
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	shellCmd, err := paneBootstrapShellCommand()
+	if err != nil {
+		return "", err
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
+
+func paneBootstrapShellCommand() (string, error) {
+	rcPath, err := ensurePaneBootstrapRCFile()
+	if err != nil {
+		return "", err
+	}
+	return "bash --rcfile " + shellSingleQuote(rcPath) + " -i", nil
+}
+
+func ensurePaneBootstrapRCFile() (string, error) {
+	dir := filepath.Join(os.TempDir(), "shellman-bootstrap")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return "", err
+	}
+	path := filepath.Join(dir, "bash-shell-ready.rc")
+	if err := os.WriteFile(path, []byte(paneBootstrapRCContent), 0o644); err != nil {
+		return "", err
+	}
+	return path, nil
+}
+
+func shellSingleQuote(input string) string {
+	if input == "" {
+		return "''"
+	}
+	return "'" + strings.ReplaceAll(input, "'", `'"'"'`) + "'"
+}
+
+const paneBootstrapRCContent = `
+if [ -f "$HOME/.bashrc" ]; then
+  . "$HOME/.bashrc"
+fi
+
+__shellman_ready_once() {
+  tmux set-option -p -t "$TMUX_PANE" @shellman_ready 1 >/dev/null 2>&1 || true
+  if [ -n "${PROMPT_COMMAND:-}" ]; then
+    PROMPT_COMMAND="${PROMPT_COMMAND/__shellman_ready_once; /}"
+    PROMPT_COMMAND="${PROMPT_COMMAND/__shellman_ready_once;/}"
+    PROMPT_COMMAND="${PROMPT_COMMAND/__shellman_ready_once/}"
+    PROMPT_COMMAND="${PROMPT_COMMAND#; }"
+    PROMPT_COMMAND="${PROMPT_COMMAND#;}"
+  fi
+}
+
+if [ -n "${PROMPT_COMMAND:-}" ]; then
+  PROMPT_COMMAND="__shellman_ready_once; ${PROMPT_COMMAND}"
+else
+  PROMPT_COMMAND="__shellman_ready_once"
+fi
+`
 
 func (a *Adapter) ServerInstanceID() (string, error) {
 	out, err := a.exec.Output("tmux", a.withSocket("display-message", "-p", "#{pid}")...)

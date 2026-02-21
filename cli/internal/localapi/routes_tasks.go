@@ -467,6 +467,23 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 			respondError(w, http.StatusNotFound, "TASK_PANE_NOT_FOUND", "pane target is empty")
 			return
 		}
+		if binding.ShellReadyRequired && !binding.ShellReadyAcked {
+			ready, readyErr := s.waitPaneShellReady(r.Context(), target)
+			if readyErr != nil {
+				respondError(w, http.StatusInternalServerError, "TASK_INPUT_READY_CHECK_FAILED", readyErr.Error())
+				return
+			}
+			if !ready {
+				respondError(w, http.StatusConflict, "SHELL_NOT_READY", "shell is still initializing")
+				return
+			}
+			binding.ShellReadyAcked = true
+			panes[taskID] = binding
+			if err := store.SavePanes(panes); err != nil {
+				respondError(w, http.StatusInternalServerError, "PANES_SAVE_FAILED", err.Error())
+				return
+			}
+		}
 		if err := s.deps.TaskPromptSender.SendInput(target, input); err != nil {
 			respondError(w, http.StatusInternalServerError, "TASK_INPUT_SEND_FAILED", err.Error())
 			return

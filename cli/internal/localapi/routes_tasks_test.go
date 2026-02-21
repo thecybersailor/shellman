@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"path"
@@ -95,6 +96,28 @@ func (f *blockingTaskMessageRunner) Run(_ context.Context, userPrompt string) (s
 	}
 	<-f.release
 	return f.reply, nil
+}
+
+type cancelAwareTaskMessageRunner struct {
+	started chan struct{}
+	done    chan error
+	calls   []string
+}
+
+func (f *cancelAwareTaskMessageRunner) Run(ctx context.Context, userPrompt string) (string, error) {
+	f.calls = append(f.calls, userPrompt)
+	select {
+	case <-f.started:
+	default:
+		close(f.started)
+	}
+	<-ctx.Done()
+	err := ctx.Err()
+	select {
+	case f.done <- err:
+	default:
+	}
+	return "", err
 }
 
 func postRunReportResult(t *testing.T, srv *Server, ts *httptest.Server, repo, taskID, summary string, headers map[string]string) (AutoCompleteByPaneResult, *AutoCompleteByPaneError) {
@@ -795,6 +818,112 @@ func TestTaskMessages_SendEnqueuesActorAndPersistsTimeline(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("assistant message did not transition to completed")
+}
+
+func TestTaskMessages_StopCancelsRunningAssistantMessage(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	runner := &cancelAwareTaskMessageRunner{
+		started: make(chan struct{}),
+		done:    make(chan error, 1),
+	}
+	srv := NewServer(Deps{
+		ConfigStore:     &staticConfigStore{},
+		ProjectsStore:   projects,
+		AgentLoopRunner: runner,
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	taskID := strings.TrimSpace(createOut.Data.TaskID)
+	if taskID == "" {
+		t.Fatal("expected task_id")
+	}
+
+	sendResp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages", "application/json", bytes.NewBufferString(`{"content":"long running"}`))
+	if err != nil {
+		t.Fatalf("POST task messages failed: %v", err)
+	}
+	_ = sendResp.Body.Close()
+	if sendResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST task messages expected 200, got %d", sendResp.StatusCode)
+	}
+
+	select {
+	case <-runner.started:
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner did not start")
+	}
+
+	stopResp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages/stop", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST stop failed: %v", err)
+	}
+	defer func() { _ = stopResp.Body.Close() }()
+	if stopResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST stop expected 200, got %d", stopResp.StatusCode)
+	}
+	var stopOut struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			TaskID   string `json:"task_id"`
+			Canceled bool   `json:"canceled"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(stopResp.Body).Decode(&stopOut); err != nil {
+		t.Fatalf("decode stop response failed: %v", err)
+	}
+	if !stopOut.OK {
+		t.Fatal("expected stop ok=true")
+	}
+	if !stopOut.Data.Canceled {
+		t.Fatal("expected canceled=true")
+	}
+
+	select {
+	case runErr := <-runner.done:
+		if !errors.Is(runErr, context.Canceled) {
+			t.Fatalf("expected context canceled, got %v", runErr)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("runner was not canceled")
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		listResp, getErr := http.Get(ts.URL + "/api/v1/tasks/" + taskID + "/messages")
+		if getErr != nil {
+			t.Fatalf("GET task messages failed: %v", getErr)
+		}
+		var listOut struct {
+			Data struct {
+				Messages []projectstate.TaskMessageRecord `json:"messages"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(listResp.Body).Decode(&listOut); err != nil {
+			_ = listResp.Body.Close()
+			t.Fatalf("decode list failed: %v", err)
+		}
+		_ = listResp.Body.Close()
+		if len(listOut.Data.Messages) >= 2 && listOut.Data.Messages[1].Status == projectstate.StatusCanceled {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("assistant message did not transition to canceled")
 }
 
 func TestTaskAgentSetFlagViaMessagesSource(t *testing.T) {
