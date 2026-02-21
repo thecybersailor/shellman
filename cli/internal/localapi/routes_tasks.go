@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -872,19 +870,7 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 			}
 		}
 	}
-	if err := s.writeTaskMarkdown(repoRoot, taskID, title); err != nil {
-		return "", err
-	}
 	return taskID, nil
-}
-
-func (s *Server) writeTaskMarkdown(repoRoot, taskID, title string) error {
-	tasksDir := filepath.Join(repoRoot, ".shellman", "tasks")
-	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
-		return err
-	}
-	content := fmt.Sprintf("# %s\n\n- task_id: %s\n", title, taskID)
-	return os.WriteFile(filepath.Join(tasksDir, taskID+".md"), []byte(content), 0o644)
 }
 
 func (s *Server) findProjectRepoRoot(projectID string) (string, error) {

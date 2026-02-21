@@ -2,10 +2,8 @@ package localapi
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/google/uuid"
@@ -421,10 +419,6 @@ func (s *Server) rollbackTaskCreation(projectID, taskID string) error {
 				return err
 			}
 		}
-	}
-	err = os.Remove(filepath.Join(repoRoot, ".shellman", "tasks", taskID+".md"))
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
 	}
 	return nil
 }

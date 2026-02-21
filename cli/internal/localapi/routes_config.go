@@ -23,10 +23,8 @@ type agentOpenAIResponse struct {
 type configResponse struct {
 	LocalPort                  int                          `json:"local_port"`
 	Defaults                   any                          `json:"defaults"`
-	DefaultLaunchProgram       string                       `json:"default_launch_program,omitempty"`
 	TaskCompletionMode         string                       `json:"task_completion_mode"`
 	TaskCompletionCommand      string                       `json:"task_completion_command"`
-	TaskCompletionWebhook      string                       `json:"task_completion_webhook"`
 	TaskCompletionIdleDuration int                          `json:"task_completion_idle_duration_seconds"`
 	TaskCompletion             taskCompletionConfigResponse `json:"task_completion"`
 	HelperOpenAI               helperOpenAIResponse         `json:"helper_openai"`
@@ -47,10 +45,8 @@ func buildConfigResponse(cfg global.GlobalConfig, helper helperOpenAIResponse, a
 	return configResponse{
 		LocalPort:                  cfg.LocalPort,
 		Defaults:                   cfg.Defaults,
-		DefaultLaunchProgram:       "",
 		TaskCompletionMode:         mode,
 		TaskCompletionCommand:      cfg.TaskCompletion.NotifyCommand,
-		TaskCompletionWebhook:      "",
 		TaskCompletionIdleDuration: cfg.TaskCompletion.NotifyIdleDuration,
 		TaskCompletion: taskCompletionConfigResponse{
 			NotifyEnabled:      cfg.TaskCompletion.NotifyEnabled,
@@ -108,10 +104,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 				Model    *string `json:"model"`
 				APIKey   *string `json:"api_key"`
 			} `json:"helper_openai"`
-			DefaultLaunchProgram       *string `json:"default_launch_program"`
 			TaskCompletionMode         *string `json:"task_completion_mode"`
 			TaskCompletionCommand      *string `json:"task_completion_command"`
-			TaskCompletionWebhook      *string `json:"task_completion_webhook"`
 			TaskCompletionIdleDuration *int    `json:"task_completion_idle_duration_seconds"`
 			TaskCompletion             *struct {
 				NotifyEnabled      *bool   `json:"notify_enabled"`
@@ -139,9 +133,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 				cfg.Defaults.HelperProgram = strings.TrimSpace(*req.Defaults.HelperProgram)
 			}
 		}
-		if req.DefaultLaunchProgram != nil && (req.Defaults == nil || req.Defaults.SessionProgram == nil) {
-			cfg.Defaults.SessionProgram = strings.TrimSpace(*req.DefaultLaunchProgram)
-		}
 		if req.TaskCompletionMode != nil {
 			mode := strings.TrimSpace(*req.TaskCompletionMode)
 			switch mode {
@@ -149,9 +140,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 				cfg.TaskCompletion.NotifyEnabled = true
 			case "none":
 				cfg.TaskCompletion.NotifyEnabled = false
-			case "webhook":
-				respondError(w, http.StatusBadRequest, "INVALID_TASK_COMPLETION_MODE", "task_completion_mode=webhook is no longer supported")
-				return
 			default:
 				respondError(w, http.StatusBadRequest, "INVALID_TASK_COMPLETION_MODE", "task_completion_mode must be command or none")
 				return
@@ -159,12 +147,6 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.TaskCompletionCommand != nil {
 			cfg.TaskCompletion.NotifyCommand = *req.TaskCompletionCommand
-		}
-		if req.TaskCompletionWebhook != nil {
-			if strings.TrimSpace(*req.TaskCompletionWebhook) != "" {
-				respondError(w, http.StatusBadRequest, "INVALID_TASK_COMPLETION_MODE", "task_completion_webhook is no longer supported")
-				return
-			}
 		}
 		if req.TaskCompletionIdleDuration != nil {
 			cfg.TaskCompletion.NotifyIdleDuration = *req.TaskCompletionIdleDuration

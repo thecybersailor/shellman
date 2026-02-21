@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"shellman/cli/internal/global"
 )
 
 type taskCompletionAuditLogger struct {
@@ -14,19 +16,20 @@ type taskCompletionAuditLogger struct {
 	file   io.Closer
 }
 
-func newTaskCompletionAuditLogger(repoRoot string) *taskCompletionAuditLogger {
-	return newAuditLogger(repoRoot, "task-completion-automation.log", "task_completion_automation")
+func newTaskCompletionAuditLogger() *taskCompletionAuditLogger {
+	return newAuditLogger("task-completion-automation.log", "task_completion_automation")
 }
 
-func newTaskMessagesAuditLogger(repoRoot string) *taskCompletionAuditLogger {
-	return newAuditLogger(repoRoot, "task-messages.log", "task_messages")
+func newTaskMessagesAuditLogger() *taskCompletionAuditLogger {
+	return newAuditLogger("task-messages.log", "task_messages")
 }
 
-func newAuditLogger(repoRoot, fileName, component string) *taskCompletionAuditLogger {
-	if strings.TrimSpace(repoRoot) == "" {
+func newAuditLogger(fileName, component string) *taskCompletionAuditLogger {
+	configDir, err := global.DefaultConfigDir()
+	if err != nil {
 		return nil
 	}
-	dir := filepath.Join(repoRoot, ".shellman", "logs")
+	dir := filepath.Join(configDir, "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil
 	}

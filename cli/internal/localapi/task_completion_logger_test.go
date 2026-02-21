@@ -8,8 +8,11 @@ import (
 )
 
 func TestTaskCompletionAudit_UsesSlogJSONLine(t *testing.T) {
-	repo := t.TempDir()
-	lgr := newTaskCompletionAuditLogger(repo)
+	configDir := t.TempDir()
+	if err := os.Setenv("SHELLMAN_CONFIG_DIR", configDir); err != nil {
+		t.Fatalf("set env failed: %v", err)
+	}
+	lgr := newTaskCompletionAuditLogger()
 	if lgr == nil {
 		t.Fatal("expected logger")
 	}
@@ -17,7 +20,7 @@ func TestTaskCompletionAudit_UsesSlogJSONLine(t *testing.T) {
 
 	lgr.Log("trigger.received", map[string]any{"task_id": "t1"})
 
-	b, err := os.ReadFile(filepath.Join(repo, ".shellman", "logs", "task-completion-automation.log"))
+	b, err := os.ReadFile(filepath.Join(configDir, "logs", "task-completion-automation.log"))
 	if err != nil {
 		t.Fatalf("read log failed: %v", err)
 	}

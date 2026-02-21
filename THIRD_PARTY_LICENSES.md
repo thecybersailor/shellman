@@ -51,6 +51,7 @@ Source: `package.json` direct deps + installed package metadata (`node_modules/*
 | `devDependencies` | `@tailwindcss/vite` | `4.1.18` | `MIT` | [link](https://tailwindcss.com) |
 | `devDependencies` | `@types/node` | `25.2.3` | `MIT` | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/node) |
 | `devDependencies` | `@types/ws` | `8.18.1` | `MIT` | [link](https://github.com/DefinitelyTyped/DefinitelyTyped/tree/master/types/ws) |
+| `devDependencies` | `@cybersailor/i18n-detect-vue` | `0.1.0` | `MIT` | [link](https://www.npmjs.com/package/@cybersailor/i18n-detect-vue) |
 | `devDependencies` | `@vitejs/plugin-vue` | `5.2.4` | `MIT` | [link](https://github.com/vitejs/vite-plugin-vue/tree/main/packages/plugin-vue#readme) |
 | `dependencies` | `@vue-flow/background` | `1.3.2` | `MIT` | [link](https://github.com/bcakmakoglu/vue-flow#readme) |
 | `dependencies` | `@vue-flow/controls` | `1.1.3` | `MIT` | [link](https://github.com/bcakmakoglu/vue-flow#readme) |
@@ -86,11 +87,20 @@ Source: `package.json` direct deps + installed package metadata (`node_modules/*
 | `devDependencies` | `vite` | `5.4.21` | `MIT` | [link](https://vite.dev) |
 | `devDependencies` | `vitest` | `2.1.9` | `MIT` | [link](https://github.com/vitest-dev/vitest#readme) |
 | `dependencies` | `vue` | `3.5.13` | `MIT` | [link](https://github.com/vuejs/core/tree/main/packages/vue#readme) |
+| `dependencies` | `vue-i18n` | `11.2.8` | `MIT` | [link](https://github.com/intlify/vue-i18n/tree/master/packages/vue-i18n#readme) |
 | `dependencies` | `vue-router` | `4.6.4` | `MIT` | [link](https://router.vuejs.org) |
 | `dependencies` | `vue-sonner` | `2.0.9` | `MIT` | [link](https://github.com/xiaoluoboding/vue-sonner) |
 | `dependencies` | `vue-stick-to-bottom` | `0.1.0` | `MIT` | [link](https://github.com/cwandev/vue-stick-to-bottom#readme) |
 | `dependencies` | `vue-stream-markdown` | `0.5.1` | `MIT` | [link](https://github.com/jinghaihan/vue-stream-markdown#readme) |
 | `devDependencies` | `ws` | `8.19.0` | `MIT` | [link](https://github.com/websockets/ws) |
+
+## Installer Direct Dependencies (`shellman/packages/shellman`)
+
+Source: `packages/shellman/package.json` direct deps + npm package metadata
+
+| Section | Package | Version | License | Homepage |
+|---|---|---|---|---|
+| `dependencies` | `unzipper` | `0.12.3` | `MIT` | [link](https://github.com/ZJONSSON/node-unzipper#readme) |
 
 ## Compliance Notes
 

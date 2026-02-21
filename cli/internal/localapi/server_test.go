@@ -92,6 +92,9 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	defer func() { _ = os.RemoveAll(dir) }()
+	if err := os.Setenv("SHELLMAN_CONFIG_DIR", dir); err != nil {
+		panic(err)
+	}
 	if err := projectstate.InitGlobalDB(filepath.Join(dir, "shellman.db")); err != nil {
 		panic(err)
 	}

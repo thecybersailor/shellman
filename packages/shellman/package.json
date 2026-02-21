@@ -2,7 +2,7 @@
   "name": "shellman",
   "version": "0.1.0",
   "description": "Shellman CLI installer package",
-  "license": "MIT",
+  "license": "AGPL-3.0",
   "type": "module",
   "bin": {
     "shellman": "bin/shellman.js"

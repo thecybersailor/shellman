@@ -19,10 +19,9 @@ type GlobalDefaults struct {
 }
 
 type GlobalConfig struct {
-	LocalPort            int                  `json:"local_port" toml:"local_port"`
-	Defaults             GlobalDefaults       `json:"defaults" toml:"defaults"`
-	DefaultLaunchProgram string               `json:"default_launch_program,omitempty" toml:"default_launch_program,omitempty"`
-	TaskCompletion       TaskCompletionConfig `json:"task_completion" toml:"task_completion"`
+	LocalPort      int                  `json:"local_port" toml:"local_port"`
+	Defaults       GlobalDefaults       `json:"defaults" toml:"defaults"`
+	TaskCompletion TaskCompletionConfig `json:"task_completion" toml:"task_completion"`
 }
 
 type TaskCompletionConfig struct {
@@ -73,8 +72,7 @@ func normalizeConfig(cfg GlobalConfig) GlobalConfig {
 	if cfg.LocalPort <= 0 {
 		cfg.LocalPort = 4621
 	}
-	cfg.Defaults = normalizeDefaults(cfg.Defaults, cfg.DefaultLaunchProgram)
-	cfg.DefaultLaunchProgram = ""
+	cfg.Defaults = normalizeDefaults(cfg.Defaults)
 	cfg.TaskCompletion.NotifyCommand = strings.TrimSpace(cfg.TaskCompletion.NotifyCommand)
 	if cfg.TaskCompletion.NotifyIdleDuration < 0 {
 		cfg.TaskCompletion.NotifyIdleDuration = 0
@@ -85,20 +83,14 @@ func normalizeConfig(cfg GlobalConfig) GlobalConfig {
 	return cfg
 }
 
-func normalizeDefaults(defaults GlobalDefaults, legacyDefaultLaunchProgram string) GlobalDefaults {
+func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 	sessionProgram := strings.ToLower(strings.TrimSpace(defaults.SessionProgram))
 	helperProgram := strings.ToLower(strings.TrimSpace(defaults.HelperProgram))
-	legacyProgram := strings.ToLower(strings.TrimSpace(legacyDefaultLaunchProgram))
 
 	switch sessionProgram {
 	case "shell", "codex", "claude", "cursor":
 	default:
-		switch legacyProgram {
-		case "codex", "claude", "cursor":
-			sessionProgram = legacyProgram
-		default:
-			sessionProgram = "shell"
-		}
+		sessionProgram = "shell"
 	}
 
 	switch helperProgram {

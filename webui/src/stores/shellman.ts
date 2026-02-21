@@ -135,10 +135,8 @@ interface GlobalConfig {
     api_key?: string;
     api_key_set?: boolean;
   };
-  default_launch_program?: string;
   task_completion_mode?: string;
   task_completion_command?: string;
-  task_completion_webhook?: string;
   task_completion_idle_duration_seconds?: number;
 }
 
@@ -151,7 +149,7 @@ interface AppProgramsConfig {
   }>;
 }
 
-type TaskCompletionMode = "none" | "command" | "webhook";
+type TaskCompletionMode = "none" | "command";
 
 interface ReopenPaneOptions {
   program?: LaunchProgram;
@@ -378,8 +376,6 @@ export function createShellmanStore(
     switch (raw) {
       case "command":
         return "command";
-      case "webhook":
-        return "webhook";
       case "none":
         return "none";
     }
@@ -457,7 +453,6 @@ export function createShellmanStore(
     appPrograms: [] as Array<{ id: HelperProgram; display_name: string; command: string }>,
     taskCompletionMode: "none" as TaskCompletionMode,
     taskCompletionCommand: "",
-    taskCompletionWebhook: "",
     taskCompletionIdleDuration: 0
   });
 
@@ -2164,9 +2159,7 @@ export function createShellmanStore(
       throw new Error(res.error?.code || "CONFIG_LOAD_FAILED");
     }
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
-    state.defaultLaunchProgram = normalizeLaunchProgram(
-      res.data.defaults?.session_program ?? res.data.default_launch_program
-    );
+    state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     if (state.appPrograms.length > 0 && !state.appPrograms.some((item) => item.id === state.defaultHelperProgram)) {
       state.defaultHelperProgram = state.appPrograms[0].id;
@@ -2176,7 +2169,6 @@ export function createShellmanStore(
     state.helperOpenAIApiKey = "";
     state.taskCompletionMode = normalizeTaskCompletionMode(res.data.task_completion_mode);
     state.taskCompletionCommand = String(res.data.task_completion_command ?? "").trim();
-    state.taskCompletionWebhook = String(res.data.task_completion_webhook ?? "").trim();
     state.taskCompletionIdleDuration = typeof res.data.task_completion_idle_duration_seconds === "number" &&
       res.data.task_completion_idle_duration_seconds >= 0
       ? Math.floor(res.data.task_completion_idle_duration_seconds)
@@ -2193,7 +2185,6 @@ export function createShellmanStore(
       },
       task_completion_mode: state.taskCompletionMode,
       task_completion_command: state.taskCompletionCommand,
-      task_completion_webhook: state.taskCompletionWebhook,
       task_completion_idle_duration_seconds: state.taskCompletionIdleDuration
     };
     return saveConfig(body);
@@ -2202,7 +2193,6 @@ export function createShellmanStore(
   async function saveTaskCompletionSettings(program: LaunchProgram, helperProgram: HelperProgram, payload: {
     taskCompletionMode: TaskCompletionMode;
     taskCompletionCommand: string;
-    taskCompletionWebhook: string;
     taskCompletionIdleDuration: number;
     helperOpenAIEndpoint: string;
     helperOpenAIModel: string;
@@ -2232,7 +2222,6 @@ export function createShellmanStore(
         },
         task_completion_mode: String(payload.taskCompletionMode ?? "none").trim(),
         task_completion_command: String(payload.taskCompletionCommand ?? "").trim(),
-        task_completion_webhook: String(payload.taskCompletionWebhook ?? "").trim(),
         task_completion_idle_duration_seconds: nextDuration,
         helper_openai: helperOpenAI
       })
@@ -2241,16 +2230,13 @@ export function createShellmanStore(
       throw new Error(res.error?.code || "CONFIG_SAVE_FAILED");
     }
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
-    state.defaultLaunchProgram = normalizeLaunchProgram(
-      res.data.defaults?.session_program ?? res.data.default_launch_program
-    );
+    state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
     state.taskCompletionMode = normalizeTaskCompletionMode(res.data.task_completion_mode);
     state.taskCompletionCommand = String(res.data.task_completion_command ?? "").trim();
-    state.taskCompletionWebhook = String(res.data.task_completion_webhook ?? "").trim();
     state.taskCompletionIdleDuration = typeof res.data.task_completion_idle_duration_seconds === "number" &&
       res.data.task_completion_idle_duration_seconds >= 0
       ? Math.floor(res.data.task_completion_idle_duration_seconds)
@@ -2267,16 +2253,13 @@ export function createShellmanStore(
       throw new Error(res.error?.code || "CONFIG_SAVE_FAILED");
     }
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
-    state.defaultLaunchProgram = normalizeLaunchProgram(
-      res.data.defaults?.session_program ?? res.data.default_launch_program
-    );
+    state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
     state.taskCompletionMode = normalizeTaskCompletionMode(res.data.task_completion_mode);
     state.taskCompletionCommand = String(res.data.task_completion_command ?? "").trim();
-    state.taskCompletionWebhook = String(res.data.task_completion_webhook ?? "").trim();
     state.taskCompletionIdleDuration = typeof res.data.task_completion_idle_duration_seconds === "number" &&
       res.data.task_completion_idle_duration_seconds >= 0
       ? Math.floor(res.data.task_completion_idle_duration_seconds)

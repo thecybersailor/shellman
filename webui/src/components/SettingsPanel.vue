@@ -11,7 +11,7 @@ const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 type HelperProgram = "codex" | "claude" | "cursor";
-type TaskCompletionMode = "none" | "command" | "webhook";
+type TaskCompletionMode = "none" | "command";
 type DelayPreset = "0" | "60" | "300";
 
 const props = withDefaults(defineProps<{
@@ -21,7 +21,6 @@ const props = withDefaults(defineProps<{
   providers?: Array<{ id: HelperProgram; display_name: string; command: string }>;
   taskCompletionMode?: TaskCompletionMode;
   taskCompletionCommand?: string;
-  taskCompletionWebhook?: string;
   taskCompletionIdleDuration?: number;
   helperOpenAIEndpoint?: string;
   helperOpenAIModel?: string;
@@ -33,7 +32,6 @@ const props = withDefaults(defineProps<{
   providers: () => [],
   taskCompletionMode: "none",
   taskCompletionCommand: "",
-  taskCompletionWebhook: "",
   taskCompletionIdleDuration: 0,
   helperOpenAIEndpoint: "",
   helperOpenAIModel: "",
@@ -48,7 +46,6 @@ const emit = defineEmits<{
     defaultHelperProgram: HelperProgram;
     taskCompletionMode: TaskCompletionMode;
     taskCompletionCommand: string;
-    taskCompletionWebhook: string;
     taskCompletionIdleDuration: number;
     helperOpenAIEndpoint: string;
     helperOpenAIModel: string;
@@ -182,7 +179,6 @@ function saveSettings() {
     defaultHelperProgram: localDefaultHelperProgram.value,
     taskCompletionMode: mode,
     taskCompletionCommand: commandValue,
-    taskCompletionWebhook: "",
     taskCompletionIdleDuration: Number(localTaskCompletionIdleDuration.value),
     helperOpenAIEndpoint: String(localHelperOpenAIEndpoint.value ?? "").trim(),
     helperOpenAIModel: String(localHelperOpenAIModel.value ?? "").trim(),

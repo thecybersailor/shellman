@@ -16,7 +16,6 @@ describe("SettingsPanel", () => {
         ],
         taskCompletionMode: "none",
         taskCompletionCommand: "",
-        taskCompletionWebhook: "",
         taskCompletionIdleDuration: 10,
         helperOpenAIEndpoint: "",
         helperOpenAIModel: "",
@@ -79,7 +78,6 @@ describe("SettingsPanel", () => {
       defaultHelperProgram: "codex",
       taskCompletionMode: "command",
       taskCompletionCommand: "notify --flag",
-      taskCompletionWebhook: "",
       taskCompletionIdleDuration: 60,
       helperOpenAIEndpoint: "",
       helperOpenAIModel: "",
@@ -98,7 +96,6 @@ describe("SettingsPanel", () => {
       defaultHelperProgram: "codex",
       taskCompletionMode: "none",
       taskCompletionCommand: "",
-      taskCompletionWebhook: "",
       taskCompletionIdleDuration: 10,
       helperOpenAIEndpoint: "",
       helperOpenAIModel: "",
@@ -106,7 +103,7 @@ describe("SettingsPanel", () => {
     }]);
   });
 
-  it("supports none mode and sends empty command/webhook", async () => {
+  it("supports none mode and sends empty command", async () => {
     const wrapper = render();
     await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
     expect(wrapper.emitted("save")?.[0]).toEqual([{
@@ -114,26 +111,6 @@ describe("SettingsPanel", () => {
       defaultHelperProgram: "codex",
       taskCompletionMode: "none",
       taskCompletionCommand: "",
-      taskCompletionWebhook: "",
-      taskCompletionIdleDuration: 10,
-      helperOpenAIEndpoint: "",
-      helperOpenAIModel: "",
-      helperOpenAIApiKey: ""
-    }]);
-  });
-
-  it("keeps webhook payload empty even when webhook prop is provided", async () => {
-    const wrapper = render();
-    await wrapper.setProps({ taskCompletionMode: "command", taskCompletionWebhook: "https://example.com/hook" });
-    await wrapper.get("[data-test-id='shellman-settings-task-completion-action-input']").setValue("notify --flag");
-    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
-
-    expect(wrapper.emitted("save")?.[0]).toEqual([{
-      defaultLaunchProgram: "shell",
-      defaultHelperProgram: "codex",
-      taskCompletionMode: "command",
-      taskCompletionCommand: "notify --flag",
-      taskCompletionWebhook: "",
       taskCompletionIdleDuration: 10,
       helperOpenAIEndpoint: "",
       helperOpenAIModel: "",

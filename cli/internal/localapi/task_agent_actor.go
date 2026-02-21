@@ -271,11 +271,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		return errors.New("agent_prompt is required")
 	}
 
-	repoRoot, err := s.findProjectRepoRoot(projectID)
-	if err != nil {
-		return err
-	}
-	logger := newTaskMessagesAuditLogger(repoRoot)
+	logger := newTaskMessagesAuditLogger()
 	defer logger.Close()
 
 	userMessageID, err := store.InsertTaskMessage(taskID, "user", displayContent, "completed", "")

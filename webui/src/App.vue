@@ -316,9 +316,8 @@ watch(showSettingsPanel, (open) => {
 async function onSaveSettings(payload: {
   defaultLaunchProgram: "shell" | "codex" | "claude" | "cursor";
   defaultHelperProgram: "codex" | "claude" | "cursor";
-  taskCompletionMode: "none" | "command" | "webhook";
+  taskCompletionMode: "none" | "command";
   taskCompletionCommand: string;
-  taskCompletionWebhook: string;
   taskCompletionIdleDuration: number;
   helperOpenAIEndpoint: string;
   helperOpenAIModel: string;
@@ -329,7 +328,6 @@ async function onSaveSettings(payload: {
     await store.saveTaskCompletionSettings(payload.defaultLaunchProgram, payload.defaultHelperProgram, {
       taskCompletionMode: payload.taskCompletionMode,
       taskCompletionCommand: payload.taskCompletionCommand,
-      taskCompletionWebhook: payload.taskCompletionWebhook,
       taskCompletionIdleDuration: payload.taskCompletionIdleDuration,
       helperOpenAIEndpoint: payload.helperOpenAIEndpoint,
       helperOpenAIModel: payload.helperOpenAIModel,
@@ -722,7 +720,6 @@ onBeforeUnmount(() => {
     :default-helper-program="store.state.defaultHelperProgram"
     :providers="store.state.appPrograms"
     :task-completion-command="store.state.taskCompletionCommand"
-    :task-completion-webhook="store.state.taskCompletionWebhook"
     :task-completion-mode="store.state.taskCompletionMode"
     :task-completion-idle-duration="store.state.taskCompletionIdleDuration"
     :helper-openai-endpoint="store.state.helperOpenAIEndpoint"

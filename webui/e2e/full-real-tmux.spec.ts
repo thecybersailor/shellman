@@ -92,7 +92,7 @@ async function fetchProjectTree(request: APIRequestContext, projectID: string) {
   );
 }
 
-async function waitForTaskCommands(
+async function waitForTaskNodes(
   request: APIRequestContext,
   projectID: string,
   taskIDs: string[],
@@ -101,23 +101,23 @@ async function waitForTaskCommands(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     const tree = await fetchProjectTree(request, projectID);
-    const byID = new Map(tree.nodes.map((node) => [node.task_id, String(node.current_command ?? "").trim()]));
-    const commands: Record<string, string> = {};
+    const byID = new Map(tree.nodes.map((node) => [node.task_id, node]));
+    const nodes: Record<string, TaskTreeNode> = {};
     let ready = true;
     for (const taskID of taskIDs) {
-      const command = byID.get(taskID) ?? "";
-      if (!command) {
+      const node = byID.get(taskID);
+      if (!node) {
         ready = false;
         break;
       }
-      commands[taskID] = command;
+      nodes[taskID] = node;
     }
     if (ready) {
-      return commands;
+      return nodes;
     }
     await new Promise((resolve) => setTimeout(resolve, 250));
   }
-  throw new Error(`timeout waiting task commands from tree project=${projectID} taskIDs=${taskIDs.join(",")}`);
+  throw new Error(`timeout waiting tasks from tree project=${projectID} taskIDs=${taskIDs.join(",")}`);
 }
 
 async function waitForTaskFlagReaded(
@@ -263,7 +263,7 @@ test.describe("shellman local web full chain (docker)", () => {
     await waitForTaskFlagReaded(request, seeded.projectID, seeded.rootTaskID, true);
   });
 
-  test("reload first frame uses persisted current command in sidebar", async ({ page, request }) => {
+  test("reload first frame keeps task rows available in sidebar", async ({ page, request }) => {
     test.setTimeout(60_000);
     const projectID = `e2e_first_frame_cmd_${Date.now()}`;
     await unwrap<{ project_id: string }>(
@@ -290,16 +290,16 @@ test.describe("shellman local web full chain (docker)", () => {
     await page.goto(visitURL);
     await selectTask(page, projectID, rootTask.task_id);
     await runEcho(page, "__FIRST_FRAME_ROOT__");
-    await waitForTaskCommands(request, projectID, [rootTask.task_id], 30000);
+    await waitForTaskNodes(request, projectID, [rootTask.task_id], 30000);
     await selectTask(page, projectID, siblingTask.task_id);
     await runEcho(page, "__FIRST_FRAME_SIBLING__");
-    await waitForTaskCommands(request, projectID, [siblingTask.task_id], 30000);
+    await waitForTaskNodes(request, projectID, [siblingTask.task_id], 30000);
 
-    const persisted = await waitForTaskCommands(request, projectID, [rootTask.task_id, siblingTask.task_id], 45000);
+    const persisted = await waitForTaskNodes(request, projectID, [rootTask.task_id, siblingTask.task_id], 45000);
     await page.reload();
 
-    expect(String(persisted[rootTask.task_id] ?? "").trim().length).toBeGreaterThan(0);
-    expect(String(persisted[siblingTask.task_id] ?? "").trim().length).toBeGreaterThan(0);
+    expect(persisted[rootTask.task_id]?.task_id).toBe(rootTask.task_id);
+    expect(persisted[siblingTask.task_id]?.task_id).toBe(siblingTask.task_id);
     await expect(taskRowTitle(page, projectID, rootTask.task_id)).toBeVisible();
     await expect(taskRowTitle(page, projectID, siblingTask.task_id)).toBeVisible();
   });

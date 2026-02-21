@@ -156,14 +156,15 @@ const ids=(d.data.nodes||[]).map((n)=>n.task_id);
 if(ids.length<3) process.exit(2);
 ' "$TREE_RESP"
 
-PANES_FILE="$PROJECT_ROOT/.shellman/state/panes.json"
-if [[ ! -f "$PANES_FILE" ]]; then
-  echo "missing panes file: $PANES_FILE" >&2
-  exit 1
-fi
+SIB_PANE_RESP="$(curl -fsS "$API_BASE/api/v1/tasks/$SIB_TASK_ID/pane")"
+CHILD_PANE_RESP="$(curl -fsS "$API_BASE/api/v1/tasks/$CHILD_TASK_ID/pane")"
 
-grep -q "$SIB_TASK_ID" "$PANES_FILE"
-grep -q "$CHILD_TASK_ID" "$PANES_FILE"
+node -e '
+const sib=JSON.parse(process.argv[1]);
+const child=JSON.parse(process.argv[2]);
+if(!sib.ok || !child.ok) process.exit(1);
+if(!sib.data?.pane_target || !child.data?.pane_target) process.exit(2);
+' "$SIB_PANE_RESP" "$CHILD_PANE_RESP"
 
 echo "shellman local web smoke passed"
 echo "logs: $LOG_DIR"

@@ -263,13 +263,6 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 			Message:    err.Error(),
 		}
 	}
-	if err := s.writeTaskReturnSummary(projectID, taskID, summary); err != nil {
-		return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
-			HTTPStatus: http.StatusInternalServerError,
-			Code:       "TASK_RETURN_WRITE_FAILED",
-			Message:    err.Error(),
-		}
-	}
 	s.enqueueTaskCompletionActions(projectID, taskID, summary, "pane-idle", reqMeta)
 	s.publishEvent("task.status.updated", projectID, taskID, map[string]any{"status": projectstate.StatusCompleted})
 	s.publishEvent("task.return.reported", projectID, taskID, map[string]any{"summary": summary, "run_id": ""})

@@ -1464,7 +1464,7 @@ func TestTaskCompletionLogs_RecordTriggerSkippedWhenAgentLoopUnavailable(t *test
 		t.Fatalf("POST report-result expected success, got %v", runErr)
 	}
 
-	logPath := path.Join(repo, ".shellman", "logs", "task-completion-automation.log")
+	logPath := path.Join(os.Getenv("SHELLMAN_CONFIG_DIR"), "logs", "task-completion-automation.log")
 	deadline := time.Now().Add(2 * time.Second)
 	found := false
 	for time.Now().Before(deadline) {
@@ -1519,7 +1519,7 @@ func TestTaskCompletionLogs_IncludeRequestMetaOnAutoProgress(t *testing.T) {
 		t.Fatalf("POST report-result expected success, got %v", runErr)
 	}
 
-	logPath := path.Join(repo, ".shellman", "logs", "task-completion-automation.log")
+	logPath := path.Join(os.Getenv("SHELLMAN_CONFIG_DIR"), "logs", "task-completion-automation.log")
 	deadline := time.Now().Add(3 * time.Second)
 	found := false
 	for time.Now().Before(deadline) {
