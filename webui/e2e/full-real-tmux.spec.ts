@@ -9,6 +9,16 @@ type APIEnvelope<T> = {
 const visitURL = process.env.E2E_VISIT_URL ?? "http://cli:4621";
 const apiBaseURL = process.env.E2E_API_BASE ?? "http://cli:4621";
 const e2eRepoRoot = process.env.E2E_REPO_ROOT ?? "/workspace";
+const openAIKey = String(process.env.OPENAI_API_KEY ?? "").trim();
+
+function hasUsableOpenAIKey() {
+  if (openAIKey === "") return false;
+  const lowered = openAIKey.toLowerCase();
+  if (lowered.includes("xxxx")) return false;
+  if (lowered.includes("placeholder")) return false;
+  if (openAIKey.length < 20) return false;
+  return true;
+}
 
 async function unwrap<T>(res: Awaited<ReturnType<APIRequestContext["get"]>> | Awaited<ReturnType<APIRequestContext["post"]>>) {
   if (!res.ok()) {
@@ -357,6 +367,7 @@ test.describe("shellman local web full chain (docker)", () => {
   });
 
   test("shellman chat sends user message and receives assistant reply", async ({ page, request }) => {
+    test.skip(!hasUsableOpenAIKey(), "requires usable OPENAI_API_KEY for live assistant assertion");
     const seeded = await seedProject(request);
     await page.goto(visitURL);
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
@@ -387,6 +398,46 @@ test.describe("shellman local web full chain (docker)", () => {
         { timeout: 60000, intervals: [500, 1000, 1500] }
       )
       .toMatch(/^completed:[1-9]\d*$/);
+  });
+
+  test("shellman chat timeline keeps earlier turns after second send", async ({ page, request }) => {
+    const seeded = await seedProject(request);
+    await page.goto(visitURL);
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+
+    await unwrap(
+      await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
+        data: { content: "TURN_ONE_MARKER" }
+      })
+    );
+    await unwrap(
+      await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
+        data: { content: "TURN_TWO_MARKER" }
+      })
+    );
+
+    await page.reload();
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+
+    await expect(page.getByTestId("shellman-shellman-message-user").filter({ hasText: "TURN_ONE_MARKER" }).first()).toBeVisible({
+      timeout: 20000
+    });
+    await expect(page.getByTestId("shellman-shellman-message-user").filter({ hasText: "TURN_TWO_MARKER" }).first()).toBeVisible({
+      timeout: 20000
+    });
+
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`);
+          if (!res.ok()) return 0;
+          const body = await res.json();
+          const messages = Array.isArray(body?.data?.messages) ? body.data.messages : [];
+          return messages.filter((m: any) => m?.role === "user").length;
+        },
+        { timeout: 30000, intervals: [500, 1000, 1500] }
+      )
+      .toBeGreaterThanOrEqual(2);
   });
 
   test("shellman renders ai-elements tool block from structured assistant content", async ({ page, request }) => {
