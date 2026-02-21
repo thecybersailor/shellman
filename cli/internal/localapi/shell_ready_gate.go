@@ -14,7 +14,7 @@ const (
 )
 
 var (
-	shellReadyWaitTimeout = 8 * time.Second
+	shellReadyWaitTimeout  = 8 * time.Second
 	shellReadyPollInterval = 120 * time.Millisecond
 )
 

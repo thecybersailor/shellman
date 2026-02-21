@@ -1057,6 +1057,178 @@ func TestTaskAgentWriteStdinViaMessagesSource_SendsRawInput(t *testing.T) {
 	}
 }
 
+func TestTaskAgentWriteStdinViaMessagesSource_WaitsShellReadyAndAcks(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	sender := &fakeTaskPromptSender{}
+	checkCalls := 0
+	srv := NewServer(Deps{
+		ConfigStore:      &staticConfigStore{},
+		ProjectsStore:    projects,
+		TaskPromptSender: sender,
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if name != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			if len(args) != 5 || args[0] != "display-message" || args[4] != "#{@shellman_ready}" {
+				t.Fatalf("unexpected tmux args: %#v", args)
+			}
+			checkCalls++
+			if checkCalls < 3 {
+				return []byte("\n"), nil
+			}
+			return []byte("1\n"), nil
+		},
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	taskID := createOut.Data.TaskID
+
+	store := projectstate.NewStore(filepath.Clean(repo))
+	panes, err := store.LoadPanes()
+	if err != nil {
+		t.Fatalf("LoadPanes failed: %v", err)
+	}
+	panes[taskID] = projectstate.PaneBinding{
+		TaskID:             taskID,
+		PaneUUID:           "pane_uuid_t2",
+		PaneID:             "e2e:2.0",
+		PaneTarget:         "e2e:2.0",
+		ShellReadyRequired: true,
+		ShellReadyAcked:    false,
+	}
+	if err := store.SavePanes(panes); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	oldTimeout := shellReadyWaitTimeout
+	oldPoll := shellReadyPollInterval
+	shellReadyWaitTimeout = 3 * time.Second
+	shellReadyPollInterval = 10 * time.Millisecond
+	defer func() {
+		shellReadyWaitTimeout = oldTimeout
+		shellReadyPollInterval = oldPoll
+	}()
+
+	resp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages", "application/json", bytes.NewBufferString(`{"source":"tty_write_stdin","input":"echo ready"}`))
+	if err != nil {
+		t.Fatalf("POST messages tty_write_stdin failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if checkCalls < 3 {
+		t.Fatalf("expected shell ready checked repeatedly, got %d", checkCalls)
+	}
+	if len(sender.calls) != 1 {
+		t.Fatalf("expected sender called once, got %d", len(sender.calls))
+	}
+	updated, err := store.LoadPanes()
+	if err != nil {
+		t.Fatalf("LoadPanes after send failed: %v", err)
+	}
+	row := updated[taskID]
+	if !row.ShellReadyAcked {
+		t.Fatal("expected shell_ready_acked persisted")
+	}
+}
+
+func TestTaskAgentWriteStdinViaMessagesSource_RejectsWhenShellNotReady(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	sender := &fakeTaskPromptSender{}
+	srv := NewServer(Deps{
+		ConfigStore:      &staticConfigStore{},
+		ProjectsStore:    projects,
+		TaskPromptSender: sender,
+		ExecuteCommand: func(_ context.Context, _ string, _ ...string) ([]byte, error) {
+			return []byte("\n"), nil
+		},
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	taskID := createOut.Data.TaskID
+
+	store := projectstate.NewStore(filepath.Clean(repo))
+	panes, err := store.LoadPanes()
+	if err != nil {
+		t.Fatalf("LoadPanes failed: %v", err)
+	}
+	panes[taskID] = projectstate.PaneBinding{
+		TaskID:             taskID,
+		PaneUUID:           "pane_uuid_t3",
+		PaneID:             "e2e:3.0",
+		PaneTarget:         "e2e:3.0",
+		ShellReadyRequired: true,
+		ShellReadyAcked:    false,
+	}
+	if err := store.SavePanes(panes); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	oldTimeout := shellReadyWaitTimeout
+	oldPoll := shellReadyPollInterval
+	shellReadyWaitTimeout = 35 * time.Millisecond
+	shellReadyPollInterval = 10 * time.Millisecond
+	defer func() {
+		shellReadyWaitTimeout = oldTimeout
+		shellReadyPollInterval = oldPoll
+	}()
+
+	resp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages", "application/json", bytes.NewBufferString(`{"source":"tty_write_stdin","input":"echo blocked"}`))
+	if err != nil {
+		t.Fatalf("POST messages tty_write_stdin failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("expected 409, got %d", resp.StatusCode)
+	}
+	var out struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode error response failed: %v", err)
+	}
+	if out.Error.Code != "SHELL_NOT_READY" {
+		t.Fatalf("expected SHELL_NOT_READY, got %q", out.Error.Code)
+	}
+	if len(sender.calls) != 0 {
+		t.Fatalf("expected sender not called, got %d", len(sender.calls))
+	}
+}
+
 func TestProjectArchiveDone_HidesArchivedTasksFromTree(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
