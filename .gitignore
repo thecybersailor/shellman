@@ -1,0 +1,22 @@
+.DS_Store
+.worktrees/
+
+# Node.js dependencies and logs
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Cloudflare Wrangler local state
+.wrangler/
+
+# Playwright artifacts
+webui/test-results/
+webui/playwright-report/
+tmp/
+webui/dist/
+logs/
+
+test-results/
+.env.*

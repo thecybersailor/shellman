@@ -1,0 +1,92 @@
+package main
+
+import (
+	"encoding/json"
+	"net/http"
+	"testing"
+)
+
+type spawnCall struct {
+	Method string
+	Path   string
+	Body   string
+}
+
+func TestEnsureCommandEndsWithEnter(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"echo hi", "echo hi\r"},
+		{"echo hi\n", "echo hi\n"},
+		{"echo hi\r", "echo hi\r"},
+		{"echo hi<ENTER>", "echo hi\r"},
+	}
+	for _, tc := range tests {
+		if got := ensureCommandEndsWithEnter(tc.in); got != tc.want {
+			t.Fatalf("in=%q got=%q want=%q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestExecuteTaskChildSpawnAction_AutoEnterAutopilotAndPrompt(t *testing.T) {
+	calls := make([]spawnCall, 0, 8)
+	callTaskTool := func(method, path string, payload any) (string, error) {
+		body := ""
+		if payload != nil {
+			raw, _ := json.Marshal(payload)
+			body = string(raw)
+		}
+		calls = append(calls, spawnCall{Method: method, Path: path, Body: body})
+		switch {
+		case method == http.MethodPost && path == "/api/v1/tasks/t_parent/panes/child":
+			return `{"ok":true,"data":{"task_id":"t_child","run_id":"r1","pane_target":"e2e:0.2"}}`, nil
+		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/description":
+			return `{"ok":true}`, nil
+		case method == http.MethodGet && path == "/api/v1/tasks/t_parent/autopilot":
+			return `{"ok":true,"data":{"autopilot":true}}`, nil
+		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/autopilot":
+			return `{"ok":true}`, nil
+		case method == http.MethodPost && path == "/api/v1/tasks/t_child/messages":
+			return `{"ok":true}`, nil
+		default:
+			return `{"ok":true}`, nil
+		}
+	}
+
+	out, err := executeTaskChildSpawnAction(callTaskTool, "t_parent", "echo hi", "child", "desc", "fix this")
+	if err != nil {
+		t.Fatalf("execute spawn action failed: %v", err)
+	}
+	if out == "" {
+		t.Fatal("expected non-empty output")
+	}
+
+	var sawCommandWithEnter bool
+	var sawAutopilotCopy bool
+	var sawPromptMessage bool
+	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == "/api/v1/tasks/t_child/messages" && c.Body != "" {
+			var payload map[string]any
+			_ = json.Unmarshal([]byte(c.Body), &payload)
+			if payload["source"] == "tty_write_stdin" && payload["input"] == "echo hi\r" {
+				sawCommandWithEnter = true
+			}
+			if payload["source"] == "parent_message" && payload["content"] == "fix this" {
+				sawPromptMessage = true
+			}
+		}
+		if c.Method == http.MethodPatch && c.Path == "/api/v1/tasks/t_child/autopilot" && c.Body == `{"autopilot":true}` {
+			sawAutopilotCopy = true
+		}
+	}
+	if !sawCommandWithEnter {
+		t.Fatal("expected command auto-enter send")
+	}
+	if !sawAutopilotCopy {
+		t.Fatal("expected parent autopilot copied to child")
+	}
+	if !sawPromptMessage {
+		t.Fatal("expected prompt sent to child")
+	}
+}

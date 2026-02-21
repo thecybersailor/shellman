@@ -1,0 +1,231 @@
+<script setup lang="ts">
+import { ref } from "vue";
+import type { ProjectSection } from "./ProjectTaskTree.vue";
+import type { TerminalFrame } from "@/stores/muxt";
+import ProjectInfoPanel from "./ProjectInfoPanel.vue";
+import ProjectTaskTree from "./ProjectTaskTree.vue";
+import TerminalPane from "./TerminalPane.vue";
+import TaskTitleResolver from "./TaskTitleResolver.vue";
+import { 
+  Settings,
+  ChevronLeft,
+  Info,
+  Sun,
+  Moon
+} from "lucide-vue-next";
+import { Button } from "@/components/ui/button";
+
+type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
+
+const props = defineProps<{
+  projects: ProjectSection[];
+  selectedTaskId: string;
+  selectedPaneUuid?: string;
+  selectedTaskTitle?: string;
+  selectedTaskDescription?: string;
+  selectedTaskNotes?: Array<{ task_id: string; created_at: number; flag?: "success" | "notify" | "error"; notes: string }>;
+  selectedCurrentCommand?: string;
+  selectedTaskAutopilot?: boolean;
+  selectedTaskProjectId?: string;
+  selectedTaskRepoRoot?: string;
+  darkMode: "light" | "dark" | "auto";
+  frame?: TerminalFrame | null;
+  cursor?: { x: number; y: number } | null;
+  isEnded?: boolean;
+  showReopenPaneButton?: boolean;
+  isNoPaneTask?: boolean;
+  defaultLaunchProgram?: LaunchProgram;
+  appPrograms?: Array<{ id: "codex" | "claude" | "cursor"; display_name: string; command: string }>;
+  scmAiLoading?: boolean;
+  scmSubmitLoading?: boolean;
+}>();
+
+const emit = defineEmits<{
+  (event: "select-task", taskId: string): void;
+  (event: "toggle-task-check", payload: { taskId: string; checked: boolean }): void;
+  (event: "terminal-input", text: string): void;
+  (event: "terminal-image-paste", file: File): void;
+  (event: "terminal-resize", size: { cols: number; rows: number }): void;
+  (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
+  (event: "save-task-meta", payload: { title: string; description: string }): void;
+  (event: "set-autopilot", payload: { enabled: boolean }): void;
+  (event: "add-project"): void;
+  (event: "open-settings"): void;
+  (event: "create-root-pane", projectId: string): void;
+  (event: "create-child-pane", taskId: string): void;
+  (event: "archive-project-done", projectId: string): void;
+  (event: "remove-project", projectId: string): void;
+  (event: "toggle-dark"): void;
+  (event: "scm-ai", payload: { taskId: string; diff: string; files: string[]; selectedFilePath: string }): void;
+  (event: "scm-submit", payload: { taskId: string; message: string }): void;
+  (event: "file-open", path: string): void;
+}>();
+
+const showInfoPanel = ref(false);
+const projectPanelActiveTab = ref<"diff" | "file" | "session">("session");
+
+function onSelectTask(taskId: string) {
+  emit("select-task", taskId);
+}
+
+function goBack() {
+  showInfoPanel.value = false;
+  emit("select-task", "");
+}
+
+function resolveSelectedTaskTitle() {
+  if (!props.selectedTaskId) {
+    return "";
+  }
+  for (const project of props.projects) {
+    const task = project.tasks.find((item) => item.taskId === props.selectedTaskId);
+    if (task) {
+      return task.title;
+    }
+  }
+  return props.selectedTaskId;
+}
+
+function openSessionDetailPanel() {
+  projectPanelActiveTab.value = "session";
+  showInfoPanel.value = true;
+}
+
+function onProjectPanelActiveTabChange(next: string) {
+  if (next === "diff" || next === "file" || next === "session") {
+    projectPanelActiveTab.value = next;
+  }
+}
+</script>
+
+<template>
+  <div class="muxt-mobile h-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <!-- Explorer Screen -->
+    <template v-if="!props.selectedTaskId">
+      <header class="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-md z-10">
+        <div class="flex items-center gap-2">
+          <span class="text-xs font-mono font-bold uppercase tracking-[0.2em] text-primary/80">muxt</span>
+        </div>
+        <div class="flex items-center gap-1">
+          <Button variant="ghost" size="icon" @click="emit('toggle-dark')" class="h-8 w-8 text-muted-foreground">
+            <Sun v-if="props.darkMode === 'dark'" class="h-4 w-4" />
+            <Moon v-else class="h-4 w-4" />
+          </Button>
+          <Button variant="ghost" size="icon" @click="emit('open-settings')" class="h-8 w-8 text-muted-foreground">
+            <Settings class="h-5 w-5" />
+          </Button>
+        </div>
+      </header>
+
+      <main class="flex-1 min-h-0 relative overflow-hidden bg-sidebar">
+        <ProjectTaskTree 
+          :projects="props.projects" 
+          :selected-task-id="props.selectedTaskId"
+          :hide-footer="true"
+          :show-orphan-section="false"
+          @select-task="onSelectTask"
+          @toggle-task-check="(payload) => emit('toggle-task-check', payload)"
+          @add-project="emit('add-project')"
+          @create-root-pane="(id) => emit('create-root-pane', id)"
+          @create-child-pane="(id) => emit('create-child-pane', id)"
+          @archive-project-done="(id) => emit('archive-project-done', id)"
+          @remove-project="(id) => emit('remove-project', id)"
+          class="bg-transparent"
+        />
+      </main>
+    </template>
+
+    <!-- Console (Session) Screen -->
+    <template v-else>
+      <header class="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-md z-10">
+        <div class="flex items-center gap-1 -ml-2">
+          <Button variant="ghost" size="icon" @click="goBack" class="h-9 w-9 text-muted-foreground mr-1">
+            <ChevronLeft class="h-6 w-6" />
+          </Button>
+          <div class="flex flex-col">
+            <span class="text-[10px] font-mono leading-none text-muted-foreground/50 uppercase tracking-widest mb-0.5">Session</span>
+            <TaskTitleResolver
+              :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
+              :current-command="props.selectedCurrentCommand ?? ''"
+              class="text-xs font-medium leading-none text-foreground/90 max-w-[180px] truncate block"
+            />
+          </div>
+        </div>
+        <Button variant="ghost" size="icon" @click="showInfoPanel = !showInfoPanel" :class="['h-8 w-8', showInfoPanel ? 'text-primary bg-primary/10' : 'text-muted-foreground']">
+          <Info class="h-5 w-5" />
+        </Button>
+      </header>
+
+      <main class="flex-1 min-h-0 relative bg-black overflow-hidden">
+        <div class="h-full w-full" :class="{ 'opacity-20 blur-sm pointer-events-none': showInfoPanel }">
+          <TerminalPane
+            :task-id="props.selectedTaskId"
+            :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
+            :task-description="props.selectedTaskDescription ?? ''"
+            :pane-uuid="props.selectedPaneUuid ?? ''"
+            :current-command="props.selectedCurrentCommand ?? ''"
+            :frame="props.frame ?? null"
+            :cursor="props.cursor ?? null"
+            :is-ended="Boolean(props.isEnded)"
+            :show-reopen-button="Boolean(props.showReopenPaneButton)"
+            :is-no-pane-task="Boolean(props.isNoPaneTask)"
+            :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
+            :app-programs="props.appPrograms ?? []"
+            @terminal-input="(text) => emit('terminal-input', text)"
+            @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
+            @terminal-resize="(size) => emit('terminal-resize', size)"
+            @reopen-pane="(payload) => emit('reopen-pane', payload)"
+            @open-session-detail="openSessionDetailPanel"
+          />
+        </div>
+
+        <!-- Overlaid Side Panel -->
+        <transition 
+          enter-active-class="transform transition ease-out duration-300" 
+          enter-from-class="translate-x-full" 
+          enter-to-class="translate-x-0" 
+          leave-active-class="transform transition ease-in duration-200" 
+          leave-from-class="translate-x-0" 
+          leave-to-class="translate-x-full"
+        >
+          <aside v-if="showInfoPanel" class="absolute inset-y-0 right-0 w-[85%] bg-sidebar border-l border-border/50 shadow-2xl z-20">
+             <ProjectInfoPanel
+               :task-id="props.selectedTaskId"
+               :project-id="props.selectedTaskProjectId ?? ''"
+               :repo-root="props.selectedTaskRepoRoot ?? ''"
+               :active-tab="projectPanelActiveTab"
+               :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
+               :task-description="props.selectedTaskDescription ?? ''"
+               :task-notes="props.selectedTaskNotes ?? []"
+               :autopilot="Boolean(props.selectedTaskAutopilot)"
+               :pane-uuid="props.selectedPaneUuid ?? ''"
+               :current-command="props.selectedCurrentCommand ?? ''"
+               :ai-loading="Boolean(props.scmAiLoading)"
+               :submit-loading="Boolean(props.scmSubmitLoading)"
+               @update:active-tab="onProjectPanelActiveTabChange"
+               @save-task-meta="(payload) => emit('save-task-meta', payload)"
+               @set-autopilot="(payload) => emit('set-autopilot', payload)"
+               @ai="(payload) => emit('scm-ai', payload)"
+               @submit="(payload) => emit('scm-submit', payload)"
+               @file-open="(path) => emit('file-open', path)"
+             />
+          </aside>
+        </transition>
+
+        <!-- Tap to dismiss overlay -->
+        <div v-if="showInfoPanel" @click="showInfoPanel = false" class="absolute inset-x-0 inset-y-0 z-10" />
+      </main>
+    </template>
+  </div>
+</template>
+
+<style scoped>
+.muxt-mobile {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+}
+</style>

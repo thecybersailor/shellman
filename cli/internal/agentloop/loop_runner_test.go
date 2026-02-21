@@ -1,0 +1,495 @@
+package agentloop
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+)
+
+type fakeNamedTool struct {
+	name string
+}
+
+func (f fakeNamedTool) Name() string { return f.name }
+func (f fakeNamedTool) Spec() ResponseToolSpec {
+	return ResponseToolSpec{Type: "function", Name: f.name}
+}
+func (f fakeNamedTool) Execute(context.Context, json.RawMessage, string) (string, error) {
+	return `{"ok":true}`, nil
+}
+
+func registerTestSetFlagTool(t *testing.T, registry *ToolRegistry) {
+	t.Helper()
+	if err := registry.Register(fakeNamedTool{name: "task.current.set_flag"}); err != nil {
+		t.Fatalf("register tool failed: %v", err)
+	}
+}
+
+func TestLoopRunner_UsesResponsesAPIAndToolRoundtrip(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("expected /responses path, got %s", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "task.current.set_flag",
+						"arguments": `{"flag":"success","status_message":"ok"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "MUXT_E2E_OK"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	out, err := runner.Run(context.Background(), "Reply exactly: MUXT_E2E_OK")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "MUXT_E2E_OK" {
+		t.Fatalf("unexpected final output: %q", out)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 responses calls, got %d", callCount)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+
+	firstTools, ok := requestBodies[0]["tools"].([]any)
+	if !ok || len(firstTools) == 0 {
+		t.Fatalf("expected first request carries tools, got %#v", requestBodies[0]["tools"])
+	}
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) < 3 {
+		t.Fatalf("expected second request input has full context items, got %#v", requestBodies[1]["input"])
+	}
+	lastItem, ok := secondInput[len(secondInput)-1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected last item map, got %#v", secondInput[len(secondInput)-1])
+	}
+	if got := strings.TrimSpace(anyToString(lastItem["type"])); got != "function_call_output" {
+		t.Fatalf("expected last item type=function_call_output, got %q", got)
+	}
+	if got := strings.TrimSpace(anyToString(lastItem["call_id"])); got != "call_1" {
+		t.Fatalf("expected call_id=call_1, got %q", got)
+	}
+	if got := strings.TrimSpace(anyToString(requestBodies[1]["previous_response_id"])); got != "" {
+		t.Fatalf("expected no previous_response_id in full-context mode, got %q", got)
+	}
+}
+
+func anyToString(v any) string {
+	s, _ := v.(string)
+	return s
+}
+
+func TestLoopRunner_RunStream_EmitsTextDeltas(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		stream, _ := req["stream"].(bool)
+		if !stream {
+			t.Fatalf("expected stream=true")
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"MUXT \"}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"STREAM\"}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\"}}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	runner := NewLoopRunner(client, nil, LoopRunnerOptions{MaxIterations: 2})
+
+	var chunks []string
+	out, err := runner.RunStream(context.Background(), "Reply exactly: MUXT STREAM", func(delta string) {
+		chunks = append(chunks, delta)
+	})
+	if err != nil {
+		t.Fatalf("RunStream failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "MUXT STREAM" {
+		t.Fatalf("unexpected stream output: %q", out)
+	}
+	if got := strings.Join(chunks, ""); got != "MUXT STREAM" {
+		t.Fatalf("unexpected streamed chunks: %q", got)
+	}
+}
+
+func TestLoopRunner_RunStreamWithTools_EmitsToolEvents(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_tools_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "task.current.set_flag",
+						"arguments": `{"flag":"success","status_message":"ok"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_tools_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "DONE"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	var events []map[string]any
+	out, err := runner.RunStreamWithTools(context.Background(), "use tool", nil, func(evt map[string]any) {
+		events = append(events, evt)
+	})
+	if err != nil {
+		t.Fatalf("RunStreamWithTools failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	toolEvents := make([]map[string]any, 0, len(events))
+	for _, evt := range events {
+		if strings.TrimSpace(anyToString(evt["type"])) != "dynamic-tool" {
+			continue
+		}
+		toolEvents = append(toolEvents, evt)
+	}
+	if len(toolEvents) < 2 {
+		t.Fatalf("expected at least 2 dynamic tool events, got %d", len(toolEvents))
+	}
+	if got := strings.TrimSpace(anyToString(toolEvents[0]["state"])); got != "input-available" {
+		t.Fatalf("expected first event input-available, got %q", got)
+	}
+	if got := strings.TrimSpace(anyToString(toolEvents[len(toolEvents)-1]["state"])); got != "output-available" {
+		t.Fatalf("expected last event output-available, got %q", got)
+	}
+}
+
+func TestLoopRunner_RunStreamWithTools_UsesStreamResponseIDForToolRoundtrip(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("expected /responses path, got %s", r.URL.Path)
+		}
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch callCount {
+		case 1:
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"response_id\":\"resp_stream_1\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"task.current.set_flag\",\"arguments\":\"{\\\"flag\\\":\\\"success\\\",\\\"status_message\\\":\\\"ok\\\"}\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		case 2:
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"DONE\"}\n\n")
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream_2\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		default:
+			t.Fatalf("unexpected responses call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	out, err := runner.RunStreamWithTools(context.Background(), "use tool", func(string) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStreamWithTools failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 responses calls, got %d", callCount)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+	if got := strings.TrimSpace(anyToString(requestBodies[1]["previous_response_id"])); got != "" {
+		t.Fatalf("expected no previous_response_id in full-context mode, got %q", got)
+	}
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) < 3 {
+		t.Fatalf("expected second request input has full context items, got %#v", requestBodies[1]["input"])
+	}
+	inputItem, ok := secondInput[len(secondInput)-1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected function_call_output object, got %#v", secondInput[len(secondInput)-1])
+	}
+	if got := strings.TrimSpace(anyToString(inputItem["call_id"])); got != "call_1" {
+		t.Fatalf("expected call_id=call_1, got %q", got)
+	}
+}
+
+func TestLoopRunner_RunStreamWithTools_UsesNestedResponseIDForToolRoundtrip(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch callCount {
+		case 1:
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"response\":{\"id\":\"resp_stream_nested_1\"},\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_nested_1\",\"name\":\"task.current.set_flag\",\"arguments\":\"{\\\"flag\\\":\\\"success\\\",\\\"status_message\\\":\\\"ok\\\"}\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		case 2:
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"DONE\"}\n\n")
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream_nested_2\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		default:
+			t.Fatalf("unexpected responses call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	out, err := runner.RunStreamWithTools(context.Background(), "use tool", func(string) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStreamWithTools failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if got := strings.TrimSpace(anyToString(requestBodies[1]["previous_response_id"])); got != "" {
+		t.Fatalf("expected no previous_response_id in full-context mode, got %q", got)
+	}
+}
+
+func TestLoopRunner_RunStreamWithTools_SucceedsWhenStreamResponseIDMissingInFullContextMode(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		callCount++
+		w.Header().Set("Content-Type", "text/event-stream")
+		switch callCount {
+		case 1:
+			if _, ok := req["input"].([]any); !ok {
+				t.Fatalf("expected first request input list in full-context mode, got %#v", req["input"])
+			}
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_item.done\",\"item\":{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"task.current.set_flag\",\"arguments\":\"{\\\"flag\\\":\\\"success\\\",\\\"status_message\\\":\\\"ok\\\"}\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		case 2:
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"DONE\"}\n\n")
+			_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_2\"}}\n\n")
+			_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+		default:
+			t.Fatalf("unexpected call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	out, err := runner.RunStreamWithTools(context.Background(), "use tool", func(string) {}, nil)
+	if err != nil {
+		t.Fatalf("RunStreamWithTools failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+}
+
+func TestLoopRunner_StoreEnabled_DoesNotUsePreviousResponseIDAndBuildsFullContext(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		switch callCount {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "task.current.set_flag",
+						"arguments": `{"flag":"success","status_message":"ok"}`,
+					},
+				},
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_2",
+				"output": []map[string]any{
+					{
+						"type": "message",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "DONE"},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	registerTestSetFlagTool(t, registry)
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	ctx := WithTaskScope(context.Background(), TaskScope{
+		TaskID:              "t1",
+		ProjectID:           "p1",
+		Source:              "user",
+		ResponsesStore:      true,
+		DisableStoreContext: false,
+	})
+	out, err := runner.Run(ctx, "use tool")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 requests, got %d", len(requestBodies))
+	}
+	if got := strings.TrimSpace(anyToString(requestBodies[1]["previous_response_id"])); got != "" {
+		t.Fatalf("expected no previous_response_id when store enabled, got %q", got)
+	}
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) < 3 {
+		t.Fatalf("expected full context input items, got %#v", requestBodies[1]["input"])
+	}
+}
+
+func TestLoopRunner_ToolContract_UsesOnlyActionTools(t *testing.T) {
+	registry := NewToolRegistry()
+	for _, name := range TaskActionToolContractNames() {
+		if err := registry.Register(fakeNamedTool{name: name}); err != nil {
+			t.Fatalf("register %s failed: %v", name, err)
+		}
+	}
+	specs := registry.Specs()
+	if len(specs) != len(TaskActionToolContractNames()) {
+		t.Fatalf("unexpected tool spec count: %d", len(specs))
+	}
+	got := map[string]struct{}{}
+	for _, spec := range specs {
+		got[strings.TrimSpace(spec.Name)] = struct{}{}
+	}
+	for _, name := range TaskActionToolContractNames() {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing contract tool: %s", name)
+		}
+	}
+	for _, old := range []string{"gateway_http", "task.current.input", "task.tty.state"} {
+		if _, ok := got[old]; ok {
+			t.Fatalf("legacy tool should be excluded: %s", old)
+		}
+	}
+}

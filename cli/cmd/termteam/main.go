@@ -1,0 +1,1010 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log/slog"
+	"net/http"
+	"net/url"
+	"os"
+	"os/signal"
+	"path/filepath"
+	"strings"
+	"sync"
+	"syscall"
+	"time"
+
+	"termteam/cli/internal/agentloop"
+	"termteam/cli/internal/appserver"
+	"termteam/cli/internal/bridge"
+	"termteam/cli/internal/command"
+	"termteam/cli/internal/config"
+	"termteam/cli/internal/fsbrowser"
+	"termteam/cli/internal/global"
+	"termteam/cli/internal/helperconfig"
+	"termteam/cli/internal/historydb"
+	"termteam/cli/internal/lifecycle"
+	"termteam/cli/internal/localapi"
+	"termteam/cli/internal/logging"
+	"termteam/cli/internal/projectstate"
+	"termteam/cli/internal/protocol"
+	"termteam/cli/internal/systempicker"
+	"termteam/cli/internal/tmux"
+	"termteam/cli/internal/turn"
+)
+
+const version = "dev"
+
+var streamPumpInterval = 200 * time.Millisecond
+var statusPumpInterval = 500 * time.Millisecond
+var statusTransitionDelay = 3 * time.Second
+var statusInputIgnoreWindow = 2 * time.Second
+var traceStreamEnabled = false
+var streamHistoryLines = 2000
+var runtimeTmuxSocket = ""
+
+type registerClient interface {
+	Register() (turn.RegisterResponse, error)
+}
+
+type wsDialer interface {
+	Dial(ctx context.Context, url string) (turn.Socket, error)
+}
+
+type gatewayHTTPExecutor func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error)
+type paneAutoCompletionExecutor func(paneTarget string, observedLastActiveAt time.Time) (localapi.AutoCompleteByPaneResult, error)
+
+type gatewayHTTPExecAdapter struct {
+	exec gatewayHTTPExecutor
+}
+
+func (g gatewayHTTPExecAdapter) Exec(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+	return g.exec(method, path, headers, body)
+}
+
+type gatewayHTTPExecutorRef struct {
+	mu   sync.RWMutex
+	exec gatewayHTTPExecutor
+}
+
+func newGatewayHTTPExecutorRef(exec gatewayHTTPExecutor) *gatewayHTTPExecutorRef {
+	return &gatewayHTTPExecutorRef{exec: exec}
+}
+
+func (r *gatewayHTTPExecutorRef) Set(exec gatewayHTTPExecutor) {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	r.exec = exec
+	r.mu.Unlock()
+}
+
+func (r *gatewayHTTPExecutorRef) Exec(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+	if r == nil {
+		return 500, map[string]string{}, "", errors.New("gateway http executor is unavailable")
+	}
+	r.mu.RLock()
+	exec := r.exec
+	r.mu.RUnlock()
+	if exec == nil {
+		return 500, map[string]string{}, "", errors.New("gateway http executor is unavailable")
+	}
+	return exec(method, path, headers, body)
+}
+
+func main() {
+	rootCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	app := command.BuildApp(command.Deps{
+		LoadConfig: config.LoadConfig,
+		RunLocalMode: func(ctx context.Context, cfg config.Config) error {
+			applyRuntimeConfig(cfg)
+			return runLocal(ctx, os.Stdout, cfg)
+		},
+		RunTurnMode: func(ctx context.Context, cfg config.Config) error {
+			applyRuntimeConfig(cfg)
+			return run(
+				ctx,
+				os.Stdout,
+				os.Stderr,
+				turn.NewRegisterClient(cfg.WorkerBaseURL),
+				turn.RealDialer{},
+				tmux.NewAdapterWithSocket(&tmux.RealExec{}, cfg.TmuxSocket),
+			)
+		},
+		RunMigrateUp: runMigrateUp,
+	})
+
+	if err := app.RunContext(rootCtx, os.Args); err != nil {
+		logging.NewLogger(logging.Options{Level: "error", Writer: os.Stderr, Component: "termteam"}).Error("termteam failed", "err", err)
+		os.Exit(1)
+	}
+}
+
+func applyRuntimeConfig(cfg config.Config) {
+	traceStreamEnabled = cfg.TraceStream
+	streamHistoryLines = cfg.HistoryLines
+	runtimeTmuxSocket = strings.TrimSpace(cfg.TmuxSocket)
+}
+
+func runMigrateUp(_ context.Context, cfg config.Config) error {
+	applyRuntimeConfig(cfg)
+	configDir, err := global.DefaultConfigDir()
+	if err != nil {
+		return err
+	}
+	return projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db"))
+}
+
+func runByMode(ctx context.Context, cfg config.Config, runTurn func(context.Context) error, runLocalMode func(context.Context) error) error {
+	if cfg.Mode == "turn" {
+		return runTurn(ctx)
+	}
+	return runLocalMode(ctx)
+}
+
+func run(
+	ctx context.Context,
+	out io.Writer,
+	errOut io.Writer,
+	register registerClient,
+	dialer wsDialer,
+	tmuxService bridge.TmuxService,
+) error {
+	fmt.Fprintf(out, "termteam %s\n", version)
+	logger := newRuntimeLogger(errOut)
+	logger.Debug("runtime config", "trace_stream", traceStreamEnabled)
+
+	resp, err := register.Register()
+	if err != nil {
+		logger.Error("register failed", "err", err)
+		return err
+	}
+
+	fmt.Fprintf(out, "visit_url=%s\n", resp.VisitURL)
+	fmt.Fprintf(out, "agent_ws_url=%s\n", resp.AgentWSURL)
+
+	sock, err := dialer.Dial(ctx, resp.AgentWSURL)
+	if err != nil {
+		return err
+	}
+	defer sock.Close()
+
+	configDir, err := global.DefaultConfigDir()
+	if err != nil {
+		return err
+	}
+	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db")); err != nil {
+		return err
+	}
+	gatewayLocalServer := buildGatewayLocalAPIServer(configDir, tmuxService, systempicker.PickDirectory)
+	httpExec, autoCompleteExec := newGatewayExecutors(gatewayLocalServer, "local-agent-gateway-http")
+
+	wsClient := turn.NewWSClient(sock)
+	return runWSRuntime(ctx, wsClient, tmuxService, httpExec, autoCompleteExec, logger)
+}
+
+func runWSRuntime(
+	ctx context.Context,
+	wsClient *turn.WSClient,
+	tmuxService bridge.TmuxService,
+	httpExec gatewayHTTPExecutor,
+	autoCompleteExec paneAutoCompletionExecutor,
+	logger *slog.Logger,
+) error {
+	if logger == nil {
+		logger = newRuntimeLogger(io.Discard)
+	}
+	runtimeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	handler := bridge.NewHandler(tmuxService)
+	handler.SetHTTPExecutor(httpExec)
+	inputTracker := newInputActivityTracker()
+	registry := NewRegistryActor(logger.With("module", "registry"))
+	taskStateActor := NewTaskStateActor()
+	if configDir, err := global.DefaultConfigDir(); err == nil {
+		projectsStore := global.NewProjectsStore(configDir)
+		taskStateActor.SetProjectProvider(func() ([]taskStateProject, error) {
+			projects, err := projectsStore.ListProjects()
+			if err != nil {
+				return nil, err
+			}
+			out := make([]taskStateProject, 0, len(projects))
+			for _, project := range projects {
+				out = append(out, taskStateProject{
+					ProjectID: project.ProjectID,
+					RepoRoot:  project.RepoRoot,
+				})
+			}
+			return out, nil
+		})
+	}
+	taskStateActor.SetEventEmitter(func(ctx context.Context, msg protocol.Message) error {
+		raw, err := json.Marshal(msg)
+		if err != nil {
+			return err
+		}
+		return wsClient.Send(ctx, string(raw))
+	})
+	paneBaseline := loadPaneRuntimeBaselineFromDB(logger.With("module", "status_baseline"))
+	registry.SetPaneRuntimeBaseline(paneBaseline)
+	outputSource := NewControlModeHub(runtimeCtx, runtimeTmuxSocket, logger.With("module", "control_mode_hub"))
+	paneInterval := statusPumpInterval
+	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, autoCompleteExec, outputSource, paneInterval, taskStateActor)
+	bindMessageLoop(wsClient, handler, registry, inputTracker, logger.With("module", "message_loop"))
+	go runTaskStateActorLoop(runtimeCtx, taskStateActor, time.Second)
+	go runStatusPump(runtimeCtx, wsClient, tmuxService, httpExec, statusPumpInterval, inputTracker, logger.With("module", "status_pump"), paneBaseline)
+	return wsClient.Run(runtimeCtx)
+}
+
+func bindMessageLoop(
+	wsClient *turn.WSClient,
+	handler *bridge.Handler,
+	registry *RegistryActor,
+	inputTracker *inputActivityTracker,
+	logger *slog.Logger,
+) {
+	if logger == nil {
+		logger = newRuntimeLogger(io.Discard)
+	}
+	wsClient.OnText(func(in string) {
+		connID, innerRaw, unwrapErr := protocol.UnwrapMuxEnvelope([]byte(in))
+		if unwrapErr != nil {
+			connID = "legacy_single"
+			innerRaw = []byte(in)
+		}
+
+		var msg protocol.Message
+		if err := json.Unmarshal(innerRaw, &msg); err != nil {
+			logger.Warn("recv invalid ws payload", "err", err, "raw", in)
+			return
+		}
+
+		var conn *ConnActor
+		if registry != nil {
+			conn = registry.GetOrCreateConn(connID)
+		}
+		activePaneTarget := ""
+		if conn != nil {
+			activePaneTarget = strings.TrimSpace(conn.Selected())
+		}
+		msg = enrichGatewayHTTPMessage(msg, activePaneTarget)
+		payloadTarget := ""
+		switch msg.Op {
+		case "tmux.select_pane", "term.input":
+			var payload struct {
+				Target string `json:"target"`
+				Cols   int    `json:"cols"`
+				Rows   int    `json:"rows"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+				payloadTarget = payload.Target
+				if msg.Op == "term.input" {
+					var inputPayload struct {
+						Target string `json:"target"`
+						Text   string `json:"text"`
+					}
+					if err := json.Unmarshal(msg.Payload, &inputPayload); err == nil {
+						logger.Debug("incoming ws message", "op", "term.input", "target", inputPayload.Target, "text_len", len(inputPayload.Text), "text_preview", debugPreview(inputPayload.Text, 120))
+					}
+				} else {
+					logger.Debug("incoming ws message", "op", msg.Op, "target", payload.Target, "cols", payload.Cols, "rows", payload.Rows)
+				}
+			}
+		case "term.resize":
+			var payload struct {
+				Target string `json:"target"`
+				Cols   int    `json:"cols"`
+				Rows   int    `json:"rows"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+				logger.Debug("incoming ws message", "op", "term.resize", "target", payload.Target, "cols", payload.Cols, "rows", payload.Rows)
+			}
+		case "gateway.http":
+			var payload struct {
+				Method  string            `json:"method"`
+				Path    string            `json:"path"`
+				Headers map[string]string `json:"headers"`
+			}
+			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
+				logger.Debug("incoming ws message", "op", "gateway.http", "method", payload.Method, "path", payload.Path, "active_target", activePaneTarget, "header_active_target", strings.TrimSpace(payload.Headers["X-Muxt-Active-Pane-Target"]))
+			}
+		}
+		out := handler.Handle(msg)
+		if out.Error != nil {
+			logger.Warn("ws op failed", "op", out.Op, "id", out.ID, "code", out.Error.Code, "msg", out.Error.Message)
+		} else if payloadTarget != "" {
+			if msg.Op == "tmux.select_pane" {
+				if registry != nil {
+					registry.Subscribe(connID, payloadTarget)
+				}
+			} else if msg.Op == "term.input" {
+				if conn != nil {
+					conn.Select(payloadTarget)
+				}
+				if inputTracker != nil {
+					inputTracker.Mark(payloadTarget, time.Now())
+				}
+			}
+		}
+		logger.Debug("outgoing ws response", "op", out.Op, "id", out.ID, "has_error", out.Error != nil)
+		respRaw, err := json.Marshal(out)
+		if err != nil {
+			logger.Error("marshal ws response failed", "op", out.Op, "id", out.ID, "err", err)
+			return
+		}
+
+		sendRaw := respRaw
+		wrapped, wrapErr := protocol.WrapMuxEnvelope(connID, respRaw)
+		if wrapErr == nil {
+			sendRaw = wrapped
+		}
+		if err := wsClient.Send(context.Background(), string(sendRaw)); err != nil {
+			logger.Error("send ws response failed", "err", err)
+		}
+	})
+}
+
+func enrichGatewayHTTPMessage(msg protocol.Message, activePaneTarget string) protocol.Message {
+	if msg.Op != "gateway.http" {
+		return msg
+	}
+	var payload struct {
+		Method  string            `json:"method"`
+		Path    string            `json:"path"`
+		Headers map[string]string `json:"headers"`
+		Body    string            `json:"body"`
+	}
+	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+		return msg
+	}
+	if payload.Headers == nil {
+		payload.Headers = map[string]string{}
+	}
+	if strings.TrimSpace(payload.Headers["X-Muxt-Active-Pane-Target"]) == "" && strings.TrimSpace(activePaneTarget) != "" {
+		payload.Headers["X-Muxt-Active-Pane-Target"] = strings.TrimSpace(activePaneTarget)
+	}
+	raw, err := json.Marshal(payload)
+	if err != nil {
+		return msg
+	}
+	msg.Payload = raw
+	return msg
+}
+
+func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
+	configDir, err := global.DefaultConfigDir()
+	if err != nil {
+		return err
+	}
+	cfgStore := global.NewConfigStore(configDir)
+	appProgramsStore := global.NewAppProgramsStore(configDir)
+	projectsStore := global.NewProjectsStore(configDir)
+	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db")); err != nil {
+		return err
+	}
+	globalDB, err := projectstate.GlobalDB()
+	if err != nil {
+		return err
+	}
+	helperCfgStore, err := helperconfig.NewStore(globalDB, filepath.Join(configDir, ".muxt-helper-openai-secret"))
+	if err != nil {
+		return err
+	}
+	tmuxAdapter := tmux.NewAdapterWithSocket(&tmux.RealExec{}, cfg.TmuxSocket)
+	historyStore, err := historydb.NewStore(globalDB)
+	if err != nil {
+		return err
+	}
+	httpExecRef := newGatewayHTTPExecutorRef(nil)
+	agentRunner, agentEndpoint, agentModel := buildAgentLoopRunner(cfg, helperCfgStore, httpExecRef.Exec)
+	localDeps := localapi.Deps{
+		ConfigStore:         cfgStore,
+		AppProgramsStore:    appProgramsStore,
+		HelperConfigStore:   helperCfgStore,
+		ProjectsStore:       projectsStore,
+		PaneService:         tmuxAdapter,
+		TaskPromptSender:    tmuxAdapter,
+		PickDirectory:       systempicker.PickDirectory,
+		FSBrowser:           fsbrowser.NewService(),
+		DirHistory:          historyStore,
+		AgentLoopRunner:     agentRunner,
+		AgentOpenAIEndpoint: agentEndpoint,
+		AgentOpenAIModel:    agentModel,
+	}
+	localServer := localapi.NewServer(localDeps)
+	httpExec, autoCompleteExec := newGatewayExecutors(localServer, "local-agent-gateway-http")
+	httpExecRef.Set(httpExec)
+	server, err := appserver.NewServer(appserver.Deps{
+		LocalAPIHandle: localServer.Handler(),
+		WebUI: appserver.WebUIConfig{
+			Mode:        cfg.WebUIMode,
+			DevProxyURL: cfg.WebUIDevProxyURL,
+			DistDir:     cfg.WebUIDistDir,
+		},
+	})
+	if err != nil {
+		return err
+	}
+	localServer.SetExternalEventSink(func(topic, projectID, taskID string, payload map[string]any) {
+		server.PublishClientEvent("local", topic, projectID, taskID, payload)
+	})
+	addr := fmt.Sprintf("%s:%d", cfg.LocalHost, cfg.LocalPort)
+	fmt.Fprintf(out, "muxt local web server listening at http://%s\n", addr)
+
+	httpServer := &http.Server{
+		Addr:    addr,
+		Handler: server.Handler(),
+	}
+
+	mgr := lifecycle.NewManager()
+	mgr.AddRun("http-server", func(runCtx context.Context) error {
+		go func() {
+			<-runCtx.Done()
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer cancel()
+			_ = httpServer.Shutdown(shutdownCtx)
+		}()
+		err := httpServer.ListenAndServe()
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			return err
+		}
+		return nil
+	})
+	mgr.AddRun("local-agent-loop", func(runCtx context.Context) error {
+		return startLocalAgentLoop(runCtx, cfg.LocalPort, turn.RealDialer{}, tmuxAdapter, httpExecRef.Exec, autoCompleteExec, newRuntimeLogger(os.Stderr).With("module", "local_agent_loop"))
+	})
+	mgr.AddShutdown("close-helper-config", func(context.Context) error {
+		return helperCfgStore.Close()
+	})
+	mgr.AddShutdown("close-history-store", func(context.Context) error {
+		return historyStore.Close()
+	})
+	mgr.AddShutdown("http-server-shutdown", func(context.Context) error {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		err := httpServer.Shutdown(shutdownCtx)
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+		return err
+	})
+	return mgr.StartAndWait(ctx)
+}
+
+func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigStore, httpExec gatewayHTTPExecutor) (localapi.AgentLoopRunner, string, string) {
+	endpoint, model, apiKey := resolveAgentOpenAIConfig(cfg, helperStore)
+	if endpoint == "" || model == "" || apiKey == "" {
+		return nil, endpoint, model
+	}
+
+	registry := agentloop.NewToolRegistry()
+	callTaskTool := func(method, path string, payload any) (string, error) {
+		bodyText := ""
+		headers := map[string]string{"Content-Type": "application/json"}
+		if payload != nil {
+			raw, err := json.Marshal(payload)
+			if err != nil {
+				return "", err
+			}
+			bodyText = string(raw)
+		}
+		status, _, body, execErr := httpExec(method, path, headers, bodyText)
+		if execErr != nil {
+			return "", execErr
+		}
+		if status >= 300 {
+			return "", fmt.Errorf("TASK_TOOL_HTTP_FAILED status=%d path=%s body=%s", status, clipLogText(path, 300), clipLogText(body, 500))
+		}
+		return strings.TrimSpace(body), nil
+	}
+
+	getTaskPaneOutput := func(taskID string) (string, string, string, error) {
+		path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/pane"
+		body, err := callTaskTool(http.MethodGet, path, nil)
+		if err != nil {
+			return "", "", "", err
+		}
+		var res struct {
+			Data struct {
+				PaneTarget     string `json:"pane_target"`
+				CurrentCommand string `json:"current_command"`
+				Snapshot       struct {
+					Output string `json:"output"`
+				} `json:"snapshot"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(body), &res); err != nil {
+			return "", "", "", err
+		}
+		return strings.TrimSpace(res.Data.PaneTarget), strings.TrimSpace(res.Data.CurrentCommand), res.Data.Snapshot.Output, nil
+	}
+
+	getTaskTree := func(taskID string) (string, []map[string]any, error) {
+		path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/pane"
+		body, err := callTaskTool(http.MethodGet, path, nil)
+		if err != nil {
+			return "", nil, err
+		}
+		var paneRes struct {
+			Data struct {
+				ProjectID string `json:"project_id"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(body), &paneRes); err != nil {
+			return "", nil, err
+		}
+		projectID := strings.TrimSpace(paneRes.Data.ProjectID)
+		if projectID == "" {
+			return "", nil, errors.New("PROJECT_ID_MISSING")
+		}
+		treeBody, err := callTaskTool(http.MethodGet, "/api/v1/projects/"+url.PathEscape(projectID)+"/tree", nil)
+		if err != nil {
+			return "", nil, err
+		}
+		var treeRes struct {
+			Data struct {
+				Nodes []map[string]any `json:"nodes"`
+			} `json:"data"`
+		}
+		if err := json.Unmarshal([]byte(treeBody), &treeRes); err != nil {
+			return "", nil, err
+		}
+		return projectID, treeRes.Data.Nodes, nil
+	}
+
+	if err := registry.Register(&agentloop.TaskCurrentSetFlagTool{
+		Exec: func(ctx context.Context, taskID, flag, statusMessage string) (string, error) {
+			_ = ctx
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			payload := map[string]any{
+				"source":         "task_set_flag",
+				"flag":           strings.TrimSpace(flag),
+				"status_message": strings.TrimSpace(statusMessage),
+			}
+			return callTaskTool(http.MethodPost, path, payload)
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string) (string, error) {
+			_ = ctx
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			payload := map[string]any{
+				"source": "tty_write_stdin",
+				"input":  input,
+			}
+			return callTaskTool(http.MethodPost, path, payload)
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.ExecCommandTool{
+		Exec: func(_ context.Context, taskID, command string, maxOutputTokens int) (string, error) {
+			_, _, beforeOutput, err := getTaskPaneOutput(taskID)
+			if err != nil {
+				return "", err
+			}
+			normalizedCommand := ensureCommandEndsWithEnter(command)
+			if normalizedCommand == "" {
+				return "", errors.New("INVALID_COMMAND")
+			}
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			if _, err := callTaskTool(http.MethodPost, path, map[string]any{
+				"source": "tty_write_stdin",
+				"input":  normalizedCommand,
+			}); err != nil {
+				return "", err
+			}
+
+			lastOutput := beforeOutput
+			stableCount := 0
+			for attempt := 0; attempt < 8; attempt++ {
+				time.Sleep(200 * time.Millisecond)
+				_, _, currentOutput, readErr := getTaskPaneOutput(taskID)
+				if readErr != nil {
+					return "", readErr
+				}
+				if currentOutput == lastOutput {
+					stableCount++
+				} else {
+					stableCount = 0
+					lastOutput = currentOutput
+				}
+				if stableCount >= 2 {
+					break
+				}
+			}
+
+			delta := lastOutput
+			if strings.HasPrefix(lastOutput, beforeOutput) {
+				delta = lastOutput[len(beforeOutput):]
+			}
+			truncated := len(delta) > maxOutputTokens
+			delta = clipLogText(delta, maxOutputTokens)
+			raw, _ := json.Marshal(map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"task_id":   strings.TrimSpace(taskID),
+					"command":   strings.TrimSpace(command),
+					"output":    delta,
+					"truncated": truncated,
+				},
+			})
+			return string(raw), nil
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskInputPromptTool{
+		Exec: func(_ context.Context, taskID, prompt string) (string, error) {
+			normalizedPrompt := ensureCommandEndsWithEnter(prompt)
+			if normalizedPrompt == "" {
+				return "", errors.New("INVALID_PROMPT")
+			}
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			return callTaskTool(http.MethodPost, path, map[string]any{
+				"source": "tty_write_stdin",
+				"input":  normalizedPrompt,
+			})
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskChildGetContextTool{
+		Exec: func(_ context.Context, taskID, childTaskID string) (string, error) {
+			_, nodes, err := getTaskTree(taskID)
+			if err != nil {
+				return "", err
+			}
+			parentID := strings.TrimSpace(taskID)
+			targetID := strings.TrimSpace(childTaskID)
+			for _, node := range nodes {
+				if strings.TrimSpace(fmt.Sprintf("%v", node["task_id"])) != targetID {
+					continue
+				}
+				if strings.TrimSpace(fmt.Sprintf("%v", node["parent_task_id"])) != parentID {
+					return "", errors.New("NOT_A_CHILD_TASK")
+				}
+				raw, _ := json.Marshal(map[string]any{"ok": true, "data": node})
+				return string(raw), nil
+			}
+			return "", errors.New("CHILD_NOT_FOUND")
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskChildGetTTYOutputTool{
+		Exec: func(_ context.Context, taskID, childTaskID string, offset int) (string, error) {
+			_, nodes, err := getTaskTree(taskID)
+			if err != nil {
+				return "", err
+			}
+			parentID := strings.TrimSpace(taskID)
+			targetID := strings.TrimSpace(childTaskID)
+			isChild := false
+			for _, node := range nodes {
+				if strings.TrimSpace(fmt.Sprintf("%v", node["task_id"])) == targetID &&
+					strings.TrimSpace(fmt.Sprintf("%v", node["parent_task_id"])) == parentID {
+					isChild = true
+					break
+				}
+			}
+			if !isChild {
+				return "", errors.New("NOT_A_CHILD_TASK")
+			}
+			paneTarget, currentCommand, output, err := getTaskPaneOutput(targetID)
+			if err != nil {
+				return "", err
+			}
+			if offset > len(output) {
+				offset = len(output)
+			}
+			start := len(output) - offset
+			if start < 0 {
+				start = 0
+			}
+			raw, _ := json.Marshal(map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"parent_task_id":  parentID,
+					"child_task_id":   targetID,
+					"offset":          offset,
+					"output":          output[start:],
+					"has_more":        start > 0,
+					"state":           "idle",
+					"current_command": currentCommand,
+					"cwd":             paneTarget,
+				},
+			})
+			return string(raw), nil
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskChildSpawnTool{
+		Exec: func(_ context.Context, taskID, command, title, description, prompt string) (string, error) {
+			return executeTaskChildSpawnAction(callTaskTool, taskID, command, title, description, prompt)
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskChildSendMessageTool{
+		Exec: func(_ context.Context, taskID, childTaskID, message string) (string, error) {
+			body, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(strings.TrimSpace(childTaskID))+"/messages", map[string]any{
+				"content":      strings.TrimSpace(message),
+				"source":       "parent_message",
+				"parent_task":  strings.TrimSpace(taskID),
+				"display_text": strings.TrimSpace(message),
+			})
+			if err != nil {
+				return "", err
+			}
+			var queued struct {
+				OK bool `json:"ok"`
+			}
+			_ = json.Unmarshal([]byte(body), &queued)
+			raw, _ := json.Marshal(map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"parent_task_id": strings.TrimSpace(taskID),
+					"child_task_id":  strings.TrimSpace(childTaskID),
+					"enqueued":       true,
+					"source":         "parent_message",
+				},
+			})
+			return string(raw), nil
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.TaskParentReportTool{
+		Exec: func(_ context.Context, taskID, summary string) (string, error) {
+			_, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(strings.TrimSpace(taskID))+"/messages", map[string]any{
+				"content": strings.TrimSpace(summary),
+				"source":  "child_report",
+			})
+			if err != nil {
+				return "", err
+			}
+			raw, _ := json.Marshal(map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"task_id":  strings.TrimSpace(taskID),
+					"summary":  strings.TrimSpace(summary),
+					"enqueued": true,
+					"source":   "child_report",
+				},
+			})
+			return string(raw), nil
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	client := agentloop.NewResponsesClient(agentloop.OpenAIConfig{
+		BaseURL: endpoint,
+		Model:   model,
+		APIKey:  apiKey,
+	}, http.DefaultClient)
+	return agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 8}), endpoint, model
+}
+
+func ensureCommandEndsWithEnter(command string) string {
+	raw := command
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	if strings.HasSuffix(raw, "<ENTER>") {
+		return strings.TrimRight(strings.TrimSuffix(raw, "<ENTER>"), " \t") + "\r"
+	}
+	if strings.HasSuffix(raw, "\r") || strings.HasSuffix(raw, "\n") {
+		return raw
+	}
+	return strings.TrimRight(raw, " \t") + "\r"
+}
+
+func executeTaskChildSpawnAction(
+	callTaskTool func(method, path string, payload any) (string, error),
+	taskID, command, title, description, prompt string,
+) (string, error) {
+	parentTaskID := strings.TrimSpace(taskID)
+	command = ensureCommandEndsWithEnter(command)
+	prompt = strings.TrimSpace(prompt)
+
+	body, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(parentTaskID)+"/panes/child", map[string]any{
+		"title": title,
+	})
+	if err != nil {
+		return "", err
+	}
+	var created struct {
+		Data struct {
+			TaskID     string `json:"task_id"`
+			RunID      string `json:"run_id"`
+			PaneTarget string `json:"pane_target"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(body), &created); err != nil {
+		return "", err
+	}
+	childTaskID := strings.TrimSpace(created.Data.TaskID)
+	if _, err := callTaskTool(http.MethodPatch, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/description", map[string]any{
+		"description": description,
+	}); err != nil {
+		return "", err
+	}
+
+	autopilotBody, err := callTaskTool(http.MethodGet, "/api/v1/tasks/"+url.PathEscape(parentTaskID)+"/autopilot", nil)
+	if err != nil {
+		return "", err
+	}
+	var parentAutopilot struct {
+		Data struct {
+			Autopilot bool `json:"autopilot"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal([]byte(autopilotBody), &parentAutopilot); err != nil {
+		return "", err
+	}
+	if _, err := callTaskTool(http.MethodPatch, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/autopilot", map[string]any{
+		"autopilot": parentAutopilot.Data.Autopilot,
+	}); err != nil {
+		return "", err
+	}
+
+	if command != "" {
+		if _, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/messages", map[string]any{
+			"source": "tty_write_stdin",
+			"input":  command,
+		}); err != nil {
+			return "", err
+		}
+	}
+	if prompt != "" {
+		if _, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/messages", map[string]any{
+			"source":       "parent_message",
+			"parent_task":  parentTaskID,
+			"content":      prompt,
+			"display_text": prompt,
+		}); err != nil {
+			return "", err
+		}
+	}
+
+	raw, _ := json.Marshal(map[string]any{
+		"ok": true,
+		"data": map[string]any{
+			"parent_task_id": parentTaskID,
+			"task_id":        childTaskID,
+			"run_id":         strings.TrimSpace(created.Data.RunID),
+			"pane_target":    strings.TrimSpace(created.Data.PaneTarget),
+			"autopilot":      parentAutopilot.Data.Autopilot,
+		},
+	})
+	return string(raw), nil
+}
+
+func resolveAgentOpenAIConfig(cfg config.Config, helperStore localapi.HelperConfigStore) (string, string, string) {
+	if helperStore != nil {
+		if helperCfg, err := helperStore.LoadOpenAI(); err == nil {
+			endpoint := strings.TrimSpace(helperCfg.Endpoint)
+			model := strings.TrimSpace(helperCfg.Model)
+			apiKey := strings.TrimSpace(helperCfg.APIKey)
+			if endpoint != "" && model != "" && apiKey != "" {
+				return endpoint, model, apiKey
+			}
+		}
+	}
+	return strings.TrimSpace(cfg.OpenAIEndpoint), strings.TrimSpace(cfg.OpenAIModel), strings.TrimSpace(cfg.OpenAIAPIKey)
+}
+
+func clipLogText(text string, limit int) string {
+	text = strings.TrimSpace(text)
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	return text[:limit] + "...(truncated)"
+}
+
+func newRuntimeLogger(writer io.Writer) *slog.Logger {
+	level := "info"
+	if traceStreamEnabled {
+		level = "debug"
+	}
+	return logging.NewLogger(logging.Options{
+		Level:     level,
+		Writer:    writer,
+		Component: "termteam",
+	})
+}
+
+func buildGatewayLocalAPIServer(configDir string, tmuxService bridge.TmuxService, pickDirectory func() (string, error)) *localapi.Server {
+	_ = projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db"))
+	cfgStore := global.NewConfigStore(configDir)
+	appProgramsStore := global.NewAppProgramsStore(configDir)
+	projectsStore := global.NewProjectsStore(configDir)
+	var helperCfgStore localapi.HelperConfigStore
+	var historyStore localapi.DirHistory
+	if db, err := projectstate.GlobalDB(); err == nil {
+		if st, err := helperconfig.NewStore(db, filepath.Join(configDir, ".muxt-helper-openai-secret")); err == nil {
+			helperCfgStore = st
+		}
+		if st, err := historydb.NewStore(db); err == nil {
+			historyStore = st
+		}
+	}
+	deps := localapi.Deps{
+		ConfigStore:       cfgStore,
+		AppProgramsStore:  appProgramsStore,
+		HelperConfigStore: helperCfgStore,
+		ProjectsStore:     projectsStore,
+		PickDirectory:     pickDirectory,
+		FSBrowser:         fsbrowser.NewService(),
+		DirHistory:        historyStore,
+	}
+	if paneService, ok := tmuxService.(localapi.PaneService); ok {
+		deps.PaneService = paneService
+	}
+	if promptSender, ok := tmuxService.(localapi.TaskPromptSender); ok {
+		deps.TaskPromptSender = promptSender
+	}
+	return localapi.NewServer(deps)
+}
+
+func newGatewayExecutors(localServer *localapi.Server, source string) (gatewayHTTPExecutor, paneAutoCompletionExecutor) {
+	if localServer == nil {
+		return nil, nil
+	}
+	exec := localapi.NewHTTPExecutor(localServer.Handler())
+	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		forwardHeaders := map[string]string{}
+		for k, v := range headers {
+			forwardHeaders[k] = v
+		}
+		if strings.TrimSpace(forwardHeaders["X-Muxt-Gateway-Source"]) == "" {
+			forwardHeaders["X-Muxt-Gateway-Source"] = strings.TrimSpace(source)
+		}
+		return exec.Execute(method, path, forwardHeaders, body)
+	}
+	autoComplete := func(paneTarget string, observedLastActiveAt time.Time) (localapi.AutoCompleteByPaneResult, error) {
+		observedUnix := int64(0)
+		if !observedLastActiveAt.IsZero() {
+			observedUnix = observedLastActiveAt.UTC().Unix()
+		}
+		meta := map[string]any{
+			"caller_method":         "INTERNAL",
+			"caller_path":           "internal:auto-progress",
+			"caller_user_agent":     "",
+			"caller_turn_uuid":      "",
+			"caller_gateway_source": strings.TrimSpace(source),
+			"caller_active_pane":    strings.TrimSpace(paneTarget),
+		}
+		return localServer.AutoCompleteByPane(localapi.AutoCompleteByPaneInput{
+			PaneTarget:           strings.TrimSpace(paneTarget),
+			TriggerSource:        "pane-actor",
+			ObservedLastActiveAt: observedUnix,
+			RequestMeta:          meta,
+			CallerPath:           "internal:auto-progress",
+			CallerActivePane:     strings.TrimSpace(paneTarget),
+		})
+	}
+	return httpExec, autoComplete
+}
+
+func buildGatewayHTTPExecutor(configDir string, tmuxService bridge.TmuxService, pickDirectory func() (string, error)) gatewayHTTPExecutor {
+	localServer := buildGatewayLocalAPIServer(configDir, tmuxService, pickDirectory)
+	httpExec, _ := newGatewayExecutors(localServer, "local-agent-gateway-http")
+	return func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		if httpExec == nil {
+			return 500, map[string]string{}, "", errors.New("gateway http executor is unavailable")
+		}
+		return httpExec(method, path, headers, body)
+	}
+}
