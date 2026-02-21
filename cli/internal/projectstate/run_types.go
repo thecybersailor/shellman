@@ -22,6 +22,7 @@ type TaskRecord struct {
 	Title          string
 	CurrentCommand string
 	Status         string
+	SidecarMode    string
 	Description    string
 	Flag           string
 	FlagDesc       string
@@ -38,6 +39,7 @@ type TaskRecordRow struct {
 	Title          string
 	CurrentCommand string
 	Status         string
+	SidecarMode    string
 	Description    string
 	Flag           string
 	FlagDesc       string
@@ -55,6 +57,7 @@ type TaskMetaUpsert struct {
 	Title          *string
 	CurrentCommand *string
 	Status         *string
+	SidecarMode    *string
 	Description    *string
 	Flag           *string
 	FlagDesc       *string

@@ -27,6 +27,12 @@ const (
 	StatusCanceled        = "canceled"
 )
 
+const (
+	SidecarModeAdvisor   = "advisor"
+	SidecarModeObserver  = "observer"
+	SidecarModeAutopilot = "autopilot"
+)
+
 type TaskTree struct {
 	ProjectID string     `json:"project_id"`
 	Nodes     []TaskNode `json:"nodes"`
@@ -43,6 +49,7 @@ type TaskIndexEntry struct {
 	FlagReaded   bool   `json:"flag_readed,omitempty"`
 	Archived     bool   `json:"archived,omitempty"`
 	Status       string `json:"status"`
+	SidecarMode  string `json:"sidecar_mode,omitempty"`
 	LastModified int64  `json:"last_modified"`
 	CurrentRunID string `json:"current_run_id,omitempty"`
 }

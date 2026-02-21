@@ -170,6 +170,14 @@ async function runEcho(page: Page, token: string) {
   await expect(activeTerminalInput(page)).not.toBeDisabled();
 }
 
+async function setTaskSidecarMode(request: APIRequestContext, taskID: string, mode: "advisor" | "observer" | "autopilot") {
+  await unwrap<{ task_id: string; sidecar_mode: string }>(
+    await request.patch(`${apiBaseURL}/api/v1/tasks/${taskID}/sidecar-mode`, {
+      data: { sidecar_mode: mode }
+    })
+  );
+}
+
 async function requestSelectPaneErrorCode(page: Page, target: string): Promise<string> {
   return page.evaluate(
     async (paneTarget) =>
@@ -241,6 +249,23 @@ test.describe("shellman local web full chain (docker)", () => {
 
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
     await runEcho(page, "__ROOT_BACK__");
+  });
+
+  test("task switch restores correct sidecar mode value", async ({ page, request }) => {
+    const seeded = await seedProject(request);
+    await setTaskSidecarMode(request, seeded.rootTaskID, "observer");
+    await setTaskSidecarMode(request, seeded.siblingTaskID, "autopilot");
+
+    await page.goto(visitURL);
+
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+    await expect(page.getByTestId("shellman-shellman-sidecar-mode-trigger").first()).toContainText("Observer");
+
+    await selectTask(page, seeded.projectID, seeded.siblingTaskID);
+    await expect(page.getByTestId("shellman-shellman-sidecar-mode-trigger").first()).toContainText("Autopilot");
+
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+    await expect(page.getByTestId("shellman-shellman-sidecar-mode-trigger").first()).toContainText("Observer");
   });
 
   test("refresh page keeps terminal usable", async ({ page, request }) => {

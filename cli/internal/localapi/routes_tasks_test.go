@@ -219,14 +219,14 @@ func TestProjectTree_ReadsFromTasksTableOnly(t *testing.T) {
 	}
 }
 
-func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
+func TestTaskSidecarModeRoutes_GetAndPatch(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
 	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"autopilot"}`))
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"sidecar-mode"}`))
 	if err != nil {
 		t.Fatalf("create task failed: %v", err)
 	}
@@ -240,9 +240,9 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 		t.Fatalf("decode create task failed: %v", err)
 	}
 
-	getResp, err := http.Get(ts.URL + "/api/v1/tasks/" + created.Data.TaskID + "/autopilot")
+	getResp, err := http.Get(ts.URL + "/api/v1/tasks/" + created.Data.TaskID + "/sidecar-mode")
 	if err != nil {
-		t.Fatalf("GET autopilot failed: %v", err)
+		t.Fatalf("GET sidecar-mode failed: %v", err)
 	}
 	defer func() { _ = getResp.Body.Close() }()
 	if getResp.StatusCode != http.StatusOK {
@@ -250,21 +250,21 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	}
 	var getBody struct {
 		Data struct {
-			Autopilot bool `json:"autopilot"`
+			SidecarMode string `json:"sidecar_mode"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(getResp.Body).Decode(&getBody); err != nil {
-		t.Fatalf("decode get autopilot failed: %v", err)
+		t.Fatalf("decode get sidecar-mode failed: %v", err)
 	}
-	if getBody.Data.Autopilot {
-		t.Fatal("expected default autopilot=false")
+	if getBody.Data.SidecarMode != "advisor" {
+		t.Fatalf("expected default sidecar_mode=advisor, got %q", getBody.Data.SidecarMode)
 	}
 
-	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/autopilot", bytes.NewBufferString(`{"autopilot":true}`))
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode", bytes.NewBufferString(`{"sidecar_mode":"observer"}`))
 	patchReq.Header.Set("Content-Type", "application/json")
 	patchResp, err := http.DefaultClient.Do(patchReq)
 	if err != nil {
-		t.Fatalf("PATCH autopilot failed: %v", err)
+		t.Fatalf("PATCH sidecar-mode failed: %v", err)
 	}
 	defer func() { _ = patchResp.Body.Close() }()
 	if patchResp.StatusCode != http.StatusOK {
@@ -272,31 +272,95 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	}
 	var patchBody struct {
 		Data struct {
-			Autopilot bool `json:"autopilot"`
+			SidecarMode string `json:"sidecar_mode"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(patchResp.Body).Decode(&patchBody); err != nil {
-		t.Fatalf("decode patch autopilot failed: %v", err)
+		t.Fatalf("decode patch sidecar-mode failed: %v", err)
 	}
-	if !patchBody.Data.Autopilot {
-		t.Fatal("expected autopilot=true after patch")
+	if patchBody.Data.SidecarMode != "observer" {
+		t.Fatalf("expected sidecar_mode=observer after patch, got %q", patchBody.Data.SidecarMode)
 	}
 
-	getResp2, err := http.Get(ts.URL + "/api/v1/tasks/" + created.Data.TaskID + "/autopilot")
+	getResp2, err := http.Get(ts.URL + "/api/v1/tasks/" + created.Data.TaskID + "/sidecar-mode")
 	if err != nil {
-		t.Fatalf("GET autopilot (after patch) failed: %v", err)
+		t.Fatalf("GET sidecar-mode (after patch) failed: %v", err)
 	}
 	defer func() { _ = getResp2.Body.Close() }()
 	var getBody2 struct {
 		Data struct {
-			Autopilot bool `json:"autopilot"`
+			SidecarMode string `json:"sidecar_mode"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(getResp2.Body).Decode(&getBody2); err != nil {
-		t.Fatalf("decode get autopilot (after patch) failed: %v", err)
+		t.Fatalf("decode get sidecar-mode (after patch) failed: %v", err)
 	}
-	if !getBody2.Data.Autopilot {
-		t.Fatal("expected persisted in-memory autopilot=true")
+	if getBody2.Data.SidecarMode != "observer" {
+		t.Fatalf("expected persisted sidecar_mode=observer, got %q", getBody2.Data.SidecarMode)
+	}
+}
+
+func TestTaskSidecarMode_InheritsParentOnCreate(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	rootResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("create root failed: %v", err)
+	}
+	defer func() { _ = rootResp.Body.Close() }()
+	var rootOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(rootResp.Body).Decode(&rootOut); err != nil {
+		t.Fatalf("decode root failed: %v", err)
+	}
+
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+rootOut.Data.TaskID+"/sidecar-mode", bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("patch root mode failed: %v", err)
+	}
+	defer func() { _ = patchResp.Body.Close() }()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected patch 200, got %d", patchResp.StatusCode)
+	}
+
+	childResp, err := http.Post(ts.URL+"/api/v1/tasks/"+rootOut.Data.TaskID+"/derive", "application/json", bytes.NewBufferString(`{"title":"child"}`))
+	if err != nil {
+		t.Fatalf("derive child failed: %v", err)
+	}
+	defer func() { _ = childResp.Body.Close() }()
+	var childOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(childResp.Body).Decode(&childOut); err != nil {
+		t.Fatalf("decode child failed: %v", err)
+	}
+
+	getChildResp, err := http.Get(ts.URL + "/api/v1/tasks/" + childOut.Data.TaskID + "/sidecar-mode")
+	if err != nil {
+		t.Fatalf("get child mode failed: %v", err)
+	}
+	defer func() { _ = getChildResp.Body.Close() }()
+	var childMode struct {
+		Data struct {
+			SidecarMode string `json:"sidecar_mode"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(getChildResp.Body).Decode(&childMode); err != nil {
+		t.Fatalf("decode child mode failed: %v", err)
+	}
+	if childMode.Data.SidecarMode != "autopilot" {
+		t.Fatalf("expected child inherit autopilot, got %q", childMode.Data.SidecarMode)
 	}
 }
 

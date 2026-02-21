@@ -420,15 +420,15 @@ async function onSendTaskMessage(payload: { content: string }) {
   }
 }
 
-async function onSetTaskAutopilot(payload: { enabled: boolean }) {
+async function onSetTaskSidecarMode(payload: { mode: "advisor" | "observer" | "autopilot" }) {
   const taskId = String(store.state.selectedTaskId ?? "").trim();
   if (!taskId) {
     return;
   }
   try {
-    await store.setTaskAutopilot(taskId, Boolean(payload.enabled));
+    await store.setTaskSidecarMode(taskId, payload.mode);
   } catch (err) {
-    notifyError(err instanceof Error ? err.message : "TASK_AUTOPILOT_UPDATE_FAILED");
+    notifyError(err instanceof Error ? err.message : "TASK_SIDECAR_MODE_UPDATE_FAILED");
   }
 }
 
@@ -599,7 +599,6 @@ onBeforeUnmount(() => {
             :task-title="selectedTaskTitle"
             :task-description="selectedTaskDescription"
             :task-messages="selectedTaskMessages"
-            :autopilot="Boolean(store.state.taskAutopilotByTaskId[selectedTaskId])"
             :pane-uuid="selectedPaneUuid"
             :current-command="selectedCurrentCommand"
             :frame="selectedTaskFrame"
@@ -631,6 +630,7 @@ onBeforeUnmount(() => {
             :task-title="selectedTaskTitle"
             :task-description="selectedTaskDescription"
             :task-messages="selectedTaskMessages"
+            :sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
             :pane-uuid="selectedPaneUuid"
             :current-command="selectedCurrentCommand"
             :ai-loading="scmAiLoading"
@@ -638,7 +638,7 @@ onBeforeUnmount(() => {
             @update:active-tab="onProjectPanelActiveTabChange"
             @save-task-meta="onSaveTaskMeta"
             @send-message="onSendTaskMessage"
-            @set-autopilot="onSetTaskAutopilot"
+            @set-sidecar-mode="onSetTaskSidecarMode"
             @ai="onSCMAI"
             @submit="onSCMSubmit"
             @file-open="onFileOpen"
@@ -657,7 +657,7 @@ onBeforeUnmount(() => {
       :selected-task-description="selectedTaskDescription"
       :selected-task-notes="selectedTaskNotes"
       :selected-current-command="selectedCurrentCommand"
-      :selected-task-autopilot="Boolean(store.state.taskAutopilotByTaskId[selectedTaskId])"
+      :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
       :selected-task-project-id="findProjectIdByTask(selectedTaskId)"
       :selected-task-repo-root="selectedTaskProjectRoot"
       :dark-mode="mode"
@@ -677,7 +677,7 @@ onBeforeUnmount(() => {
       @terminal-resize="onTerminalResize"
       @reopen-pane="onReopenPane"
       @save-task-meta="onSaveTaskMeta"
-      @set-autopilot="onSetTaskAutopilot"
+      @set-sidecar-mode="onSetTaskSidecarMode"
       @add-project="onOpenAddProject('mobile')"
       @open-settings="onOpenSettings('mobile')"
       @create-root-pane="onCreateRoot"

@@ -2,7 +2,7 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { Loader } from "@/components/ai-elements/loader";
@@ -27,19 +27,19 @@ const props = defineProps<{
   paneUuid?: string;
   currentCommand?: string;
   taskMessages?: TaskMessage[];
-  autopilot?: boolean;
+  sidecarMode?: "advisor" | "observer" | "autopilot";
 }>();
 
 const emit = defineEmits<{
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
-  (event: "set-autopilot", payload: { enabled: boolean }): void;
+  (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
 }>();
 
 const draftTitle = ref(String(props.taskTitle ?? ""));
 const draftDescription = ref(String(props.taskDescription ?? ""));
 const promptDraft = ref("");
-const autopilotEnabled = ref(Boolean(props.autopilot));
+const sidecarMode = ref<"advisor" | "observer" | "autopilot">(props.sidecarMode ?? "advisor");
 const scopeKey = computed(() => `task:${String(props.taskId ?? "").trim()}`);
 const storageKey = computed(() => `shellman.project-panel.thread.${scopeKey.value}`);
 const prevTaskTitle = ref(String(props.taskTitle ?? ""));
@@ -127,9 +127,9 @@ watch(
 );
 
 watch(
-  () => props.autopilot,
+  () => props.sidecarMode,
   (value) => {
-    autopilotEnabled.value = Boolean(value);
+    sidecarMode.value = (value ?? "advisor") as "advisor" | "observer" | "autopilot";
   }
 );
 
@@ -164,10 +164,13 @@ function onPromptInput(event: Event) {
   promptDraft.value = String((event.target as HTMLTextAreaElement | null)?.value ?? "");
 }
 
-function onAutopilotUpdate(enabled: boolean | "indeterminate") {
-  const next = enabled === true;
-  autopilotEnabled.value = next;
-  emit("set-autopilot", { enabled: next });
+function onSidecarModeUpdate(value: string | number) {
+  const next = String(value ?? "advisor");
+  if (next !== "advisor" && next !== "observer" && next !== "autopilot") {
+    return;
+  }
+  sidecarMode.value = next;
+  emit("set-sidecar-mode", { mode: next });
 }
 
 type ParsedToolCall = {
@@ -350,12 +353,17 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
 
     <div class="px-2 text-[11px] text-muted-foreground/80 font-mono mt-0.5 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2">
-        <Switch
-          :model-value="autopilotEnabled"
-          data-test-id="shellman-shellman-autopilot-switch"
-          @update:model-value="onAutopilotUpdate"
-        />
-        <label class="text-[11px] text-muted-foreground/80">{{ t("thread.autopilot") }}</label>
+        <Select :model-value="sidecarMode" @update:model-value="onSidecarModeUpdate">
+          <SelectTrigger data-test-id="shellman-shellman-sidecar-mode-trigger" class="h-7 min-w-[132px] text-[11px]">
+            <SelectValue :placeholder="t('thread.sidecarMode')" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-advisor" value="advisor">{{ t("thread.sidecarModeAdvisor") }}</SelectItem>
+            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-observer" value="observer">{{ t("thread.sidecarModeObserver") }}</SelectItem>
+            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-autopilot" value="autopilot">{{ t("thread.sidecarModeAutopilot") }}</SelectItem>
+          </SelectContent>
+        </Select>
+        <label class="text-[11px] text-muted-foreground/80">{{ t("thread.sidecarMode") }}</label>
       </div>
       <div>Pane: {{ props.paneUuid || "-" }}</div>
     </div>

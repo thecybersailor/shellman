@@ -27,7 +27,7 @@ const props = defineProps<{
   selectedTaskDescription?: string;
   selectedTaskNotes?: Array<{ task_id: string; created_at: number; flag?: "success" | "notify" | "error"; notes: string }>;
   selectedCurrentCommand?: string;
-  selectedTaskAutopilot?: boolean;
+  selectedTaskSidecarMode?: "advisor" | "observer" | "autopilot";
   selectedTaskProjectId?: string;
   selectedTaskRepoRoot?: string;
   darkMode: "light" | "dark" | "auto";
@@ -50,7 +50,7 @@ const emit = defineEmits<{
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "save-task-meta", payload: { title: string; description: string }): void;
-  (event: "set-autopilot", payload: { enabled: boolean }): void;
+  (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
   (event: "add-project"): void;
   (event: "open-settings"): void;
   (event: "create-root-pane", projectId: string): void;
@@ -199,14 +199,14 @@ function onProjectPanelActiveTabChange(next: string) {
                :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
                :task-description="props.selectedTaskDescription ?? ''"
                :task-notes="props.selectedTaskNotes ?? []"
-               :autopilot="Boolean(props.selectedTaskAutopilot)"
+               :sidecar-mode="props.selectedTaskSidecarMode ?? 'advisor'"
                :pane-uuid="props.selectedPaneUuid ?? ''"
                :current-command="props.selectedCurrentCommand ?? ''"
                :ai-loading="Boolean(props.scmAiLoading)"
                :submit-loading="Boolean(props.scmSubmitLoading)"
                @update:active-tab="onProjectPanelActiveTabChange"
                @save-task-meta="(payload) => emit('save-task-meta', payload)"
-               @set-autopilot="(payload) => emit('set-autopilot', payload)"
+               @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
                @ai="(payload) => emit('scm-ai', payload)"
                @submit="(payload) => emit('scm-submit', payload)"
                @file-open="(path) => emit('file-open', path)"

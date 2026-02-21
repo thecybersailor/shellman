@@ -14,7 +14,7 @@ func (s *Store) ListTasksByProject(projectID string) ([]TaskRecordRow, error) {
 	defer func() { _ = release() }()
 
 	rows, err := db.Query(`
-SELECT task_id, project_id, parent_task_id, title, current_command, status, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
+SELECT task_id, project_id, parent_task_id, title, current_command, status, sidecar_mode, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
 FROM tasks
 WHERE repo_root = ? AND project_id = ? AND archived = false
 ORDER BY created_at ASC, task_id ASC
@@ -34,6 +34,7 @@ ORDER BY created_at ASC, task_id ASC
 			&row.Title,
 			&row.CurrentCommand,
 			&row.Status,
+			&row.SidecarMode,
 			&row.Description,
 			&row.Flag,
 			&row.FlagDesc,
@@ -76,6 +77,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	hasTitle := input.Title != nil
 	hasCurrentCommand := input.CurrentCommand != nil
 	hasStatus := input.Status != nil
+	hasSidecarMode := input.SidecarMode != nil
 	hasDescription := input.Description != nil
 	hasFlag := input.Flag != nil
 	hasFlagDesc := input.FlagDesc != nil
@@ -84,14 +86,15 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	hasArchived := input.Archived != nil
 
 	_, err = db.Exec(`
-INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, current_command, status, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified)
-VALUES (?, ?, ?, COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, false), COALESCE(?, false), COALESCE(?, false), ?, ?)
+INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, current_command, status, sidecar_mode, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified)
+VALUES (?, ?, ?, COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, 'advisor'), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, false), COALESCE(?, false), COALESCE(?, false), ?, ?)
 ON CONFLICT(task_id) DO UPDATE SET
   project_id = CASE WHEN excluded.project_id <> '' THEN excluded.project_id ELSE tasks.project_id END,
   parent_task_id = CASE WHEN ? THEN excluded.parent_task_id ELSE tasks.parent_task_id END,
   title = CASE WHEN ? THEN excluded.title ELSE tasks.title END,
   current_command = CASE WHEN ? THEN excluded.current_command ELSE tasks.current_command END,
   status = CASE WHEN ? THEN excluded.status ELSE tasks.status END,
+  sidecar_mode = CASE WHEN ? THEN excluded.sidecar_mode ELSE tasks.sidecar_mode END,
   description = CASE WHEN ? THEN excluded.description ELSE tasks.description END,
   flag = CASE WHEN ? THEN excluded.flag ELSE tasks.flag END,
   flag_desc = CASE WHEN ? THEN excluded.flag_desc ELSE tasks.flag_desc END,
@@ -107,6 +110,7 @@ ON CONFLICT(task_id) DO UPDATE SET
 		input.Title,
 		input.CurrentCommand,
 		input.Status,
+		input.SidecarMode,
 		input.Description,
 		input.Flag,
 		input.FlagDesc,
@@ -119,6 +123,7 @@ ON CONFLICT(task_id) DO UPDATE SET
 		hasTitle,
 		hasCurrentCommand,
 		hasStatus,
+		hasSidecarMode,
 		hasDescription,
 		hasFlag,
 		hasFlagDesc,

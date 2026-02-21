@@ -49,7 +49,7 @@ type taskAgentLoopActor struct {
 	handler       func(context.Context, TaskAgentLoopEvent) error
 	logger        *slog.Logger
 	sessionConfig TaskAgentSessionConfig
-	autopilot     bool
+	sidecarMode   string
 }
 
 func newTaskAgentLoopSupervisor(
@@ -124,20 +124,24 @@ func (s *taskAgentLoopSupervisor) getOrCreateActor(taskID string) *taskAgentLoop
 			ResponsesStore:      false,
 			DisableStoreContext: true,
 		},
-		autopilot: false,
+		sidecarMode: projectstate.SidecarModeAdvisor,
 	}
 	actor.start()
 	s.actors[taskID] = actor
 	return actor
 }
 
-func (s *taskAgentLoopSupervisor) SetAutopilot(taskID string, enabled bool) error {
+func (s *taskAgentLoopSupervisor) SetSidecarMode(taskID, mode string) error {
 	if s == nil {
 		return errors.New("task agent loop supervisor is unavailable")
 	}
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
 		return errors.New("task_id is required")
+	}
+	mode = normalizeSidecarMode(mode)
+	if mode == "" {
+		return errInvalidSidecarMode
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -152,30 +156,30 @@ func (s *taskAgentLoopSupervisor) SetAutopilot(taskID string, enabled bool) erro
 				ResponsesStore:      false,
 				DisableStoreContext: true,
 			},
-			autopilot: false,
+			sidecarMode: projectstate.SidecarModeAdvisor,
 		}
 		actor.start()
 		s.actors[taskID] = actor
 	}
-	actor.autopilot = enabled
+	actor.sidecarMode = mode
 	return nil
 }
 
-func (s *taskAgentLoopSupervisor) GetAutopilot(taskID string) bool {
+func (s *taskAgentLoopSupervisor) GetSidecarMode(taskID string) string {
 	if s == nil {
-		return false
+		return projectstate.SidecarModeAdvisor
 	}
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
-		return false
+		return projectstate.SidecarModeAdvisor
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	actor, ok := s.actors[taskID]
 	if !ok {
-		return false
+		return projectstate.SidecarModeAdvisor
 	}
-	return actor.autopilot
+	return normalizeSidecarMode(actor.sidecarMode)
 }
 
 func (a *taskAgentLoopActor) start() {
@@ -573,12 +577,16 @@ const (
 
 func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
 	currentCommand := ""
+	sidecarMode := projectstate.SidecarModeAdvisor
 	if store != nil && strings.TrimSpace(projectID) != "" && strings.TrimSpace(taskID) != "" {
 		if rows, err := store.ListTasksByProject(strings.TrimSpace(projectID)); err == nil {
 			targetTaskID := strings.TrimSpace(taskID)
 			for _, row := range rows {
 				if strings.TrimSpace(row.TaskID) == targetTaskID {
 					currentCommand = strings.TrimSpace(row.CurrentCommand)
+					if validSidecarMode(row.SidecarMode) {
+						sidecarMode = normalizeSidecarMode(row.SidecarMode)
+					}
 					break
 				}
 			}
@@ -592,6 +600,18 @@ func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, task
 		"task.child.spawn",
 		"task.child.send_message",
 		"task.parent.report",
+	}
+	switch sidecarMode {
+	case projectstate.SidecarModeAdvisor:
+		names = []string{}
+	case projectstate.SidecarModeObserver:
+		names = []string{"task.current.set_flag"}
+	case projectstate.SidecarModeAutopilot:
+	default:
+		names = []string{}
+	}
+	if sidecarMode != projectstate.SidecarModeAutopilot {
+		return string(mode), currentCommand, names
 	}
 	switch mode {
 	case taskAgentToolModeAIAgent:

@@ -78,6 +78,7 @@ function isTermFrameProfileEnabled() {
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 type HelperProgram = "codex" | "claude" | "cursor";
+export type SidecarMode = "advisor" | "observer" | "autopilot";
 
 interface TerminalCacheEntry {
   output: string;
@@ -430,7 +431,7 @@ export function createShellmanStore(
     treesByProject: {} as Record<string, TaskNode[]>,
     paneByTaskId: {} as Record<string, PaneBinding>,
     taskMessagesByTaskId: {} as Record<string, TaskMessage[]>,
-    taskAutopilotByTaskId: {} as Record<string, boolean>,
+    taskSidecarModeByTaskId: {} as Record<string, SidecarMode>,
     selectedTaskId: "",
     selectedPaneUuid: "",
     selectedPaneTarget: "",
@@ -1504,9 +1505,9 @@ export function createShellmanStore(
       await loadTaskMessages(taskId, options.forceRefreshNotes === true);
     }
     try {
-      await loadTaskAutopilot(taskId);
+      await loadTaskSidecarMode(taskId);
     } catch {
-      logInfo("shellman.task.autopilot.load.error", { taskId });
+      logInfo("shellman.task.sidecar_mode.load.error", { taskId });
     }
 
     if (!state.paneByTaskId[taskId]) {
@@ -2466,40 +2467,43 @@ export function createShellmanStore(
     }
   }
 
-  async function loadTaskAutopilot(taskId: string, force = false): Promise<boolean> {
+  async function loadTaskSidecarMode(taskId: string, force = false): Promise<SidecarMode> {
     const nextTaskID = String(taskId ?? "").trim();
     if (!nextTaskID) {
-      return false;
+      return "advisor";
     }
-    if (!force && typeof state.taskAutopilotByTaskId[nextTaskID] === "boolean") {
-      return Boolean(state.taskAutopilotByTaskId[nextTaskID]);
+    if (!force && typeof state.taskSidecarModeByTaskId[nextTaskID] === "string") {
+      return state.taskSidecarModeByTaskId[nextTaskID] as SidecarMode;
     }
-    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/autopilot`), {
+    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/sidecar-mode`), {
       headers: apiHeaders()
-    }).then((r) => r.json())) as APIResponse<{ task_id?: string; autopilot?: boolean }>;
+    }).then((r) => r.json())) as APIResponse<{ task_id?: string; sidecar_mode?: string }>;
     if (!res.ok) {
-      throw new Error(res.error?.code || "TASK_AUTOPILOT_LOAD_FAILED");
+      throw new Error(res.error?.code || "TASK_SIDECAR_MODE_LOAD_FAILED");
     }
-    const enabled = Boolean(res.data?.autopilot);
-    state.taskAutopilotByTaskId[nextTaskID] = enabled;
-    return enabled;
+    const raw = String(res.data?.sidecar_mode ?? "").trim();
+    const mode: SidecarMode = raw === "observer" || raw === "autopilot" ? raw : "advisor";
+    state.taskSidecarModeByTaskId[nextTaskID] = mode;
+    return mode;
   }
 
-  async function setTaskAutopilot(taskId: string, enabled: boolean): Promise<boolean> {
+  async function setTaskSidecarMode(taskId: string, mode: SidecarMode): Promise<SidecarMode> {
     const nextTaskID = String(taskId ?? "").trim();
     if (!nextTaskID) {
       throw new Error("INVALID_TASK_ID");
     }
-    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/autopilot`), {
+    const nextMode: SidecarMode = mode === "observer" || mode === "autopilot" ? mode : "advisor";
+    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/sidecar-mode`), {
       method: "PATCH",
       headers: apiHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ autopilot: Boolean(enabled) })
-    }).then((r) => r.json())) as APIResponse<{ task_id?: string; autopilot?: boolean }>;
+      body: JSON.stringify({ sidecar_mode: nextMode })
+    }).then((r) => r.json())) as APIResponse<{ task_id?: string; sidecar_mode?: string }>;
     if (!res.ok) {
-      throw new Error(res.error?.code || "TASK_AUTOPILOT_UPDATE_FAILED");
+      throw new Error(res.error?.code || "TASK_SIDECAR_MODE_UPDATE_FAILED");
     }
-    const next = Boolean(res.data?.autopilot);
-    state.taskAutopilotByTaskId[nextTaskID] = next;
+    const raw = String(res.data?.sidecar_mode ?? "").trim();
+    const next: SidecarMode = raw === "observer" || raw === "autopilot" ? raw : "advisor";
+    state.taskSidecarModeByTaskId[nextTaskID] = next;
     return next;
   }
 
@@ -2614,9 +2618,9 @@ export function createShellmanStore(
     setTaskDescription,
     markTaskFlagReaded,
     loadTaskMessages,
-    loadTaskAutopilot,
+    loadTaskSidecarMode,
     sendTaskMessage,
-    setTaskAutopilot,
+    setTaskSidecarMode,
     submitTaskCommit,
     reportRunResult,
     getOrphanPaneItems,

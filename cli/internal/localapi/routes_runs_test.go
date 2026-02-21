@@ -180,7 +180,7 @@ func TestRunRoutes_AreRegistered(t *testing.T) {
 	}
 }
 
-func TestRunAutoCompleteByPane_SkipsOnlyPaneActorSourceWhenAutopilotDisabled(t *testing.T) {
+func TestRunAutoCompleteByPane_SkipsOnlyPaneActorSourceWhenSidecarModeAdvisor(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: repo}}}
 	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
@@ -223,13 +223,13 @@ func TestRunAutoCompleteByPane_SkipsOnlyPaneActorSourceWhenAutopilotDisabled(t *
 		t.Fatalf("AutoCompleteByPane failed: %v", runErr)
 	}
 	if out.Triggered {
-		t.Fatalf("expected triggered=false when autopilot=false for pane-actor source")
+		t.Fatalf("expected triggered=false when sidecar_mode=advisor for pane-actor source")
 	}
 	if out.Status != "skipped" {
 		t.Fatalf("expected skipped status, got %q", out.Status)
 	}
-	if out.Reason != "autopilot-disabled" {
-		t.Fatalf("expected reason autopilot-disabled, got %q", out.Reason)
+	if out.Reason != "sidecar-mode-advisor" {
+		t.Fatalf("expected reason sidecar-mode-advisor, got %q", out.Reason)
 	}
 
 	outManual, manualErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
@@ -294,8 +294,15 @@ func TestRunAutoCompleteByPane_DedupesPaneActorByObservedLastActiveAt(t *testing
 	if err := store.SavePanes(panes); err != nil {
 		t.Fatalf("SavePanes failed: %v", err)
 	}
-	if err := srv.taskAgentSupervisor.SetAutopilot(created.Data.TaskID, true); err != nil {
-		t.Fatalf("SetAutopilot failed: %v", err)
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode", bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("set sidecar-mode failed: %v", err)
+	}
+	defer func() { _ = patchResp.Body.Close() }()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected sidecar-mode patch 200, got %d", patchResp.StatusCode)
 	}
 
 	observed := time.Date(2026, 2, 19, 10, 0, 0, 0, time.UTC).Unix()

@@ -8,6 +8,7 @@ type Task struct {
 	Title              string `gorm:"column:title;not null;default:''"`
 	CurrentCommand     string `gorm:"column:current_command;not null;default:''"`
 	Status             string `gorm:"column:status;not null;default:''"`
+	SidecarMode        string `gorm:"column:sidecar_mode;not null;default:'advisor'"`
 	Description        string `gorm:"column:description;not null;default:''"`
 	Flag               string `gorm:"column:flag;not null;default:''"`
 	FlagDesc           string `gorm:"column:flag_desc;not null;default:''"`

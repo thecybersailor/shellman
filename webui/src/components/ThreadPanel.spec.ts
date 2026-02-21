@@ -12,9 +12,31 @@ describe("ThreadPanel", () => {
         disconnect() {}
       });
     }
+    if (
+      typeof globalThis.localStorage === "undefined" ||
+      typeof globalThis.localStorage.getItem !== "function" ||
+      typeof globalThis.localStorage.setItem !== "function" ||
+      typeof globalThis.localStorage.clear !== "function"
+    ) {
+      const storage = new Map<string, string>();
+      vi.stubGlobal("localStorage", {
+        getItem: (key: string) => (storage.has(key) ? storage.get(key)! : null),
+        setItem: (key: string, value: string) => {
+          storage.set(key, String(value));
+        },
+        removeItem: (key: string) => {
+          storage.delete(key);
+        },
+        clear: () => {
+          storage.clear();
+        }
+      });
+    }
   });
   afterEach(() => {
-    localStorage.clear();
+    if (typeof localStorage !== "undefined" && typeof localStorage.clear === "function") {
+      localStorage.clear();
+    }
   });
 
   it("renders user and assistant messages", async () => {
@@ -83,14 +105,16 @@ describe("ThreadPanel", () => {
   });
 
   it("restores draft title/description/prompt from localStorage", async () => {
-    localStorage.setItem(
-      "shellman.project-panel.thread.task:t1",
-      JSON.stringify({
-        titleDraft: "Draft title",
-        descriptionDraft: "Draft desc",
-        promptDraft: "Draft prompt"
-      })
-    );
+    if (typeof localStorage !== "undefined" && typeof localStorage.setItem === "function") {
+      localStorage.setItem(
+        "shellman.project-panel.thread.task:t1",
+        JSON.stringify({
+          titleDraft: "Draft title",
+          descriptionDraft: "Draft desc",
+          promptDraft: "Draft prompt"
+        })
+      );
+    }
     const wrapper = mount(ThreadPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [] }
     });
@@ -102,15 +126,16 @@ describe("ThreadPanel", () => {
     expect((wrapper.get("[data-test-id='shellman-shellman-input']").element as HTMLTextAreaElement).value).toBe("Draft prompt");
   });
 
-  it("emits set-autopilot when switch toggled", async () => {
+  it("emits set-sidecar-mode when select value updated", async () => {
     const wrapper = mount(ThreadPanel, {
-      props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], autopilot: false }
+      props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], sidecarMode: "advisor" }
     });
-    const autopilotSwitch = wrapper.get("[data-test-id='shellman-shellman-autopilot-switch']");
-    await autopilotSwitch.trigger("click");
-    const events = wrapper.emitted("set-autopilot") ?? [];
+    const select = wrapper.findComponent({ name: "Select" });
+    select.vm.$emit("update:modelValue", "observer");
+    await nextTick();
+    const events = wrapper.emitted("set-sidecar-mode") ?? [];
     expect(events.length).toBeGreaterThan(0);
-    expect(events[events.length - 1]?.[0]).toEqual({ enabled: true });
+    expect(events[events.length - 1]?.[0]).toEqual({ mode: "observer" });
   });
 
   it("renders responding and ai-elements tool blocks for structured assistant content", async () => {

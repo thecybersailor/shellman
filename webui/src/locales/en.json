@@ -37,7 +37,10 @@
     "taskTitlePlaceholder": "Task title",
     "taskDescriptionPlaceholder": "Task description",
     "talkPlaceholder": "Talk to ShellMan...",
-    "autopilot": "Autopilot"
+    "sidecarMode": "Sidecar Mode",
+    "sidecarModeAdvisor": "Advisor",
+    "sidecarModeObserver": "Observer",
+    "sidecarModeAutopilot": "Autopilot"
   },
   "projectTaskTree": {
     "projects": "Projects",

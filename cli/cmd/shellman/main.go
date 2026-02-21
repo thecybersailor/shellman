@@ -834,20 +834,20 @@ func executeTaskChildSpawnAction(
 		return "", err
 	}
 
-	autopilotBody, err := callTaskTool(http.MethodGet, "/api/v1/tasks/"+url.PathEscape(parentTaskID)+"/autopilot", nil)
+	sidecarModeBody, err := callTaskTool(http.MethodGet, "/api/v1/tasks/"+url.PathEscape(parentTaskID)+"/sidecar-mode", nil)
 	if err != nil {
 		return "", err
 	}
-	var parentAutopilot struct {
+	var parentSidecarMode struct {
 		Data struct {
-			Autopilot bool `json:"autopilot"`
+			SidecarMode string `json:"sidecar_mode"`
 		} `json:"data"`
 	}
-	if err := json.Unmarshal([]byte(autopilotBody), &parentAutopilot); err != nil {
+	if err := json.Unmarshal([]byte(sidecarModeBody), &parentSidecarMode); err != nil {
 		return "", err
 	}
-	if _, err := callTaskTool(http.MethodPatch, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/autopilot", map[string]any{
-		"autopilot": parentAutopilot.Data.Autopilot,
+	if _, err := callTaskTool(http.MethodPatch, "/api/v1/tasks/"+url.PathEscape(childTaskID)+"/sidecar-mode", map[string]any{
+		"sidecar_mode": parentSidecarMode.Data.SidecarMode,
 	}); err != nil {
 		return "", err
 	}
@@ -878,7 +878,7 @@ func executeTaskChildSpawnAction(
 			"task_id":        childTaskID,
 			"run_id":         strings.TrimSpace(created.Data.RunID),
 			"pane_target":    strings.TrimSpace(created.Data.PaneTarget),
-			"autopilot":      parentAutopilot.Data.Autopilot,
+			"sidecar_mode":   parentSidecarMode.Data.SidecarMode,
 		},
 	})
 	return string(raw), nil

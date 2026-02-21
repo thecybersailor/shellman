@@ -133,25 +133,25 @@ func TestSendTaskAgentLoop_ReturnsUnavailableWhenRunnerMissing(t *testing.T) {
 	}
 }
 
-func TestTaskAgentLoopSupervisor_AutopilotDefaultsFalse(t *testing.T) {
+func TestTaskAgentLoopSupervisor_SidecarModeDefaultsAdvisor(t *testing.T) {
 	supervisor := newTaskAgentLoopSupervisor(nil, nil)
-	if supervisor.GetAutopilot("missing-task") {
-		t.Fatal("expected missing task autopilot=false")
+	if got := supervisor.GetSidecarMode("missing-task"); got != "advisor" {
+		t.Fatalf("expected missing task sidecar_mode=advisor, got %q", got)
 	}
 }
 
-func TestTaskAgentLoopSupervisor_SetAndGetAutopilot(t *testing.T) {
+func TestTaskAgentLoopSupervisor_SetAndGetSidecarMode(t *testing.T) {
 	supervisor := newTaskAgentLoopSupervisor(nil, nil)
-	if err := supervisor.SetAutopilot("task-1", true); err != nil {
-		t.Fatalf("set autopilot true failed: %v", err)
+	if err := supervisor.SetSidecarMode("task-1", "observer"); err != nil {
+		t.Fatalf("set sidecar_mode observer failed: %v", err)
 	}
-	if !supervisor.GetAutopilot("task-1") {
-		t.Fatal("expected autopilot=true")
+	if got := supervisor.GetSidecarMode("task-1"); got != "observer" {
+		t.Fatalf("expected sidecar_mode=observer, got %q", got)
 	}
-	if err := supervisor.SetAutopilot("task-1", false); err != nil {
-		t.Fatalf("set autopilot false failed: %v", err)
+	if err := supervisor.SetSidecarMode("task-1", "autopilot"); err != nil {
+		t.Fatalf("set sidecar_mode autopilot failed: %v", err)
 	}
-	if supervisor.GetAutopilot("task-1") {
-		t.Fatal("expected autopilot=false")
+	if got := supervisor.GetSidecarMode("task-1"); got != "autopilot" {
+		t.Fatalf("expected sidecar_mode=autopilot, got %q", got)
 	}
 }

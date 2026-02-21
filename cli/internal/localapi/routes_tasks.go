@@ -222,10 +222,10 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handleGetTaskNotes(w, r, taskID)
 	case r.Method == http.MethodGet && action == "messages":
 		s.handleGetTaskMessages(w, r, taskID)
-	case r.Method == http.MethodGet && action == "autopilot":
-		s.handleGetTaskAutopilot(w, r, taskID)
-	case r.Method == http.MethodPatch && action == "autopilot":
-		s.handlePatchTaskAutopilot(w, r, taskID)
+	case r.Method == http.MethodGet && action == "sidecar-mode":
+		s.handleGetTaskSidecarMode(w, r, taskID)
+	case r.Method == http.MethodPatch && action == "sidecar-mode":
+		s.handlePatchTaskSidecarMode(w, r, taskID)
 	case r.Method == http.MethodPost && action == "messages":
 		s.handlePostTaskMessage(w, r, taskID)
 	case r.Method == http.MethodPost && action == "runs":
@@ -271,48 +271,65 @@ func (s *Server) handleGetTaskMessages(w http.ResponseWriter, _ *http.Request, t
 	respondOK(w, map[string]any{"task_id": taskID, "messages": items})
 }
 
-func (s *Server) handleGetTaskAutopilot(w http.ResponseWriter, _ *http.Request, taskID string) {
-	if _, _, _, err := s.findTask(taskID); err != nil {
+func (s *Server) handleGetTaskSidecarMode(w http.ResponseWriter, _ *http.Request, taskID string) {
+	projectID, store, _, err := s.findTask(taskID)
+	if err != nil {
 		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
 		return
 	}
-	enabled := false
-	if s.taskAgentSupervisor != nil {
-		enabled = s.taskAgentSupervisor.GetAutopilot(taskID)
+	rows, err := store.ListTasksByProject(projectID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "TASK_LOAD_FAILED", err.Error())
+		return
+	}
+	mode := projectstate.SidecarModeAdvisor
+	for _, row := range rows {
+		if strings.TrimSpace(row.TaskID) == strings.TrimSpace(taskID) {
+			mode = normalizeSidecarMode(row.SidecarMode)
+			if mode == "" {
+				mode = projectstate.SidecarModeAdvisor
+			}
+			break
+		}
 	}
 	respondOK(w, map[string]any{
-		"task_id":   strings.TrimSpace(taskID),
-		"autopilot": enabled,
+		"task_id":      strings.TrimSpace(taskID),
+		"sidecar_mode": mode,
 	})
 }
 
-func (s *Server) handlePatchTaskAutopilot(w http.ResponseWriter, r *http.Request, taskID string) {
-	if _, _, _, err := s.findTask(taskID); err != nil {
+func (s *Server) handlePatchTaskSidecarMode(w http.ResponseWriter, r *http.Request, taskID string) {
+	projectID, store, _, err := s.findTask(taskID)
+	if err != nil {
 		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
 		return
 	}
 	var req struct {
-		Autopilot *bool `json:"autopilot"`
+		SidecarMode string `json:"sidecar_mode"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 		return
 	}
-	if req.Autopilot == nil {
-		respondError(w, http.StatusBadRequest, "INVALID_AUTOPILOT", "autopilot is required")
+	mode := normalizeSidecarMode(req.SidecarMode)
+	if mode == "" {
+		respondError(w, http.StatusBadRequest, "INVALID_SIDECAR_MODE", errInvalidSidecarMode.Error())
 		return
 	}
-	if s.taskAgentSupervisor == nil {
-		respondError(w, http.StatusInternalServerError, "TASK_AGENT_SUPERVISOR_UNAVAILABLE", "task agent loop supervisor is unavailable")
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:      strings.TrimSpace(taskID),
+		ProjectID:   strings.TrimSpace(projectID),
+		SidecarMode: &mode,
+	}); err != nil {
+		respondError(w, http.StatusInternalServerError, "TASK_UPDATE_FAILED", err.Error())
 		return
 	}
-	if err := s.taskAgentSupervisor.SetAutopilot(taskID, *req.Autopilot); err != nil {
-		respondError(w, http.StatusBadRequest, "INVALID_AUTOPILOT", err.Error())
-		return
+	if s.taskAgentSupervisor != nil {
+		_ = s.taskAgentSupervisor.SetSidecarMode(taskID, mode)
 	}
 	respondOK(w, map[string]any{
-		"task_id":   strings.TrimSpace(taskID),
-		"autopilot": s.taskAgentSupervisor.GetAutopilot(taskID),
+		"task_id":      strings.TrimSpace(taskID),
+		"sidecar_mode": mode,
 	})
 }
 
@@ -839,11 +856,23 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 	}
 	store := projectstate.NewStore(repoRoot)
 	taskID := fmt.Sprintf("t_%d", time.Now().UnixNano())
+	sidecarMode := projectstate.SidecarModeAdvisor
+	parentTaskID = strings.TrimSpace(parentTaskID)
+	if parentTaskID != "" {
+		parent, ok, err := findTaskEntryInProject(store, projectID, parentTaskID)
+		if err != nil {
+			return "", err
+		}
+		if ok && validSidecarMode(parent.SidecarMode) {
+			sidecarMode = normalizeSidecarMode(parent.SidecarMode)
+		}
+	}
 	entry := projectstate.TaskRecord{
 		TaskID:       taskID,
 		ProjectID:    projectID,
 		ParentTaskID: parentTaskID,
 		Title:        title,
+		SidecarMode:  sidecarMode,
 		Description:  "",
 		Flag:         "",
 		FlagDesc:     "",
@@ -853,7 +882,6 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 	if err := store.InsertTask(entry); err != nil {
 		return "", err
 	}
-	parentTaskID = strings.TrimSpace(parentTaskID)
 	if parentTaskID != "" {
 		parent, ok, err := findTaskEntryInProject(store, projectID, parentTaskID)
 		if err != nil {
@@ -869,6 +897,9 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 				return "", err
 			}
 		}
+	}
+	if s.taskAgentSupervisor != nil {
+		_ = s.taskAgentSupervisor.SetSidecarMode(taskID, sidecarMode)
 	}
 	return taskID, nil
 }
@@ -948,6 +979,7 @@ func taskRowToTaskIndexEntry(row projectstate.TaskRecordRow) projectstate.TaskIn
 		FlagReaded:   row.FlagReaded,
 		Archived:     row.Archived,
 		Status:       row.Status,
+		SidecarMode:  row.SidecarMode,
 		LastModified: row.LastModified,
 	}
 }

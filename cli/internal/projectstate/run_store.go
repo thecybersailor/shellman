@@ -20,10 +20,14 @@ func (s *Store) InsertTask(task TaskRecord) error {
 	if status == "" {
 		status = StatusPending
 	}
+	sidecarMode := strings.TrimSpace(task.SidecarMode)
+	if sidecarMode == "" {
+		sidecarMode = SidecarModeAdvisor
+	}
 	_, err = db.Exec(`
-INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, status, created_at, last_modified)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-`, task.TaskID, s.repoRoot, task.ProjectID, task.ParentTaskID, task.Title, status, now, now)
+INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, status, sidecar_mode, created_at, last_modified)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+`, task.TaskID, s.repoRoot, task.ProjectID, task.ParentTaskID, task.Title, status, sidecarMode, now, now)
 	return err
 }
 

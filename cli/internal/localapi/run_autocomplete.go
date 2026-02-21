@@ -118,15 +118,15 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 		"candidate_total", taskDiag.CandidateTotal,
 	)
 	if strings.EqualFold(triggerSource, "pane-actor") {
-		autopilotEnabled := false
-		if s.taskAgentSupervisor != nil {
-			autopilotEnabled = s.taskAgentSupervisor.GetAutopilot(taskID)
+		mode := normalizeSidecarMode(taskEntry.SidecarMode)
+		if mode == "" {
+			mode = projectstate.SidecarModeAdvisor
 		}
-		if !autopilotEnabled {
+		if mode == projectstate.SidecarModeAdvisor {
 			return AutoCompleteByPaneResult{
 				Triggered:  false,
 				PaneTarget: paneTarget,
-				Reason:     "autopilot-disabled",
+				Reason:     "sidecar-mode-advisor",
 				RunID:      "",
 				TaskID:     taskID,
 				Status:     "skipped",

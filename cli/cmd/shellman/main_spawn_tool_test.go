@@ -29,7 +29,7 @@ func TestEnsureCommandEndsWithEnter(t *testing.T) {
 	}
 }
 
-func TestExecuteTaskChildSpawnAction_AutoEnterAutopilotAndPrompt(t *testing.T) {
+func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T) {
 	calls := make([]spawnCall, 0, 8)
 	callTaskTool := func(method, path string, payload any) (string, error) {
 		body := ""
@@ -43,9 +43,9 @@ func TestExecuteTaskChildSpawnAction_AutoEnterAutopilotAndPrompt(t *testing.T) {
 			return `{"ok":true,"data":{"task_id":"t_child","run_id":"r1","pane_target":"e2e:0.2"}}`, nil
 		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/description":
 			return `{"ok":true}`, nil
-		case method == http.MethodGet && path == "/api/v1/tasks/t_parent/autopilot":
-			return `{"ok":true,"data":{"autopilot":true}}`, nil
-		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/autopilot":
+		case method == http.MethodGet && path == "/api/v1/tasks/t_parent/sidecar-mode":
+			return `{"ok":true,"data":{"sidecar_mode":"autopilot"}}`, nil
+		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/sidecar-mode":
 			return `{"ok":true}`, nil
 		case method == http.MethodPost && path == "/api/v1/tasks/t_child/messages":
 			return `{"ok":true}`, nil
@@ -63,7 +63,7 @@ func TestExecuteTaskChildSpawnAction_AutoEnterAutopilotAndPrompt(t *testing.T) {
 	}
 
 	var sawCommandWithEnter bool
-	var sawAutopilotCopy bool
+	var sawSidecarModeCopy bool
 	var sawPromptMessage bool
 	for _, c := range calls {
 		if c.Method == http.MethodPost && c.Path == "/api/v1/tasks/t_child/messages" && c.Body != "" {
@@ -76,15 +76,15 @@ func TestExecuteTaskChildSpawnAction_AutoEnterAutopilotAndPrompt(t *testing.T) {
 				sawPromptMessage = true
 			}
 		}
-		if c.Method == http.MethodPatch && c.Path == "/api/v1/tasks/t_child/autopilot" && c.Body == `{"autopilot":true}` {
-			sawAutopilotCopy = true
+		if c.Method == http.MethodPatch && c.Path == "/api/v1/tasks/t_child/sidecar-mode" && c.Body == `{"sidecar_mode":"autopilot"}` {
+			sawSidecarModeCopy = true
 		}
 	}
 	if !sawCommandWithEnter {
 		t.Fatal("expected command auto-enter send")
 	}
-	if !sawAutopilotCopy {
-		t.Fatal("expected parent autopilot copied to child")
+	if !sawSidecarModeCopy {
+		t.Fatal("expected parent sidecar_mode copied to child")
 	}
 	if !sawPromptMessage {
 		t.Fatal("expected prompt sent to child")

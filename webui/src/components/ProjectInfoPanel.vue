@@ -31,7 +31,7 @@ const props = withDefaults(
     taskTitle?: string;
     taskDescription?: string;
     taskMessages?: TaskMessage[];
-    autopilot?: boolean;
+    sidecarMode?: "advisor" | "observer" | "autopilot";
     paneUuid?: string;
     currentCommand?: string;
     aiLoading?: boolean;
@@ -45,7 +45,7 @@ const props = withDefaults(
     taskTitle: "",
     taskDescription: "",
     taskMessages: () => [],
-    autopilot: false,
+    sidecarMode: "advisor",
     paneUuid: "",
     currentCommand: "",
     aiLoading: false,
@@ -57,7 +57,7 @@ const emit = defineEmits<{
   (e: "update:active-tab", tab: ProjectPanelTab): void;
   (e: "save-task-meta", payload: { title: string; description: string }): void;
   (e: "send-message", payload: { content: string }): void;
-  (e: "set-autopilot", payload: { enabled: boolean }): void;
+  (e: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
   (e: "ai", payload: SCMAIPayload): void;
   (e: "submit", payload: SCMSubmitPayload): void;
   (e: "file-open", path: string): void;
@@ -91,12 +91,12 @@ function onTabChange(next: string | number) {
             :task-title="props.taskTitle"
             :task-description="props.taskDescription"
             :task-messages="props.taskMessages"
-            :autopilot="props.autopilot"
+            :sidecar-mode="props.sidecarMode"
             :pane-uuid="props.paneUuid"
             :current-command="props.currentCommand"
             @save-task-meta="(payload) => emit('save-task-meta', payload)"
             @send-message="(payload) => emit('send-message', { content: payload.content })"
-            @set-autopilot="(payload) => emit('set-autopilot', payload)"
+            @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
           />
         </div>
       </TabsContent>

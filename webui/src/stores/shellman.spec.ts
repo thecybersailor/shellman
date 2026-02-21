@@ -148,6 +148,34 @@ describe("shellman store", () => {
     expect(store.state.treesByProject.p1[0]?.flagReaded).toBe(true);
   });
 
+  it("loads and updates task sidecar mode", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? init.body : undefined;
+      calls.push({ url, method, body });
+      if (url.endsWith("/api/v1/tasks/t1/sidecar-mode") && method === "GET") {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", sidecar_mode: "observer" } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/sidecar-mode") && method === "PATCH") {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", sidecar_mode: "autopilot" } }) } as Response;
+      }
+      return { json: async () => ({ ok: true, data: [] }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const loaded = await store.loadTaskSidecarMode("t1");
+    expect(loaded).toBe("observer");
+    expect(store.state.taskSidecarModeByTaskId.t1).toBe("observer");
+
+    const updated = await store.setTaskSidecarMode("t1", "autopilot");
+    expect(updated).toBe("autopilot");
+    expect(store.state.taskSidecarModeByTaskId.t1).toBe("autopilot");
+    const patchCall = calls.find((it) => it.url.endsWith("/api/v1/tasks/t1/sidecar-mode") && it.method === "PATCH");
+    expect(patchCall?.body).toContain("\"sidecar_mode\":\"autopilot\"");
+  });
+
   it("supports loading only preferred task pane when prefetchAllTaskPanes is disabled", async () => {
     const calls: string[] = [];
     const fakeFetch = async (url: string) => {
