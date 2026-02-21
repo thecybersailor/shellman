@@ -557,6 +557,88 @@ func TestLoopRunner_RefreshesAllowedToolsEachIteration(t *testing.T) {
 	}
 }
 
+func TestLoopRunner_ExplicitEmptyAllowlist_DisablesAllTools(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		switch callCount {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "exec_command",
+						"arguments": `{"command":"pwd"}`,
+					},
+				},
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_2",
+				"output": []map[string]any{
+					{
+						"type": "message",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "DONE"},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	if err := registry.Register(fakeNamedTool{name: "exec_command"}); err != nil {
+		t.Fatalf("register exec_command failed: %v", err)
+	}
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	ctx := WithAllowedToolNames(context.Background(), []string{})
+	out, err := runner.Run(ctx, "use tool")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+	firstTools := requestToolNames(requestBodies[0])
+	if len(firstTools) != 0 {
+		t.Fatalf("expected no tools in first request, got %#v", firstTools)
+	}
+	secondInput, ok := requestBodies[1]["input"].([]any)
+	if !ok || len(secondInput) < 3 {
+		t.Fatalf("expected full context input items, got %#v", requestBodies[1]["input"])
+	}
+	lastItem, ok := secondInput[len(secondInput)-1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected last input item map, got %#v", secondInput[len(secondInput)-1])
+	}
+	rawOutput := strings.TrimSpace(anyToString(lastItem["output"]))
+	if !strings.Contains(rawOutput, "not enabled in current mode") {
+		t.Fatalf("expected tool denial output, got %q", rawOutput)
+	}
+}
+
 func requestToolNames(req map[string]any) []string {
 	rawTools, ok := req["tools"].([]any)
 	if !ok {

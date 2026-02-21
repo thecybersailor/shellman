@@ -31,6 +31,8 @@ import (
 	"shellman/cli/internal/lifecycle"
 	"shellman/cli/internal/localapi"
 	"shellman/cli/internal/logging"
+	"shellman/cli/internal/progdetector"
+	_ "shellman/cli/internal/progdetector/builtin"
 	"shellman/cli/internal/projectstate"
 	"shellman/cli/internal/protocol"
 	"shellman/cli/internal/systempicker"
@@ -767,10 +769,10 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 			raw, _ := json.Marshal(map[string]any{
 				"ok": true,
 				"data": map[string]any{
-					"task_id":    strings.TrimSpace(taskID),
-					"path":       strings.TrimSpace(res.Data.Path),
-					"content":    content,
-					"truncated":  truncated,
+					"task_id":     strings.TrimSpace(taskID),
+					"path":        strings.TrimSpace(res.Data.Path),
+					"content":     content,
+					"truncated":   truncated,
 					"total_chars": len(res.Data.Content),
 				},
 			})
@@ -781,29 +783,28 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}
 	if err := registry.Register(&agentloop.TaskInputPromptTool{
 		Exec: func(_ context.Context, taskID, prompt string) (string, error) {
-			normalizedPrompt := ensureCommandEndsWithEnter(prompt)
-			if normalizedPrompt == "" {
-				return "", errors.New("INVALID_PROMPT")
-			}
-			promptText := strings.TrimRight(normalizedPrompt, "\r\n")
+			promptText := strings.TrimRight(strings.Trim(prompt, " \t"), "\r\n")
 			if strings.TrimSpace(promptText) == "" {
 				return "", errors.New("INVALID_PROMPT")
 			}
 			beforeScreen, _ := getTaskPaneScreen(taskID)
-			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
-			if _, err := callTaskTool(http.MethodPost, path, map[string]any{
-				"source": "tty_write_stdin",
-				"input":  promptText,
-			}); err != nil {
-				return "", err
-			}
-			time.Sleep(50 * time.Millisecond)
-			rawResp, err := callTaskTool(http.MethodPost, path, map[string]any{
-				"source": "tty_write_stdin",
-				"input":  "\r",
-			})
+			steps, err := buildInputPromptStepsForCommand(beforeScreen.CurrentCommand, promptText)
 			if err != nil {
 				return "", err
+			}
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			rawResp := ""
+			for _, step := range steps {
+				if step.Delay > 0 {
+					time.Sleep(step.Delay)
+				}
+				rawResp, err = callTaskTool(http.MethodPost, path, map[string]any{
+					"source": "tty_write_stdin",
+					"input":  step.Input,
+				})
+				if err != nil {
+					return "", err
+				}
 			}
 			timeoutMs := 3000
 			waitTimeout := time.Duration(timeoutMs) * time.Millisecond
@@ -982,6 +983,20 @@ func ensureCommandEndsWithEnter(command string) string {
 		return raw
 	}
 	return strings.TrimRight(raw, " \t") + "\r"
+}
+
+func buildInputPromptStepsForCommand(currentCommand, prompt string) ([]progdetector.PromptStep, error) {
+	prompt = strings.TrimRight(strings.Trim(prompt, " \t"), "\r\n")
+	if strings.TrimSpace(prompt) == "" {
+		return nil, errors.New("INVALID_PROMPT")
+	}
+	if detector, ok := progdetector.ProgramDetectorRegistry.DetectByCurrentCommand(currentCommand); ok {
+		return detector.BuildInputPromptSteps(prompt)
+	}
+	return []progdetector.PromptStep{
+		{Input: prompt, TimeoutMs: 15000},
+		{Input: "\r", Delay: 50 * time.Millisecond, TimeoutMs: 1000},
+	}, nil
 }
 
 func attachPostTerminalScreenState(raw string, post map[string]any) string {

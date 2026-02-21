@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
+	"time"
 )
 
 type spawnCall struct {
@@ -88,5 +89,40 @@ func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T)
 	}
 	if !sawPromptMessage {
 		t.Fatal("expected prompt sent to child")
+	}
+}
+
+func TestBuildInputPromptStepsForCommand_Codex(t *testing.T) {
+	steps, err := buildInputPromptStepsForCommand("codex (/Users/wanglei/.)", "请继续执行")
+	if err != nil {
+		t.Fatalf("build steps failed: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("unexpected steps count: %d", len(steps))
+	}
+	if steps[0].Input != "请继续执行" {
+		t.Fatalf("unexpected first step input: %q", steps[0].Input)
+	}
+	if steps[1].Input != "\r" {
+		t.Fatalf("unexpected second step input: %q", steps[1].Input)
+	}
+	if steps[1].Delay != 50*time.Millisecond {
+		t.Fatalf("unexpected second step delay: %v", steps[1].Delay)
+	}
+}
+
+func TestBuildInputPromptStepsForCommand_Default(t *testing.T) {
+	steps, err := buildInputPromptStepsForCommand("zsh", "echo hi")
+	if err != nil {
+		t.Fatalf("build steps failed: %v", err)
+	}
+	if len(steps) != 2 {
+		t.Fatalf("unexpected steps count: %d", len(steps))
+	}
+	if steps[0].Input != "echo hi" {
+		t.Fatalf("unexpected first step input: %q", steps[0].Input)
+	}
+	if steps[1].Input != "\r" {
+		t.Fatalf("unexpected second step input: %q", steps[1].Input)
 	}
 }

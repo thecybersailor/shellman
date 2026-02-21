@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"shellman/cli/internal/agentloop"
+	"shellman/cli/internal/progdetector"
+	_ "shellman/cli/internal/progdetector/builtin"
 	"shellman/cli/internal/projectstate"
 )
 
@@ -321,9 +323,9 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		ResponsesStore:      evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
 		DisableStoreContext: evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
 	})
-	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID)
+	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
 	scopeCtx = agentloop.WithAllowedToolNamesResolver(scopeCtx, func() []string {
-		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID)
+		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
 		return names
 	})
 	reply := ""
@@ -618,13 +620,18 @@ func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID str
 }
 
 func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode string) (string, string, []string) {
+	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, "")
+}
+
+func resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source string) (string, string, []string) {
 	currentCommand = strings.TrimSpace(currentCommand)
+	source = strings.TrimSpace(source)
 	if !validSidecarMode(sidecarMode) {
 		sidecarMode = projectstate.SidecarModeAdvisor
 	}
 	sidecarMode = normalizeSidecarMode(sidecarMode)
 	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
-	names := []string{
+	fullTools := []string{
 		"task.current.set_flag",
 		"task.child.get_context",
 		"task.child.get_tty_output",
@@ -632,32 +639,38 @@ func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode stri
 		"task.child.send_message",
 		"task.parent.report",
 	}
-	switch sidecarMode {
-	case projectstate.SidecarModeAdvisor:
-		names = []string{}
-	case projectstate.SidecarModeObserver:
-		names = []string{"task.current.set_flag"}
-	case projectstate.SidecarModeAutopilot:
-	default:
-		names = []string{}
-	}
-	if sidecarMode != projectstate.SidecarModeAutopilot {
-		return string(mode), currentCommand, names
-	}
 	switch mode {
 	case taskAgentToolModeAIAgent:
-		names = append(names, "task.input_prompt", "readfile", "write_stdin")
+		fullTools = append(fullTools, "task.input_prompt", "readfile", "write_stdin")
 	case taskAgentToolModeShell:
-		names = append(names, "exec_command", "readfile", "write_stdin")
+		fullTools = append(fullTools, "exec_command", "readfile", "write_stdin")
 	default:
-		names = append(names, "readfile", "write_stdin")
+		fullTools = append(fullTools, "readfile", "write_stdin")
 	}
-	return string(mode), currentCommand, names
+
+	if !isAutoProcessTurnSource(source) {
+		return string(mode), currentCommand, fullTools
+	}
+
+	switch sidecarMode {
+	case projectstate.SidecarModeAdvisor:
+		return string(mode), currentCommand, []string{}
+	case projectstate.SidecarModeObserver:
+		return string(mode), currentCommand, []string{"task.current.set_flag"}
+	case projectstate.SidecarModeAutopilot:
+		return string(mode), currentCommand, fullTools
+	default:
+		return string(mode), currentCommand, []string{}
+	}
 }
 
-func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
+func isAutoProcessTurnSource(source string) bool {
+	return strings.EqualFold(strings.TrimSpace(source), "tty_output")
+}
+
+func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
 	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
-	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode)
+	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source)
 }
 
 func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID string) string {
@@ -683,6 +696,9 @@ func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID 
 }
 
 func resolveTaskAgentToolModeFromCommand(command string) taskAgentToolMode {
+	if _, ok := progdetector.ProgramDetectorRegistry.DetectByCurrentCommand(command); ok {
+		return taskAgentToolModeAIAgent
+	}
 	parts := strings.Fields(strings.TrimSpace(command))
 	if len(parts) == 0 {
 		return taskAgentToolModeDefault

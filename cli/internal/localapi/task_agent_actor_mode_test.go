@@ -19,6 +19,7 @@ func TestResolveTaskAgentToolModeFromCommand(t *testing.T) {
 		{command: "", want: taskAgentToolModeDefault},
 		{command: "   ", want: taskAgentToolModeDefault},
 		{command: "codex --ask", want: taskAgentToolModeAIAgent},
+		{command: "node (codex)", want: taskAgentToolModeAIAgent},
 		{command: "claude", want: taskAgentToolModeAIAgent},
 		{command: "gemini -p hi", want: taskAgentToolModeAIAgent},
 		{command: "cursor agent", want: taskAgentToolModeAIAgent},
@@ -69,6 +70,37 @@ func TestResolveTaskAgentToolModeAndNames_AutopilotAIAgentIncludesWriteStdin(t *
 	}
 }
 
+func TestResolveTaskAgentToolModeAndNames_UserTurn_IgnoresSidecarMode(t *testing.T) {
+	currentCommand := "codex --ask"
+	wantTools := []string{
+		"task.current.set_flag",
+		"task.child.get_context",
+		"task.child.get_tty_output",
+		"task.child.spawn",
+		"task.child.send_message",
+		"task.parent.report",
+		"task.input_prompt",
+		"readfile",
+		"write_stdin",
+	}
+	for _, mode := range []string{
+		projectstate.SidecarModeAdvisor,
+		projectstate.SidecarModeObserver,
+		projectstate.SidecarModeAutopilot,
+	} {
+		gotMode, gotCommand, gotTools := resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, mode)
+		if gotMode != string(taskAgentToolModeAIAgent) {
+			t.Fatalf("mode=%q unexpected tool mode: got=%q", mode, gotMode)
+		}
+		if gotCommand != currentCommand {
+			t.Fatalf("mode=%q unexpected current command: got=%q", mode, gotCommand)
+		}
+		if !reflect.DeepEqual(gotTools, wantTools) {
+			t.Fatalf("mode=%q unexpected tools: got=%#v want=%#v", mode, gotTools, wantTools)
+		}
+	}
+}
+
 func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopilot(t *testing.T) {
 	store := projectstate.NewStore(t.TempDir())
 	taskID := fmt.Sprintf("t_mode_realtime_%d", time.Now().UTC().UnixNano())
@@ -104,7 +136,7 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopil
 			return []byte("codex\n"), nil
 		},
 	})
-	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID)
+	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
 	if gotMode != string(taskAgentToolModeShell) {
 		t.Fatalf("unexpected mode: got=%q", gotMode)
 	}
@@ -123,5 +155,53 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopil
 		"write_stdin",
 	}) {
 		t.Fatalf("unexpected tools: %#v", gotTools)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testing.T) {
+	currentCommand := "codex --ask"
+	wantFullTools := []string{
+		"task.current.set_flag",
+		"task.child.get_context",
+		"task.child.get_tty_output",
+		"task.child.spawn",
+		"task.child.send_message",
+		"task.parent.report",
+		"task.input_prompt",
+		"readfile",
+		"write_stdin",
+	}
+
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAdvisor, "tty_output")
+	if mode != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("advisor unexpected tool mode: got=%q", mode)
+	}
+	if gotCommand != currentCommand {
+		t.Fatalf("advisor unexpected current command: got=%q", gotCommand)
+	}
+	if len(tools) != 0 {
+		t.Fatalf("advisor auto turn should disable tools, got=%#v", tools)
+	}
+
+	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeObserver, "tty_output")
+	if mode != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("observer unexpected tool mode: got=%q", mode)
+	}
+	if gotCommand != currentCommand {
+		t.Fatalf("observer unexpected current command: got=%q", gotCommand)
+	}
+	if !reflect.DeepEqual(tools, []string{"task.current.set_flag"}) {
+		t.Fatalf("observer auto turn unexpected tools: got=%#v", tools)
+	}
+
+	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAutopilot, "tty_output")
+	if mode != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("autopilot unexpected tool mode: got=%q", mode)
+	}
+	if gotCommand != currentCommand {
+		t.Fatalf("autopilot unexpected current command: got=%q", gotCommand)
+	}
+	if !reflect.DeepEqual(tools, wantFullTools) {
+		t.Fatalf("autopilot auto turn unexpected tools: got=%#v want=%#v", tools, wantFullTools)
 	}
 }

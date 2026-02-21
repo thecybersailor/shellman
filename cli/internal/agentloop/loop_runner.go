@@ -85,9 +85,9 @@ func (r *LoopRunner) run(
 	lastResponseTrace := ""
 
 	for i := 0; i < r.options.MaxIterations; i++ {
-		allowedTools := allowedToolNameSetFromContext(ctx)
+		allowedTools, allowlistConfigured := allowedToolNameSetFromContext(ctx)
 		if r.tools != nil {
-			req.Tools = r.resolveToolSpecs(allowedTools)
+			req.Tools = r.resolveToolSpecs(allowedTools, allowlistConfigured)
 		}
 		reqSummary := summarizeCreateResponseRequest(req)
 		if onToolEvent != nil {
@@ -231,7 +231,7 @@ func (r *LoopRunner) run(
 			if r.tools == nil {
 				out = `{"error":"tool registry unavailable"}`
 			} else {
-				if len(allowedTools) > 0 {
+				if allowlistConfigured {
 					if _, ok := allowedTools[strings.TrimSpace(call.Name)]; !ok {
 						toolErr := fmt.Errorf("tool %q is not enabled in current mode", strings.TrimSpace(call.Name))
 						errOut := fmt.Sprintf(`{"error":%q}`, toolErr.Error())
@@ -359,12 +359,15 @@ func (r *LoopRunner) run(
 	return "", fmt.Errorf("responses loop exceeded max iterations: %d", r.options.MaxIterations)
 }
 
-func (r *LoopRunner) resolveToolSpecs(allowedTools map[string]struct{}) []ResponseToolSpec {
+func (r *LoopRunner) resolveToolSpecs(allowedTools map[string]struct{}, allowlistConfigured bool) []ResponseToolSpec {
 	if r == nil || r.tools == nil {
 		return nil
 	}
-	if len(allowedTools) == 0 {
+	if !allowlistConfigured {
 		return r.tools.Specs()
+	}
+	if len(allowedTools) == 0 {
+		return []ResponseToolSpec{}
 	}
 	names := make([]string, 0, len(allowedTools))
 	for name := range allowedTools {
@@ -373,10 +376,10 @@ func (r *LoopRunner) resolveToolSpecs(allowedTools map[string]struct{}) []Respon
 	return r.tools.SpecsByNames(names)
 }
 
-func allowedToolNameSetFromContext(ctx context.Context) map[string]struct{} {
+func allowedToolNameSetFromContext(ctx context.Context) (map[string]struct{}, bool) {
 	names, ok := AllowedToolNamesFromContext(ctx)
 	if !ok {
-		return nil
+		return nil, false
 	}
 	out := map[string]struct{}{}
 	for _, name := range names {
@@ -386,7 +389,7 @@ func allowedToolNameSetFromContext(ctx context.Context) map[string]struct{} {
 		}
 		out[name] = struct{}{}
 	}
-	return out
+	return out, true
 }
 
 func rawJSONToAny(raw json.RawMessage) any {
