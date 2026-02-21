@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -498,11 +500,20 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return strings.TrimSpace(body), nil
 	}
 
-	getTaskPaneOutput := func(taskID string) (string, string, string, error) {
+	type taskPaneScreen struct {
+		PaneTarget     string
+		CurrentCommand string
+		Output         string
+		HasCursor      bool
+		CursorX        int
+		CursorY        int
+	}
+
+	getTaskPaneScreen := func(taskID string) (taskPaneScreen, error) {
 		path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/pane"
 		body, err := callTaskTool(http.MethodGet, path, nil)
 		if err != nil {
-			return "", "", "", err
+			return taskPaneScreen{}, err
 		}
 		var res struct {
 			Data struct {
@@ -510,13 +521,85 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 				CurrentCommand string `json:"current_command"`
 				Snapshot       struct {
 					Output string `json:"output"`
+					Cursor *struct {
+						X int `json:"x"`
+						Y int `json:"y"`
+					} `json:"cursor"`
 				} `json:"snapshot"`
 			} `json:"data"`
 		}
 		if err := json.Unmarshal([]byte(body), &res); err != nil {
+			return taskPaneScreen{}, err
+		}
+		out := taskPaneScreen{
+			PaneTarget:     strings.TrimSpace(res.Data.PaneTarget),
+			CurrentCommand: strings.TrimSpace(res.Data.CurrentCommand),
+			Output:         res.Data.Snapshot.Output,
+		}
+		if res.Data.Snapshot.Cursor != nil {
+			out.HasCursor = true
+			out.CursorX = res.Data.Snapshot.Cursor.X
+			out.CursorY = res.Data.Snapshot.Cursor.Y
+		}
+		return out, nil
+	}
+
+	getTaskPaneOutput := func(taskID string) (string, string, string, error) {
+		screen, err := getTaskPaneScreen(taskID)
+		if err != nil {
 			return "", "", "", err
 		}
-		return strings.TrimSpace(res.Data.PaneTarget), strings.TrimSpace(res.Data.CurrentCommand), res.Data.Snapshot.Output, nil
+		return screen.PaneTarget, screen.CurrentCommand, screen.Output, nil
+	}
+
+	waitTaskPaneStable := func(taskID, baselineOutput string, timeout time.Duration) (taskPaneScreen, bool, error) {
+		if timeout <= 0 {
+			timeout = 1800 * time.Millisecond
+		}
+		baselineHash := snapshotHash(baselineOutput)
+		lastHash := baselineHash
+		stableCount := 0
+		lastScreen := taskPaneScreen{}
+		hashChanged := false
+		deadline := time.Now().Add(timeout)
+		for time.Now().Before(deadline) {
+			time.Sleep(120 * time.Millisecond)
+			screen, err := getTaskPaneScreen(taskID)
+			if err != nil {
+				return taskPaneScreen{}, false, err
+			}
+			lastScreen = screen
+			currentHash := snapshotHash(screen.Output)
+			if currentHash != baselineHash {
+				hashChanged = true
+			}
+			if currentHash == lastHash {
+				stableCount++
+			} else {
+				stableCount = 0
+				lastHash = currentHash
+			}
+			if hashChanged && stableCount >= 1 {
+				break
+			}
+		}
+		return lastScreen, hashChanged, nil
+	}
+
+	buildPostTerminalScreenState := func(screen taskPaneScreen) map[string]any {
+		state := map[string]any{
+			"pane_target":     strings.TrimSpace(screen.PaneTarget),
+			"current_command": strings.TrimSpace(screen.CurrentCommand),
+			"viewport_text":   tailString(screen.Output, 4000),
+			"snapshot_hash":   snapshotHash(screen.Output),
+		}
+		if screen.HasCursor {
+			state["cursor"] = map[string]any{
+				"x": screen.CursorX,
+				"y": screen.CursorY,
+			}
+		}
+		return state
 	}
 
 	getTaskTree := func(taskID string) (string, []map[string]any, error) {
@@ -567,24 +650,46 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return nil, endpoint, model
 	}
 	if err := registry.Register(&agentloop.WriteStdinTool{
-		Exec: func(ctx context.Context, taskID, input string) (string, error) {
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
 			_ = ctx
+			beforeScreen, _ := getTaskPaneScreen(taskID)
 			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
 			payload := map[string]any{
 				"source": "tty_write_stdin",
 				"input":  input,
 			}
-			return callTaskTool(http.MethodPost, path, payload)
+			rawResp, err := callTaskTool(http.MethodPost, path, payload)
+			if err != nil {
+				return "", err
+			}
+			waitTimeout := time.Duration(timeoutMs) * time.Millisecond
+			postScreen, hashChanged, waitErr := waitTaskPaneStable(taskID, beforeScreen.Output, waitTimeout)
+			if waitErr != nil {
+				latest, latestErr := getTaskPaneScreen(taskID)
+				if latestErr == nil {
+					postScreen = latest
+					hashChanged = snapshotHash(latest.Output) != snapshotHash(beforeScreen.Output)
+					waitErr = nil
+				}
+			}
+			if waitErr != nil {
+				return rawResp, nil
+			}
+			postState := buildPostTerminalScreenState(postScreen)
+			postState["hash_changed"] = hashChanged
+			postState["timeout_ms"] = timeoutMs
+			return attachPostTerminalScreenState(rawResp, postState), nil
 		},
 	}); err != nil {
 		return nil, endpoint, model
 	}
 	if err := registry.Register(&agentloop.ExecCommandTool{
 		Exec: func(_ context.Context, taskID, command string, maxOutputTokens int) (string, error) {
-			_, _, beforeOutput, err := getTaskPaneOutput(taskID)
+			beforeScreen, err := getTaskPaneScreen(taskID)
 			if err != nil {
 				return "", err
 			}
+			beforeOutput := beforeScreen.Output
 			normalizedCommand := ensureCommandEndsWithEnter(command)
 			if normalizedCommand == "" {
 				return "", errors.New("INVALID_COMMAND")
@@ -597,24 +702,11 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 				return "", err
 			}
 
-			lastOutput := beforeOutput
-			stableCount := 0
-			for attempt := 0; attempt < 8; attempt++ {
-				time.Sleep(200 * time.Millisecond)
-				_, _, currentOutput, readErr := getTaskPaneOutput(taskID)
-				if readErr != nil {
-					return "", readErr
-				}
-				if currentOutput == lastOutput {
-					stableCount++
-				} else {
-					stableCount = 0
-					lastOutput = currentOutput
-				}
-				if stableCount >= 2 {
-					break
-				}
+			postScreen, hashChanged, err := waitTaskPaneStable(taskID, beforeOutput, 1800*time.Millisecond)
+			if err != nil {
+				return "", err
 			}
+			lastOutput := postScreen.Output
 
 			delta := lastOutput
 			if strings.HasPrefix(lastOutput, beforeOutput) {
@@ -625,10 +717,17 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 			raw, _ := json.Marshal(map[string]any{
 				"ok": true,
 				"data": map[string]any{
-					"task_id":   strings.TrimSpace(taskID),
-					"command":   strings.TrimSpace(command),
-					"output":    delta,
-					"truncated": truncated,
+					"task_id":                    strings.TrimSpace(taskID),
+					"command":                    strings.TrimSpace(command),
+					"output":                     delta,
+					"truncated":                  truncated,
+					"post_terminal_screen_state": map[string]any{
+						"pane_target":     strings.TrimSpace(postScreen.PaneTarget),
+						"current_command": strings.TrimSpace(postScreen.CurrentCommand),
+						"viewport_text":   tailString(postScreen.Output, 4000),
+						"snapshot_hash":   snapshotHash(postScreen.Output),
+						"hash_changed":    hashChanged,
+					},
 				},
 			})
 			return string(raw), nil
@@ -801,6 +900,39 @@ func ensureCommandEndsWithEnter(command string) string {
 		return raw
 	}
 	return strings.TrimRight(raw, " \t") + "\r"
+}
+
+func attachPostTerminalScreenState(raw string, post map[string]any) string {
+	if strings.TrimSpace(raw) == "" || len(post) == 0 {
+		return raw
+	}
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(raw), &payload); err != nil {
+		return raw
+	}
+	data, _ := payload["data"].(map[string]any)
+	if data == nil {
+		data = map[string]any{}
+		payload["data"] = data
+	}
+	data["post_terminal_screen_state"] = post
+	next, err := json.Marshal(payload)
+	if err != nil {
+		return raw
+	}
+	return string(next)
+}
+
+func tailString(text string, limit int) string {
+	if limit <= 0 || len(text) <= limit {
+		return text
+	}
+	return text[len(text)-limit:]
+}
+
+func snapshotHash(text string) string {
+	sum := sha1.Sum([]byte(text))
+	return hex.EncodeToString(sum[:])
 }
 
 func executeTaskChildSpawnAction(

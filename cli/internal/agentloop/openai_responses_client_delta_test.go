@@ -62,3 +62,40 @@ func TestResponsesClient_CreateResponseStream_CollectsArgumentsFromDeltaChunks(t
 		t.Fatalf("expected merged arguments from delta chunks, got %q", args)
 	}
 }
+
+func TestResponsesClient_CreateResponseStream_PropagatesFailedEventError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/responses" {
+			t.Fatalf("expected /responses path, got %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_fail_1\"}}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_fail_1\"}}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.failed\",\"response\":{\"id\":\"resp_fail_1\",\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"The model produced invalid content\"}}}\n\n")
+		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+
+	_, err := client.CreateResponseStream(context.Background(), CreateResponseRequest{
+		Input: "test",
+	}, nil)
+	if err == nil {
+		t.Fatal("expected stream failure error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `response_id="resp_fail_1"`) {
+		t.Fatalf("expected error includes response_id, got %q", msg)
+	}
+	if !strings.Contains(msg, `code="server_error"`) {
+		t.Fatalf("expected error includes code, got %q", msg)
+	}
+	if !strings.Contains(msg, "invalid content") {
+		t.Fatalf("expected error includes provider message, got %q", msg)
+	}
+}

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"shellman/cli/internal/agentloop"
 	"shellman/cli/internal/config"
@@ -167,4 +168,207 @@ func TestBuildAgentLoopRunner_RegistersExpectedTaskTools(t *testing.T) {
 func anyToTestString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testing.T) {
+	var requestBodies []map[string]any
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "write_stdin",
+						"arguments": `{"input":"codex\n"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "ok"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := config.Config{}
+	helperStore := &fakeAgentHelperConfigStore{
+		cfg: helperconfig.OpenAIConfig{
+			Endpoint: srv.URL,
+			Model:    "gpt-5-mini",
+			APIKey:   "test-key",
+		},
+	}
+
+	paneGetCount := 0
+	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		switch {
+		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
+			paneGetCount++
+			snapshot := "shell prompt"
+			currentCommand := "zsh"
+			if paneGetCount >= 2 {
+				snapshot = "OpenAI Codex (v0.104.0)"
+				currentCommand = "codex (/Users/wanglei/.)"
+			}
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"pane_target":"botworks:8.0","current_command":"` + currentCommand + `","snapshot":{"output":"` + snapshot + `","cursor":{"x":1,"y":2}}}}`, nil
+		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
+		default:
+			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
+		}
+	}
+
+	runner, _, _ := buildAgentLoopRunner(cfg, helperStore, httpExec)
+	if runner == nil {
+		t.Fatal("expected non-nil agent loop runner")
+	}
+	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	if _, err := runner.Run(ctx, "start codex"); err != nil {
+		t.Fatalf("runner run failed: %v", err)
+	}
+	if len(requestBodies) < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", len(requestBodies))
+	}
+	gotOut := extractLastFunctionCallOutput(t, requestBodies[1])
+	screen, ok := gotOut["data"].(map[string]any)["post_terminal_screen_state"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected post_terminal_screen_state in tool output, got %#v", gotOut)
+	}
+	if !strings.Contains(strings.TrimSpace(anyToTestString(screen["viewport_text"])), "OpenAI Codex") {
+		t.Fatalf("expected viewport_text contains codex screen, got %#v", screen["viewport_text"])
+	}
+}
+
+func TestBuildAgentLoopRunner_ExecCommandIncludesPostTerminalScreenStateWhenDeltaEmpty(t *testing.T) {
+	var requestBodies []map[string]any
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "exec_command",
+						"arguments": `{"command":"sleep 0.3","max_output_tokens":128}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "ok"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := config.Config{}
+	helperStore := &fakeAgentHelperConfigStore{
+		cfg: helperconfig.OpenAIConfig{
+			Endpoint: srv.URL,
+			Model:    "gpt-5-mini",
+			APIKey:   "test-key",
+		},
+	}
+	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		switch {
+		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"pane_target":"botworks:8.0","current_command":"codex (/Users/wanglei/.)","snapshot":{"output":"OpenAI Codex (v0.104.0)"}}}`, nil
+		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
+		default:
+			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
+		}
+	}
+
+	runner, _, _ := buildAgentLoopRunner(cfg, helperStore, httpExec)
+	if runner == nil {
+		t.Fatal("expected non-nil agent loop runner")
+	}
+	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	start := time.Now()
+	if _, err := runner.Run(ctx, "sleep"); err != nil {
+		t.Fatalf("runner run failed: %v", err)
+	}
+	if time.Since(start) > 3*time.Second {
+		t.Fatalf("unexpectedly slow run: %v", time.Since(start))
+	}
+	if len(requestBodies) < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", len(requestBodies))
+	}
+	gotOut := extractLastFunctionCallOutput(t, requestBodies[1])
+	data, ok := gotOut["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v", gotOut)
+	}
+	if strings.TrimSpace(anyToTestString(data["output"])) != "" {
+		t.Fatalf("expected empty delta output for sleep 0.3, got %#v", data["output"])
+	}
+	screen, ok := data["post_terminal_screen_state"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected post_terminal_screen_state in tool output, got %#v", gotOut)
+	}
+	if !strings.Contains(strings.TrimSpace(anyToTestString(screen["viewport_text"])), "OpenAI Codex") {
+		t.Fatalf("expected viewport_text contains codex screen, got %#v", screen["viewport_text"])
+	}
+}
+
+func extractLastFunctionCallOutput(t *testing.T, req map[string]any) map[string]any {
+	t.Helper()
+	input, ok := req["input"].([]any)
+	if !ok || len(input) == 0 {
+		t.Fatalf("expected request input items, got %#v", req["input"])
+	}
+	last := input[len(input)-1]
+	item, ok := last.(map[string]any)
+	if !ok {
+		t.Fatalf("expected input item object, got %#v", last)
+	}
+	if strings.TrimSpace(anyToTestString(item["type"])) != "function_call_output" {
+		t.Fatalf("expected last item type=function_call_output, got %#v", item)
+	}
+	raw := strings.TrimSpace(anyToTestString(item["output"]))
+	if raw == "" {
+		t.Fatalf("expected non-empty function_call_output")
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		t.Fatalf("decode function_call_output failed: %v raw=%q", err, raw)
+	}
+	return parsed
 }

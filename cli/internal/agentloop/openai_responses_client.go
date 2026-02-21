@@ -314,6 +314,18 @@ func (c *ResponsesClient) CreateResponseStream(ctx context.Context, req CreateRe
 		case "response.function_call_arguments.done":
 			setArguments(event.Arguments, event.ItemID, event.Item.ID, event.Item.CallID)
 			out.ToolCalls = buildToolCalls()
+		case "response.failed":
+			respID := strings.TrimSpace(eventResponseID)
+			if respID == "" {
+				respID = strings.TrimSpace(out.ID)
+			}
+			code := ""
+			message := ""
+			if event.Response.Error != nil {
+				code = strings.TrimSpace(event.Response.Error.Code)
+				message = strings.TrimSpace(event.Response.Error.Message)
+			}
+			return fmt.Errorf("responses api failed response_id=%q code=%q message=%q", respID, code, message)
 		case "response.completed":
 			for _, item := range event.Response.Output {
 				if call, ok := toToolCall(item); ok {
@@ -469,6 +481,15 @@ func parseResponseResult(raw []byte) (*CreateResponseResult, error) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		return nil, err
 	}
+	if strings.EqualFold(strings.TrimSpace(decoded.Status), "failed") {
+		code := ""
+		message := ""
+		if decoded.Error != nil {
+			code = strings.TrimSpace(decoded.Error.Code)
+			message = strings.TrimSpace(decoded.Error.Message)
+		}
+		return nil, fmt.Errorf("responses api failed response_id=%q code=%q message=%q", strings.TrimSpace(decoded.ID), code, message)
+	}
 	out := &CreateResponseResult{ID: strings.TrimSpace(decoded.ID)}
 	for _, item := range decoded.Output {
 		if call, ok := toToolCall(item); ok {
@@ -522,8 +543,15 @@ type responseItem struct {
 }
 
 type responsePayload struct {
-	ID     string         `json:"id"`
-	Output []responseItem `json:"output"`
+	ID     string           `json:"id"`
+	Status string           `json:"status"`
+	Error  *responseFailure `json:"error"`
+	Output []responseItem   `json:"output"`
+}
+
+type responseFailure struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
 }
 
 func responseRequestID(resp *http.Response) string {

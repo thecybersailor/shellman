@@ -22,7 +22,7 @@ func TaskActionToolContractNames() []string {
 }
 
 type WriteStdinTool struct {
-	Exec func(ctx context.Context, taskID, input string) (string, error)
+	Exec func(ctx context.Context, taskID, input string, timeoutMs int) (string, error)
 }
 
 func (t *WriteStdinTool) Name() string { return "write_stdin" }
@@ -36,6 +36,11 @@ func (t *WriteStdinTool) Spec() ResponseToolSpec {
 			"type": "object",
 			"properties": map[string]any{
 				"input": map[string]any{"type": "string"},
+				"timeout_ms": map[string]any{
+					"type":    "integer",
+					"minimum": 100,
+					"maximum": 15000,
+				},
 			},
 			"required": []string{"input"},
 		},
@@ -52,7 +57,8 @@ func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, cal
 		return "", err
 	}
 	req := struct {
-		Input string `json:"input"`
+		Input     string `json:"input"`
+		TimeoutMs int    `json:"timeout_ms"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
 		return "", err
@@ -60,7 +66,14 @@ func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, cal
 	if req.Input == "" {
 		return "", errors.New("INVALID_INPUT")
 	}
-	return t.Exec(ctx, taskID, req.Input)
+	timeoutMs := req.TimeoutMs
+	if timeoutMs <= 0 {
+		timeoutMs = 1800
+	}
+	if timeoutMs < 100 || timeoutMs > 15000 {
+		return "", errors.New("INVALID_TIMEOUT_MS")
+	}
+	return t.Exec(ctx, taskID, req.Input, timeoutMs)
 }
 
 type ExecCommandTool struct {

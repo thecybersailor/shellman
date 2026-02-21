@@ -44,12 +44,14 @@ func TestTaskCurrentSetFlagTool_ValidateAndExecute(t *testing.T) {
 
 func TestWriteStdinTool_SendsRawInputWithoutNewlineAppend(t *testing.T) {
 	var gotInput string
+	var gotTimeout int
 	tool := &WriteStdinTool{
-		Exec: func(ctx context.Context, taskID, input string) (string, error) {
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
 			if taskID != "t1" {
 				t.Fatalf("expected task_id=t1, got %q", taskID)
 			}
 			gotInput = input
+			gotTimeout = timeoutMs
 			return `{"ok":true}`, nil
 		},
 	}
@@ -63,6 +65,22 @@ func TestWriteStdinTool_SendsRawInputWithoutNewlineAppend(t *testing.T) {
 	}
 	if gotInput != "echo hi" {
 		t.Fatalf("expected raw input without newline append, got %q", gotInput)
+	}
+	if gotTimeout != 1800 {
+		t.Fatalf("expected default timeout_ms=1800, got %d", gotTimeout)
+	}
+}
+
+func TestWriteStdinTool_RejectsInvalidTimeout(t *testing.T) {
+	tool := &WriteStdinTool{
+		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"input":"echo hi","timeout_ms":99}`), "call_1")
+	if err == nil || err.Error() != "INVALID_TIMEOUT_MS" {
+		t.Fatalf("expected INVALID_TIMEOUT_MS, got %v", err)
 	}
 }
 
@@ -152,7 +170,7 @@ func TestTaskCurrentTools_RequireTaskContext(t *testing.T) {
 		t.Fatalf("expected TASK_CONTEXT_MISSING, got %v", err)
 	}
 
-	inputTool := &WriteStdinTool{Exec: func(ctx context.Context, taskID, input string) (string, error) {
+	inputTool := &WriteStdinTool{Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, error) {
 		return "", nil
 	}}
 	_, err = inputTool.Execute(context.Background(), json.RawMessage(`{"input":"echo hi"}`), "call_2")
