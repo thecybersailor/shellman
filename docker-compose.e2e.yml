@@ -1,0 +1,52 @@
+services:
+  worker:
+    image: node:20-bookworm
+    working_dir: /workspace/edge/cloudflare
+    command: bash /workspace/scripts/e2e/docker/boot_worker.sh
+    volumes:
+      - ./:/workspace
+    networks:
+      - e2e
+
+  webui:
+    image: node:20-bookworm
+    working_dir: /workspace/webui
+    command: bash /workspace/scripts/e2e/docker/boot_webui.sh
+    volumes:
+      - ./:/workspace
+    networks:
+      - e2e
+
+  cli:
+    image: golang:1.25-bookworm
+    working_dir: /workspace/cli
+    command: bash /workspace/scripts/e2e/docker/boot_cli.sh
+    env_file:
+      - .env.conf.e2e
+    volumes:
+      - ./:/workspace
+    networks:
+      - e2e
+    depends_on:
+      - worker
+      - webui
+
+  e2e-runner:
+    image: mcr.microsoft.com/playwright:v1.58.2-jammy
+    working_dir: /workspace
+    command: bash /workspace/scripts/e2e/docker/run_in_container.sh
+    env_file:
+      - .env.conf.e2e
+    volumes:
+      - ./:/workspace
+      - ./logs:/workspace/logs
+    networks:
+      - e2e
+    depends_on:
+      - worker
+      - webui
+      - cli
+
+networks:
+  e2e:
+    driver: bridge
