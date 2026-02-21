@@ -460,6 +460,7 @@ export function createShellmanStore(
   let ws: WebSocket | null = null;
   let reqID = 0;
   let wsConnectionSeq = 0;
+  let configLoadSeq = 0;
   let lastSelectSent: { target: string; connectionSeq: number } | null = null;
   const paneLookupStatus: Record<string, "bound" | "missing"> = {};
   const selectReqPaneUuidByReqId: Record<string, string> = {};
@@ -2153,11 +2154,16 @@ export function createShellmanStore(
   }
 
   async function loadConfig() {
+    const seq = ++configLoadSeq;
     const res = (await fetchImpl(apiURL("/api/v1/config"), {
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<GlobalConfig>;
     if (!res.ok || !res.data) {
       throw new Error(res.error?.code || "CONFIG_LOAD_FAILED");
+    }
+    // Keep only the latest config response to avoid older in-flight requests clobbering fresh values.
+    if (seq !== configLoadSeq) {
+      return;
     }
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);

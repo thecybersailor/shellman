@@ -401,7 +401,9 @@ func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
 	nextStatus := normalizeSessionStatus(next.Emitted)
 	prevStatus := normalizeSessionStatus(prev.Emitted)
 	if autoProcessArmed && prevStatus != SessionStatusReady && nextStatus == SessionStatusReady {
-		triggerAutoCompletionByPaneWithObservedAt(p.autoComplete, p.target, next.LastActiveAt, p.logger)
+		if !consumeAutoProgressSuppression(p.target, currHash) {
+			triggerAutoCompletionByPaneWithObservedAt(p.autoComplete, p.target, next.LastActiveAt, p.logger)
+		}
 	}
 	if hook != nil {
 		at := next.LastActiveAt

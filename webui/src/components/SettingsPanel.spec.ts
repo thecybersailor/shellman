@@ -17,9 +17,9 @@ describe("SettingsPanel", () => {
         taskCompletionMode: "none",
         taskCompletionCommand: "",
         taskCompletionIdleDuration: 10,
-        helperOpenAIEndpoint: "",
-        helperOpenAIModel: "",
-        helperOpenAIApiKey: ""
+        helperOpenaiEndpoint: "",
+        helperOpenaiModel: "",
+        helperOpenaiApiKey: ""
       },
       global: {
         stubs: {
@@ -130,5 +130,24 @@ describe("SettingsPanel", () => {
       helperOpenAIModel: "gpt-5",
       helperOpenAIApiKey: "sk-test-123"
     });
+  });
+
+  it("resets helper openai fields from props whenever panel reopens", async () => {
+    const wrapper = render();
+    await wrapper.setProps({
+      helperOpenaiEndpoint: "https://openrouter.ai/api/v1",
+      helperOpenaiModel: "openai/gpt-5.2"
+    });
+    const endpointInput = wrapper.get("[data-test-id='shellman-settings-helper-openai-endpoint']");
+    const modelInput = wrapper.get("[data-test-id='shellman-settings-helper-openai-model']");
+
+    await endpointInput.setValue("");
+    await modelInput.setValue("");
+
+    await wrapper.setProps({ show: false });
+    await wrapper.setProps({ show: true });
+
+    expect((endpointInput.element as HTMLInputElement).value).toBe("https://openrouter.ai/api/v1");
+    expect((modelInput.element as HTMLInputElement).value).toBe("openai/gpt-5.2");
   });
 });

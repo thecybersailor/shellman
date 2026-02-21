@@ -467,6 +467,126 @@ func TestLoopRunner_StoreEnabled_DoesNotUsePreviousResponseIDAndBuildsFullContex
 	}
 }
 
+func TestLoopRunner_RefreshesAllowedToolsEachIteration(t *testing.T) {
+	callCount := 0
+	requestBodies := make([]map[string]any, 0, 2)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request body failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		switch callCount {
+		case 1:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "exec_command",
+						"arguments": `{"command":"codex","max_output_tokens":4000}`,
+					},
+				},
+			})
+		case 2:
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_2",
+				"output": []map[string]any{
+					{
+						"type": "message",
+						"content": []map[string]any{
+							{"type": "output_text", "text": "DONE"},
+						},
+					},
+				},
+			})
+		default:
+			t.Fatalf("unexpected call count: %d", callCount)
+		}
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	registry := NewToolRegistry()
+	if err := registry.Register(fakeNamedTool{name: "exec_command"}); err != nil {
+		t.Fatalf("register exec_command failed: %v", err)
+	}
+	if err := registry.Register(fakeNamedTool{name: "task.input_prompt"}); err != nil {
+		t.Fatalf("register task.input_prompt failed: %v", err)
+	}
+	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
+
+	resolverCalls := 0
+	ctx := WithAllowedToolNamesResolver(context.Background(), func() []string {
+		resolverCalls++
+		if resolverCalls == 1 {
+			return []string{"exec_command"}
+		}
+		return []string{"task.input_prompt", "write_stdin"}
+	})
+	out, err := runner.Run(ctx, "use tool")
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	if len(requestBodies) != 2 {
+		t.Fatalf("expected 2 request bodies, got %d", len(requestBodies))
+	}
+	firstTools := requestToolNames(requestBodies[0])
+	secondTools := requestToolNames(requestBodies[1])
+	if len(firstTools) != 1 || firstTools[0] != "exec_command" {
+		t.Fatalf("unexpected first request tools: %#v", firstTools)
+	}
+	if !containsString(secondTools, "task.input_prompt") {
+		t.Fatalf("second request should include task.input_prompt, got %#v", secondTools)
+	}
+	if containsString(secondTools, "exec_command") {
+		t.Fatalf("second request should not include exec_command, got %#v", secondTools)
+	}
+	if resolverCalls < 2 {
+		t.Fatalf("resolver should be called at least twice, got %d", resolverCalls)
+	}
+}
+
+func requestToolNames(req map[string]any) []string {
+	rawTools, ok := req["tools"].([]any)
+	if !ok {
+		return nil
+	}
+	names := make([]string, 0, len(rawTools))
+	for _, item := range rawTools {
+		tool, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		name := strings.TrimSpace(anyToString(tool["name"]))
+		if name == "" {
+			continue
+		}
+		names = append(names, name)
+	}
+	return names
+}
+
+func containsString(items []string, target string) bool {
+	target = strings.TrimSpace(target)
+	for _, item := range items {
+		if strings.TrimSpace(item) == target {
+			return true
+		}
+	}
+	return false
+}
+
 func TestLoopRunner_ToolContract_UsesOnlyActionTools(t *testing.T) {
 	registry := NewToolRegistry()
 	for _, name := range TaskActionToolContractNames() {

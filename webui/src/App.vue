@@ -304,8 +304,19 @@ watch(showAddProjectDialog, (open) => {
   logInfo("shellman.add_project.open.state", { open });
 });
 
-function onOpenSettings(source: "desktop" | "mobile") {
+async function onOpenSettings(source: "desktop" | "mobile") {
   logInfo("shellman.settings.open.request", { source });
+  try {
+    await store.loadConfig();
+    logInfo("shellman.settings.config.reload.done", {
+      helperOpenAIEndpoint: store.state.helperOpenAIEndpoint,
+      helperOpenAIModel: store.state.helperOpenAIModel
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "CONFIG_LOAD_FAILED";
+    notifyError(message);
+    logInfo("shellman.settings.config.reload.failed", { message });
+  }
   showSettingsPanel.value = true;
 }
 

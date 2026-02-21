@@ -22,9 +22,9 @@ const props = withDefaults(defineProps<{
   taskCompletionMode?: TaskCompletionMode;
   taskCompletionCommand?: string;
   taskCompletionIdleDuration?: number;
-  helperOpenAIEndpoint?: string;
-  helperOpenAIModel?: string;
-  helperOpenAIApiKey?: string;
+  helperOpenaiEndpoint?: string;
+  helperOpenaiModel?: string;
+  helperOpenaiApiKey?: string;
   saving?: boolean;
 }>(), {
   defaultLaunchProgram: "shell",
@@ -33,9 +33,9 @@ const props = withDefaults(defineProps<{
   taskCompletionMode: "none",
   taskCompletionCommand: "",
   taskCompletionIdleDuration: 0,
-  helperOpenAIEndpoint: "",
-  helperOpenAIModel: "",
-  helperOpenAIApiKey: "",
+  helperOpenaiEndpoint: "",
+  helperOpenaiModel: "",
+  helperOpenaiApiKey: "",
   saving: false
 });
 
@@ -60,9 +60,22 @@ const enableTaskCompletionCommand = ref(props.taskCompletionMode === "command");
 const localTaskCompletionCommand = ref(props.taskCompletionCommand);
 const localTaskCompletionIdleDuration = ref(Math.max(0, props.taskCompletionIdleDuration ?? 0));
 const selectedDelayPreset = ref<DelayPreset>(resolveDelayPreset(props.taskCompletionIdleDuration));
-const localHelperOpenAIEndpoint = ref(props.helperOpenAIEndpoint);
-const localHelperOpenAIModel = ref(props.helperOpenAIModel);
-const localHelperOpenAIApiKey = ref(props.helperOpenAIApiKey);
+const localHelperOpenAIEndpoint = ref(props.helperOpenaiEndpoint);
+const localHelperOpenAIModel = ref(props.helperOpenaiModel);
+const localHelperOpenAIApiKey = ref(props.helperOpenaiApiKey);
+
+function syncLocalFieldsFromProps() {
+  localDefaultProgram.value = props.defaultLaunchProgram;
+  localDefaultHelperProgram.value = props.defaultHelperProgram;
+  enableTaskCompletionCommand.value = props.taskCompletionMode === "command";
+  localTaskCompletionCommand.value = props.taskCompletionCommand;
+  const duration = Math.max(0, props.taskCompletionIdleDuration ?? 0);
+  localTaskCompletionIdleDuration.value = duration;
+  selectedDelayPreset.value = resolveDelayPreset(duration);
+  localHelperOpenAIEndpoint.value = props.helperOpenaiEndpoint;
+  localHelperOpenAIModel.value = props.helperOpenaiModel;
+  localHelperOpenAIApiKey.value = props.helperOpenaiApiKey;
+}
 
 const actionInputPlaceholder = computed(() => t("settings.actionInputPlaceholder"));
 const sessionProgramOptions = computed(() => {
@@ -123,19 +136,19 @@ watch(
   }
 );
 watch(
-  () => props.helperOpenAIEndpoint,
+  () => props.helperOpenaiEndpoint,
   (value) => {
     localHelperOpenAIEndpoint.value = value;
   }
 );
 watch(
-  () => props.helperOpenAIModel,
+  () => props.helperOpenaiModel,
   (value) => {
     localHelperOpenAIModel.value = value;
   }
 );
 watch(
-  () => props.helperOpenAIApiKey,
+  () => props.helperOpenaiApiKey,
   (value) => {
     localHelperOpenAIApiKey.value = value;
   }
@@ -148,6 +161,14 @@ watch(enableTaskCompletionCommand, (value) => {
 watch(selectedDelayPreset, (value) => {
   localTaskCompletionIdleDuration.value = Number(value);
 });
+watch(
+  () => props.show,
+  (open) => {
+    if (open) {
+      syncLocalFieldsFromProps();
+    }
+  }
+);
 
 function resolveDelayPreset(value?: number): DelayPreset {
   if (value === 60) {

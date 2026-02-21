@@ -77,10 +77,6 @@ func (r *LoopRunner) run(
 	historyInputItems := make([]map[string]any, 0, 8)
 	historyInputItems = append(historyInputItems, buildUserMessageInputItem(userPrompt))
 	req := CreateResponseRequest{Store: boolPtr(storeEnabled)}
-	allowedTools := allowedToolNameSetFromContext(ctx)
-	if r.tools != nil {
-		req.Tools = r.resolveToolSpecs(allowedTools)
-	}
 	if fullContextRoundtrip {
 		req.Input = cloneResponseInputItems(historyInputItems)
 	} else {
@@ -89,6 +85,10 @@ func (r *LoopRunner) run(
 	lastResponseTrace := ""
 
 	for i := 0; i < r.options.MaxIterations; i++ {
+		allowedTools := allowedToolNameSetFromContext(ctx)
+		if r.tools != nil {
+			req.Tools = r.resolveToolSpecs(allowedTools)
+		}
 		reqSummary := summarizeCreateResponseRequest(req)
 		if onToolEvent != nil {
 			onToolEvent(map[string]any{
@@ -345,9 +345,6 @@ func (r *LoopRunner) run(
 		}
 		nextReq := CreateResponseRequest{
 			Store: boolPtr(storeEnabled),
-		}
-		if r.tools != nil {
-			nextReq.Tools = r.resolveToolSpecs(allowedTools)
 		}
 		if fullContextRoundtrip {
 			historyInputItems = append(historyInputItems, replayCalls...)

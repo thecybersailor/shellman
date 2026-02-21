@@ -12,6 +12,7 @@ func TaskActionToolContractNames() []string {
 		"task.current.set_flag",
 		"write_stdin",
 		"exec_command",
+		"readfile",
 		"task.input_prompt",
 		"task.child.get_context",
 		"task.child.get_tty_output",
@@ -130,6 +131,62 @@ func (t *ExecCommandTool) Execute(ctx context.Context, input json.RawMessage, ca
 		return "", errors.New("INVALID_MAX_OUTPUT_TOKENS")
 	}
 	return t.Exec(ctx, taskID, command, maxOutputTokens)
+}
+
+type ReadFileTool struct {
+	Exec func(ctx context.Context, taskID, path string, maxChars int) (string, error)
+}
+
+func (t *ReadFileTool) Name() string { return "readfile" }
+
+func (t *ReadFileTool) Spec() ResponseToolSpec {
+	return ResponseToolSpec{
+		Type:        "function",
+		Name:        t.Name(),
+		Description: "Read file content under current task repo root with optional max_chars clipping.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"path": map[string]any{"type": "string"},
+				"max_chars": map[string]any{
+					"type":    "integer",
+					"minimum": 128,
+					"maximum": 200000,
+				},
+			},
+			"required": []string{"path"},
+		},
+	}
+}
+
+func (t *ReadFileTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+	_ = callID
+	if t == nil || t.Exec == nil {
+		return "", errors.New("READFILE_EXEC_UNAVAILABLE")
+	}
+	taskID, err := currentTaskIDFromContext(ctx)
+	if err != nil {
+		return "", err
+	}
+	req := struct {
+		Path     string `json:"path"`
+		MaxChars int    `json:"max_chars"`
+	}{}
+	if err := json.Unmarshal(input, &req); err != nil {
+		return "", err
+	}
+	path := strings.TrimSpace(req.Path)
+	if path == "" {
+		return "", errors.New("INVALID_PATH")
+	}
+	maxChars := req.MaxChars
+	if maxChars <= 0 {
+		maxChars = 24000
+	}
+	if maxChars < 128 || maxChars > 200000 {
+		return "", errors.New("INVALID_MAX_CHARS")
+	}
+	return t.Exec(ctx, taskID, path, maxChars)
 }
 
 type TaskInputPromptTool struct {

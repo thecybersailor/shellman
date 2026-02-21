@@ -2,14 +2,17 @@ package localapi
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
 
+	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
 )
 
@@ -24,6 +27,16 @@ type completionDispatchDecision struct {
 	Reason           string
 	NotifyEnabled    bool
 	NotifyCommandSet bool
+}
+
+type taskCompletionContextCacheEntry struct {
+	ModTime time.Time
+	Content string
+}
+
+type taskCompletionContextDocument struct {
+	Path    string `json:"path"`
+	Content string `json:"content"`
 }
 
 func (s *Server) evaluateTaskCompletionDispatch() completionDispatchDecision {
@@ -344,7 +357,9 @@ func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID 
 	input.PrevStatusMessage = strings.TrimSpace(entry.FlagDesc)
 	input.TTY = s.buildTaskTTYContext(store, entry, input.TaskID)
 	input.ParentTask, input.ChildTasks = s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), input.TaskID)
-	input.HistoryBlock, _ = s.buildTaskHistoryBlock(store, input.TaskID)
+	historyBlock, _ := s.buildTaskHistoryBlock(store, input.TaskID)
+	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
+	input.HistoryBlock = mergeTaskCompletionContextIntoHistory(taskContext, historyBlock)
 	return input
 }
 
@@ -356,6 +371,7 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 	tty := s.buildTaskTTYContext(store, entry, strings.TrimSpace(taskID))
 	parent, children := s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), strings.TrimSpace(taskID))
 	historyBlock, historyMeta := s.buildTaskHistoryBlock(store, strings.TrimSpace(taskID))
+	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
 	return buildTaskAgentUserPrompt(
 		userInput,
 		strings.TrimSpace(entry.Flag),
@@ -363,8 +379,91 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 		tty,
 		parent,
 		children,
-		historyBlock,
+		mergeTaskCompletionContextIntoHistory(taskContext, historyBlock),
 	), historyMeta
+}
+
+func (s *Server) loadTaskCompletionContext(projectID string) []taskCompletionContextDocument {
+	projectID = strings.TrimSpace(projectID)
+	if projectID != "" {
+		if repoRoot, err := s.findProjectRepoRoot(projectID); err == nil {
+			path := filepath.Join(strings.TrimSpace(repoRoot), "AGENTS-SIDECAR.md")
+			if content := s.readTaskCompletionContextFile(path); content != "" {
+				return []taskCompletionContextDocument{{
+					Path:    path,
+					Content: content,
+				}}
+			}
+		}
+	}
+	if configDir, err := global.DefaultConfigDir(); err == nil {
+		path := filepath.Join(strings.TrimSpace(configDir), "AGENTS-SIDECAR.md")
+		if content := s.readTaskCompletionContextFile(path); content != "" {
+			return []taskCompletionContextDocument{{
+				Path:    path,
+				Content: content,
+			}}
+		}
+	}
+	return nil
+}
+
+func (s *Server) readTaskCompletionContextFile(path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return ""
+	}
+	stat, err := os.Stat(path)
+	if err != nil {
+		if s != nil {
+			s.taskCompletionContextMu.Lock()
+			delete(s.taskCompletionContextCache, path)
+			s.taskCompletionContextMu.Unlock()
+		}
+		return ""
+	}
+	if s != nil {
+		s.taskCompletionContextMu.Lock()
+		if cached, ok := s.taskCompletionContextCache[path]; ok && cached.ModTime.Equal(stat.ModTime()) {
+			content := cached.Content
+			s.taskCompletionContextMu.Unlock()
+			return content
+		}
+		s.taskCompletionContextMu.Unlock()
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	content := strings.TrimSpace(string(raw))
+	if s != nil {
+		s.taskCompletionContextMu.Lock()
+		if s.taskCompletionContextCache == nil {
+			s.taskCompletionContextCache = map[string]taskCompletionContextCacheEntry{}
+		}
+		s.taskCompletionContextCache[path] = taskCompletionContextCacheEntry{
+			ModTime: stat.ModTime(),
+			Content: content,
+		}
+		s.taskCompletionContextMu.Unlock()
+	}
+	return content
+}
+
+func mergeTaskCompletionContextIntoHistory(taskContextDocs []taskCompletionContextDocument, historyBlock string) string {
+	historyBlock = strings.TrimSpace(historyBlock)
+	if len(taskContextDocs) == 0 {
+		return historyBlock
+	}
+	raw, err := json.Marshal(taskContextDocs)
+	if err != nil {
+		return historyBlock
+	}
+	contextBlock := string(raw)
+	if historyBlock == "" {
+		return contextBlock
+	}
+	return contextBlock + "\n\n" + historyBlock
 }
 
 func (s *Server) buildUserPrompt(taskID, userInput string) string {

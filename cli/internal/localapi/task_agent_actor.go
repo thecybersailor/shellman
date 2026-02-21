@@ -321,10 +321,11 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		ResponsesStore:      evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
 		DisableStoreContext: evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
 	})
-	toolMode, currentCommand, allowedToolNames := resolveTaskAgentToolModeAndNames(store, projectID, taskID)
-	if len(allowedToolNames) > 0 {
-		scopeCtx = agentloop.WithAllowedToolNames(scopeCtx, allowedToolNames)
-	}
+	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID)
+	scopeCtx = agentloop.WithAllowedToolNamesResolver(scopeCtx, func() []string {
+		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID)
+		return names
+	})
 	reply := ""
 	runErr := error(nil)
 	responsesStore := evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore
@@ -592,6 +593,11 @@ const (
 )
 
 func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
+	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
+	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode)
+}
+
+func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID string) (string, string) {
 	currentCommand := ""
 	sidecarMode := projectstate.SidecarModeAdvisor
 	if store != nil && strings.TrimSpace(projectID) != "" && strings.TrimSpace(taskID) != "" {
@@ -608,6 +614,15 @@ func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, task
 			}
 		}
 	}
+	return currentCommand, sidecarMode
+}
+
+func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode string) (string, string, []string) {
+	currentCommand = strings.TrimSpace(currentCommand)
+	if !validSidecarMode(sidecarMode) {
+		sidecarMode = projectstate.SidecarModeAdvisor
+	}
+	sidecarMode = normalizeSidecarMode(sidecarMode)
 	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
 	names := []string{
 		"task.current.set_flag",
@@ -631,13 +646,45 @@ func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, task
 	}
 	switch mode {
 	case taskAgentToolModeAIAgent:
-		names = append(names, "task.input_prompt", "write_stdin")
+		names = append(names, "task.input_prompt", "readfile", "write_stdin")
 	case taskAgentToolModeShell:
-		names = append(names, "exec_command", "write_stdin")
+		names = append(names, "exec_command", "readfile", "write_stdin")
 	default:
-		names = append(names, "write_stdin")
+		names = append(names, "readfile", "write_stdin")
 	}
 	return string(mode), currentCommand, names
+}
+
+func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
+	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
+	if normalizeSidecarMode(sidecarMode) == projectstate.SidecarModeAutopilot {
+		if paneCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID)); paneCommand != "" {
+			currentCommand = paneCommand
+		}
+	}
+	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode)
+}
+
+func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID string) string {
+	if s == nil || store == nil {
+		return ""
+	}
+	panes, err := store.LoadPanes()
+	if err != nil {
+		return ""
+	}
+	binding, ok := panes[strings.TrimSpace(taskID)]
+	if !ok {
+		return ""
+	}
+	target := strings.TrimSpace(binding.PaneTarget)
+	if target == "" {
+		target = strings.TrimSpace(binding.PaneID)
+	}
+	if target == "" {
+		return ""
+	}
+	return strings.TrimSpace(s.detectPaneCurrentCommand(target))
 }
 
 func resolveTaskAgentToolModeFromCommand(command string) taskAgentToolMode {

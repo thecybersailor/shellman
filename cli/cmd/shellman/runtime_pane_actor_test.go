@@ -340,6 +340,7 @@ func TestPaneActor_SubscribeSendsResetBeforeRealtimeAppend(t *testing.T) {
 }
 
 func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
+	resetAutoProgressSuppressionForTest()
 	oldStatusInterval := statusPumpInterval
 	oldStreamInterval := streamPumpInterval
 	oldDelay := statusTransitionDelay
@@ -639,5 +640,38 @@ func TestPaneActor_HashSamplingUsesFastStabilizationWindow(t *testing.T) {
 	actor.emitStatus("same\n", base.Add(2400*time.Millisecond))
 	if got := normalizeSessionStatus(actor.statusState.Emitted); got != SessionStatusReady {
 		t.Fatalf("expected ready after fast delay, got %s", got)
+	}
+}
+
+func TestPaneActor_ReadyEdgeSuppressedWhenHashAlreadyConsumedByTool(t *testing.T) {
+	resetAutoProgressSuppressionForTest()
+	target := "e2e:0.0"
+	tmuxService := &commandAwareTmux{
+		streamPumpTmux: streamPumpTmux{
+			history:       "hello\n",
+			paneSnapshots: []string{"boot$\n", "run$\n", "run$\n", "next$\n", "next$\n"},
+			cursors:       [][2]int{{0, 0}, {0, 0}, {0, 0}, {0, 0}, {0, 0}},
+		},
+		title:   "e2e",
+		command: "codex",
+	}
+	var autoCompleteCalls atomic.Int32
+	autoComplete := func(paneTarget string, observedLastActiveAt time.Time) (localapi.AutoCompleteByPaneResult, error) {
+		autoCompleteCalls.Add(1)
+		return localapi.AutoCompleteByPaneResult{Triggered: true, Status: "completed"}, nil
+	}
+	actor := NewPaneActor(target, tmuxService, 20*time.Millisecond, nil, autoComplete, nil, testLogger())
+	base := time.Now().UTC()
+
+	actor.emitStatus("boot$\n", base)
+	actor.emitStatus("run$\n", base.Add(20*time.Millisecond))
+	registerAutoProgressSuppression(target, sha1Text(normalizeTermSnapshot("run$\n")), true)
+	actor.emitStatus("run$\n", base.Add(2400*time.Millisecond))
+	actor.emitStatus("run$\n", base.Add(5000*time.Millisecond))
+	if got := autoCompleteCalls.Load(); got != 0 {
+		t.Fatalf("expected suppressed ready edge not to trigger auto-complete, got %d", got)
+	}
+	if consumeAutoProgressSuppression(target, sha1Text(normalizeTermSnapshot("run$\n"))) {
+		t.Fatal("expected suppression entry consumed by first ready edge check")
 	}
 }

@@ -247,6 +247,30 @@ test.describe("shellman local web full chain (docker)", () => {
     await expect(activeTerminalInput(page)).toBeAttached();
   });
 
+  test("settings keeps helper openai endpoint/model visible after save and refresh", async ({ page }) => {
+    const endpoint = `https://openrouter.ai/api/v1/${Date.now()}`;
+    const model = `openai/gpt-5-mini-${Date.now()}`;
+    await page.goto(visitURL);
+
+    await page.getByRole("button", { name: "Settings" }).first().click();
+    await page.getByTestId("shellman-settings-helper-openai-endpoint").first().fill(endpoint);
+    await page.getByTestId("shellman-settings-helper-openai-model").first().fill(model);
+    await page.getByTestId("shellman-settings-save").first().click();
+    await expect(page.getByTestId("shellman-settings-save").first()).toBeHidden();
+
+    await page.waitForTimeout(1000);
+    await page.getByRole("button", { name: "Settings" }).first().click();
+    await expect(page.getByTestId("shellman-settings-helper-openai-endpoint").first()).toHaveValue(endpoint);
+    await expect(page.getByTestId("shellman-settings-helper-openai-model").first()).toHaveValue(model);
+    await page.keyboard.press("Escape");
+
+    await page.waitForTimeout(1000);
+    await page.reload();
+    await page.getByRole("button", { name: "Settings" }).first().click();
+    await expect(page.getByTestId("shellman-settings-helper-openai-endpoint").first()).toHaveValue(endpoint);
+    await expect(page.getByTestId("shellman-settings-helper-openai-model").first()).toHaveValue(model);
+  });
+
   test("live output and task switch still interactive", async ({ page, request }) => {
     const seeded = await seedProject(request);
     await page.goto(visitURL);

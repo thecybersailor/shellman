@@ -132,6 +132,48 @@ func TestTaskInputPromptTool_DoesNotDuplicateEnter(t *testing.T) {
 	}
 }
 
+func TestReadFileTool_ValidateAndExecute(t *testing.T) {
+	var gotPath string
+	var gotMaxChars int
+	tool := &ReadFileTool{
+		Exec: func(ctx context.Context, taskID, path string, maxChars int) (string, error) {
+			if taskID != "t1" {
+				t.Fatalf("expected task_id=t1, got %q", taskID)
+			}
+			gotPath = path
+			gotMaxChars = maxChars
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	out, err := tool.Execute(ctx, json.RawMessage(`{"path":"README.md"}`), "call_1")
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if out != `{"ok":true}` {
+		t.Fatalf("unexpected output: %s", out)
+	}
+	if gotPath != "README.md" {
+		t.Fatalf("unexpected path: %q", gotPath)
+	}
+	if gotMaxChars != 24000 {
+		t.Fatalf("expected default max_chars=24000, got %d", gotMaxChars)
+	}
+}
+
+func TestReadFileTool_RejectsInvalidMaxChars(t *testing.T) {
+	tool := &ReadFileTool{
+		Exec: func(ctx context.Context, taskID, path string, maxChars int) (string, error) {
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	_, err := tool.Execute(ctx, json.RawMessage(`{"path":"README.md","max_chars":64}`), "call_1")
+	if err == nil || err.Error() != "INVALID_MAX_CHARS" {
+		t.Fatalf("expected INVALID_MAX_CHARS, got %v", err)
+	}
+}
+
 func TestTaskChildSendMessageTool_ValidateInput(t *testing.T) {
 	tool := &TaskChildSendMessageTool{Exec: func(context.Context, string, string, string) (string, error) {
 		return `{"ok":true}`, nil
@@ -184,6 +226,7 @@ func TestTaskTools_ToolContract_OnlyActionTools(t *testing.T) {
 		"task.current.set_flag",
 		"write_stdin",
 		"exec_command",
+		"readfile",
 		"task.input_prompt",
 		"task.child.get_context",
 		"task.child.get_tty_output",

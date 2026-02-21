@@ -678,6 +678,11 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 			postState := buildPostTerminalScreenState(postScreen)
 			postState["hash_changed"] = hashChanged
 			postState["timeout_ms"] = timeoutMs
+			registerAutoProgressSuppression(
+				fmt.Sprint(postState["pane_target"]),
+				fmt.Sprint(postState["snapshot_hash"]),
+				hashChanged,
+			)
 			return attachPostTerminalScreenState(rawResp, postState), nil
 		},
 	}); err != nil {
@@ -717,10 +722,10 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 			raw, _ := json.Marshal(map[string]any{
 				"ok": true,
 				"data": map[string]any{
-					"task_id":                    strings.TrimSpace(taskID),
-					"command":                    strings.TrimSpace(command),
-					"output":                     delta,
-					"truncated":                  truncated,
+					"task_id":   strings.TrimSpace(taskID),
+					"command":   strings.TrimSpace(command),
+					"output":    delta,
+					"truncated": truncated,
 					"post_terminal_screen_state": map[string]any{
 						"pane_target":     strings.TrimSpace(postScreen.PaneTarget),
 						"current_command": strings.TrimSpace(postScreen.CurrentCommand),
@@ -728,6 +733,45 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 						"snapshot_hash":   snapshotHash(postScreen.Output),
 						"hash_changed":    hashChanged,
 					},
+				},
+			})
+			registerAutoProgressSuppression(strings.TrimSpace(postScreen.PaneTarget), snapshotHash(postScreen.Output), hashChanged)
+			return string(raw), nil
+		},
+	}); err != nil {
+		return nil, endpoint, model
+	}
+	if err := registry.Register(&agentloop.ReadFileTool{
+		Exec: func(_ context.Context, taskID, path string, maxChars int) (string, error) {
+			query := url.Values{}
+			query.Set("path", strings.TrimSpace(path))
+			body, err := callTaskTool(http.MethodGet, "/api/v1/tasks/"+url.PathEscape(strings.TrimSpace(taskID))+"/files/content?"+query.Encode(), nil)
+			if err != nil {
+				return "", err
+			}
+			var res struct {
+				Data struct {
+					Content string `json:"content"`
+					Path    string `json:"path"`
+				} `json:"data"`
+			}
+			if err := json.Unmarshal([]byte(body), &res); err != nil {
+				return "", err
+			}
+			content := res.Data.Content
+			truncated := false
+			if maxChars > 0 && len(content) > maxChars {
+				content = content[:maxChars]
+				truncated = true
+			}
+			raw, _ := json.Marshal(map[string]any{
+				"ok": true,
+				"data": map[string]any{
+					"task_id":    strings.TrimSpace(taskID),
+					"path":       strings.TrimSpace(res.Data.Path),
+					"content":    content,
+					"truncated":  truncated,
+					"total_chars": len(res.Data.Content),
 				},
 			})
 			return string(raw), nil
@@ -741,11 +785,49 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 			if normalizedPrompt == "" {
 				return "", errors.New("INVALID_PROMPT")
 			}
+			promptText := strings.TrimRight(normalizedPrompt, "\r\n")
+			if strings.TrimSpace(promptText) == "" {
+				return "", errors.New("INVALID_PROMPT")
+			}
+			beforeScreen, _ := getTaskPaneScreen(taskID)
 			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
-			return callTaskTool(http.MethodPost, path, map[string]any{
+			if _, err := callTaskTool(http.MethodPost, path, map[string]any{
 				"source": "tty_write_stdin",
-				"input":  normalizedPrompt,
+				"input":  promptText,
+			}); err != nil {
+				return "", err
+			}
+			time.Sleep(50 * time.Millisecond)
+			rawResp, err := callTaskTool(http.MethodPost, path, map[string]any{
+				"source": "tty_write_stdin",
+				"input":  "\r",
 			})
+			if err != nil {
+				return "", err
+			}
+			timeoutMs := 3000
+			waitTimeout := time.Duration(timeoutMs) * time.Millisecond
+			postScreen, hashChanged, waitErr := waitTaskPaneStable(taskID, beforeScreen.Output, waitTimeout)
+			if waitErr != nil {
+				latest, latestErr := getTaskPaneScreen(taskID)
+				if latestErr == nil {
+					postScreen = latest
+					hashChanged = snapshotHash(latest.Output) != snapshotHash(beforeScreen.Output)
+					waitErr = nil
+				}
+			}
+			if waitErr != nil {
+				return rawResp, nil
+			}
+			postState := buildPostTerminalScreenState(postScreen)
+			postState["hash_changed"] = hashChanged
+			postState["timeout_ms"] = timeoutMs
+			registerAutoProgressSuppression(
+				fmt.Sprint(postState["pane_target"]),
+				fmt.Sprint(postState["snapshot_hash"]),
+				hashChanged,
+			)
+			return attachPostTerminalScreenState(rawResp, postState), nil
 		},
 	}); err != nil {
 		return nil, endpoint, model

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sync"
 
 	"shellman/cli/internal/fsbrowser"
 	"shellman/cli/internal/global"
@@ -84,6 +85,9 @@ type Server struct {
 
 	taskAgentSupervisor *taskAgentLoopSupervisor
 	externalEventSink   func(topic, projectID, taskID string, payload map[string]any)
+
+	taskCompletionContextMu    sync.Mutex
+	taskCompletionContextCache map[string]taskCompletionContextCacheEntry
 }
 
 func NewServer(deps Deps) *Server {

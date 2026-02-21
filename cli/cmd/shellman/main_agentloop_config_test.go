@@ -258,6 +258,176 @@ func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testi
 	}
 }
 
+func TestBuildAgentLoopRunner_TaskInputPromptIncludesPostTerminalScreenState(t *testing.T) {
+	var requestBodies []map[string]any
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var req map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			t.Fatalf("decode request failed: %v", err)
+		}
+		requestBodies = append(requestBodies, req)
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "task.input_prompt",
+						"arguments": `{"prompt":"请继续执行"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "ok"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := config.Config{}
+	helperStore := &fakeAgentHelperConfigStore{
+		cfg: helperconfig.OpenAIConfig{
+			Endpoint: srv.URL,
+			Model:    "gpt-5-mini",
+			APIKey:   "test-key",
+		},
+	}
+
+	paneGetCount := 0
+	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		switch {
+		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
+			paneGetCount++
+			snapshot := "OpenAI Codex (v0.104.0)"
+			if paneGetCount >= 2 {
+				snapshot = "OpenAI Codex (v0.104.0)\\n任务已接收"
+			}
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"pane_target":"botworks:8.0","current_command":"codex (/Users/wanglei/.)","snapshot":{"output":"` + snapshot + `","cursor":{"x":1,"y":2}}}}`, nil
+		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
+		default:
+			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
+		}
+	}
+
+	runner, _, _ := buildAgentLoopRunner(cfg, helperStore, httpExec)
+	if runner == nil {
+		t.Fatal("expected non-nil agent loop runner")
+	}
+	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	if _, err := runner.Run(ctx, "start codex"); err != nil {
+		t.Fatalf("runner run failed: %v", err)
+	}
+	if len(requestBodies) < 2 {
+		t.Fatalf("expected at least 2 requests, got %d", len(requestBodies))
+	}
+	gotOut := extractLastFunctionCallOutput(t, requestBodies[1])
+	screen, ok := gotOut["data"].(map[string]any)["post_terminal_screen_state"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected post_terminal_screen_state in tool output, got %#v", gotOut)
+	}
+	if !strings.Contains(strings.TrimSpace(anyToTestString(screen["viewport_text"])), "任务已接收") {
+		t.Fatalf("expected viewport_text contains updated screen, got %#v", screen["viewport_text"])
+	}
+	if timeout, _ := screen["timeout_ms"].(float64); timeout != 3000 {
+		t.Fatalf("expected timeout_ms=3000, got %#v", screen["timeout_ms"])
+	}
+}
+
+func TestBuildAgentLoopRunner_TaskInputPromptSplitsPromptAndEnterWrites(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		if callCount == 1 {
+			_ = json.NewEncoder(w).Encode(map[string]any{
+				"id": "resp_1",
+				"output": []map[string]any{
+					{
+						"type":      "function_call",
+						"id":        "fc_1",
+						"call_id":   "call_1",
+						"name":      "task.input_prompt",
+						"arguments": `{"prompt":"请继续执行"}`,
+					},
+				},
+			})
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_2",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "ok"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	cfg := config.Config{}
+	helperStore := &fakeAgentHelperConfigStore{
+		cfg: helperconfig.OpenAIConfig{
+			Endpoint: srv.URL,
+			Model:    "gpt-5-mini",
+			APIKey:   "test-key",
+		},
+	}
+
+	paneGetCount := 0
+	var ttyInputs []string
+	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		switch {
+		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
+			paneGetCount++
+			snapshot := "OpenAI Codex (v0.104.0)"
+			if paneGetCount >= 2 {
+				snapshot = "OpenAI Codex (v0.104.0)\\n任务已接收"
+			}
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"pane_target":"botworks:8.0","current_command":"codex (/Users/wanglei/.)","snapshot":{"output":"` + snapshot + `","cursor":{"x":1,"y":2}}}}`, nil
+		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
+			var payload map[string]any
+			if err := json.Unmarshal([]byte(body), &payload); err != nil {
+				t.Fatalf("decode body failed: %v", err)
+			}
+			if strings.TrimSpace(anyToTestString(payload["source"])) == "tty_write_stdin" {
+				ttyInputs = append(ttyInputs, anyToTestString(payload["input"]))
+			}
+			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
+		default:
+			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
+		}
+	}
+
+	runner, _, _ := buildAgentLoopRunner(cfg, helperStore, httpExec)
+	if runner == nil {
+		t.Fatal("expected non-nil agent loop runner")
+	}
+	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	if _, err := runner.Run(ctx, "start codex"); err != nil {
+		t.Fatalf("runner run failed: %v", err)
+	}
+	want := []string{"请继续执行", "\r"}
+	if !reflect.DeepEqual(ttyInputs, want) {
+		t.Fatalf("expected split tty_write_stdin inputs %#v, got %#v", want, ttyInputs)
+	}
+}
+
 func TestBuildAgentLoopRunner_ExecCommandIncludesPostTerminalScreenStateWhenDeltaEmpty(t *testing.T) {
 	var requestBodies []map[string]any
 	callCount := 0
