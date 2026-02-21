@@ -1,0 +1,88 @@
+# Build Validation System
+# Automated validation chain using Makefile's native dependency mechanism
+
+.PHONY: validate-all validate-quick validate-clean validate-status validate-task-system validate-e2e-entry-guard
+.PHONY: validate-api-types validate-cli-tests validate-worker-tests validate-webui-types validate-webui-tests
+
+STATUS_DIR := .build-status
+STATUS_API_TYPES := $(STATUS_DIR)/api-types.status
+STATUS_CLI_TESTS := $(STATUS_DIR)/cli-tests.status
+STATUS_WORKER_TESTS := $(STATUS_DIR)/worker-tests.status
+STATUS_WEBUI_TYPES := $(STATUS_DIR)/webui-types.status
+STATUS_WEBUI_TESTS := $(STATUS_DIR)/webui-tests.status
+
+CLI_SRC_FILES := $(shell find cli -type f -name '*.go' 2>/dev/null)
+CLI_SWAGGER_FILES := $(shell find cli/Makefile.swagger cli/scripts -type f 2>/dev/null)
+WORKER_SRC_FILES := $(shell find ../edge/cloudflare -type f \( -name '*.ts' -o -name '*.js' -o -name 'package*.json' \) 2>/dev/null)
+WEBUI_FILES := $(shell find webui/src webui/package.json webui/tsconfig*.json webui/vite.config.* webui/vitest*.config.* -type f 2>/dev/null)
+
+$(STATUS_DIR):
+	@mkdir -p $(STATUS_DIR)
+
+validate-all: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_TESTS)
+	@echo ""
+	@echo "✅ All validations passed!"
+
+validate-quick: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES)
+	@echo ""
+	@echo "✅ Quick validation passed!"
+
+validate-clean:
+	@echo "🧹 Cleaning validation status files..."
+	@rm -rf $(STATUS_DIR)
+	@echo "✅ Cleaned"
+
+validate-status:
+	@echo "📊 Validation Status:"
+	@echo ""
+	@if [ -f $(STATUS_API_TYPES) ]; then echo "  ✓ API Types"; else echo "  ✗ API Types: Not validated"; fi
+	@if [ -f $(STATUS_CLI_TESTS) ]; then echo "  ✓ CLI Tests"; else echo "  ✗ CLI Tests: Not validated"; fi
+	@if [ -f $(STATUS_WORKER_TESTS) ]; then echo "  ✓ Worker Tests"; else echo "  ✗ Worker Tests: Not validated"; fi
+	@if [ -f $(STATUS_WEBUI_TYPES) ]; then echo "  ✓ WebUI Types"; else echo "  ✗ WebUI Types: Not validated"; fi
+	@if [ -f $(STATUS_WEBUI_TESTS) ]; then echo "  ✓ WebUI Tests"; else echo "  ✗ WebUI Tests: Not validated"; fi
+
+$(STATUS_API_TYPES): $(STATUS_DIR) $(CLI_SRC_FILES) $(CLI_SWAGGER_FILES)
+	@echo "🔄 Generating API types..."
+	@cd cli && $(MAKE) -f Makefile.swagger swagger-sdk-localapi
+	@touch $(STATUS_API_TYPES)
+	@echo "✅ API types generated"
+
+validate-api-types: $(STATUS_API_TYPES)
+
+$(STATUS_CLI_TESTS): $(STATUS_DIR) $(CLI_SRC_FILES)
+	@echo "🔄 Running CLI tests..."
+	@cd cli && go test ./...
+	@touch $(STATUS_CLI_TESTS)
+	@echo "✅ CLI tests validated"
+
+validate-cli-tests: $(STATUS_CLI_TESTS)
+
+$(STATUS_WORKER_TESTS): $(STATUS_DIR) $(WORKER_SRC_FILES)
+	@echo "🔄 Running worker tests..."
+	@cd ../edge/cloudflare && npm test
+	@touch $(STATUS_WORKER_TESTS)
+	@echo "✅ Worker tests validated"
+
+validate-worker-tests: $(STATUS_WORKER_TESTS)
+
+$(STATUS_WEBUI_TYPES): $(STATUS_DIR) $(STATUS_API_TYPES) $(WEBUI_FILES)
+	@echo "🔄 Validating WebUI types..."
+	@cd webui && npx vue-tsc --noEmit
+	@touch $(STATUS_WEBUI_TYPES)
+	@echo "✅ WebUI types validated"
+
+validate-webui-types: $(STATUS_WEBUI_TYPES)
+
+$(STATUS_WEBUI_TESTS): $(STATUS_DIR) $(STATUS_WEBUI_TYPES) $(WEBUI_FILES)
+	@echo "🔄 Running WebUI tests..."
+	@cd webui && npm test
+	@touch $(STATUS_WEBUI_TESTS)
+	@echo "✅ WebUI tests validated"
+
+validate-webui-tests: $(STATUS_WEBUI_TESTS)
+
+validate-task-system:
+	@./scripts/validate-task-system.sh
+
+validate-e2e-entry-guard:
+	@./scripts/validate-e2e-entry-guard.sh

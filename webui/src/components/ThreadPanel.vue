@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
@@ -36,13 +36,91 @@ const emit = defineEmits<{
 
 const draftTitle = ref(String(props.taskTitle ?? ""));
 const draftDescription = ref(String(props.taskDescription ?? ""));
+const promptDraft = ref("");
 const autopilotEnabled = ref(Boolean(props.autopilot));
+const scopeKey = computed(() => `task:${String(props.taskId ?? "").trim()}`);
+const storageKey = computed(() => `shellman.project-panel.thread.${scopeKey.value}`);
+const prevTaskTitle = ref(String(props.taskTitle ?? ""));
+const prevTaskDescription = ref(String(props.taskDescription ?? ""));
+
+type ThreadDraftSnapshot = {
+  titleDraft?: string;
+  descriptionDraft?: string;
+  promptDraft?: string;
+};
+
+function readDraftSnapshot(): ThreadDraftSnapshot | null {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(storageKey.value);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      titleDraft: typeof parsed.titleDraft === "string" ? parsed.titleDraft : undefined,
+      descriptionDraft: typeof parsed.descriptionDraft === "string" ? parsed.descriptionDraft : undefined,
+      promptDraft: typeof parsed.promptDraft === "string" ? parsed.promptDraft : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistDraftSnapshot() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      storageKey.value,
+      JSON.stringify({
+        titleDraft: draftTitle.value,
+        descriptionDraft: draftDescription.value,
+        promptDraft: promptDraft.value
+      })
+    );
+  } catch {
+    // ignore storage quota and serialization errors
+  }
+}
 
 watch(
-  () => [props.taskTitle, props.taskDescription],
-  ([t, d]) => {
-    draftTitle.value = String(t ?? "");
-    draftDescription.value = String(d ?? "");
+  scopeKey,
+  () => {
+    const snapshot = readDraftSnapshot();
+    draftTitle.value = snapshot?.titleDraft ?? String(props.taskTitle ?? "");
+    draftDescription.value = snapshot?.descriptionDraft ?? String(props.taskDescription ?? "");
+    promptDraft.value = snapshot?.promptDraft ?? "";
+    prevTaskTitle.value = String(props.taskTitle ?? "");
+    prevTaskDescription.value = String(props.taskDescription ?? "");
+  },
+  { immediate: true }
+);
+
+watch(
+  () => props.taskTitle,
+  (next) => {
+    const prev = prevTaskTitle.value;
+    const nextText = String(next ?? "");
+    if (draftTitle.value === prev) {
+      draftTitle.value = nextText;
+    }
+    prevTaskTitle.value = nextText;
+  }
+);
+
+watch(
+  () => props.taskDescription,
+  (next) => {
+    const prev = prevTaskDescription.value;
+    const nextText = String(next ?? "");
+    if (draftDescription.value === prev) {
+      draftDescription.value = nextText;
+    }
+    prevTaskDescription.value = nextText;
   }
 );
 
@@ -69,6 +147,7 @@ function scheduleSave() {
 }
 
 watch([draftTitle, draftDescription], scheduleSave, { deep: true });
+watch([draftTitle, draftDescription, promptDraft], persistDraftSnapshot, { deep: true });
 
 function onPromptSubmit(payload: { text?: string }) {
   const content = String(payload?.text ?? "").trim();
@@ -76,6 +155,11 @@ function onPromptSubmit(payload: { text?: string }) {
     return;
   }
   emit("send-message", { content });
+  promptDraft.value = "";
+}
+
+function onPromptInput(event: Event) {
+  promptDraft.value = String((event.target as HTMLTextAreaElement | null)?.value ?? "");
 }
 
 function onAutopilotUpdate(enabled: boolean | "indeterminate") {
@@ -250,9 +334,9 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
           </ConversationContent>
           <ConversationScrollButton />
         </Conversation>
-        <PromptInput class="mt-2" @submit="onPromptSubmit">
+        <PromptInput :key="`prompt-${scopeKey}`" class="mt-2" :initial-input="promptDraft" @submit="onPromptSubmit">
           <PromptInputBody>
-            <PromptInputTextarea data-test-id="shellman-shellman-input" placeholder="Talk to ShellMan..." />
+            <PromptInputTextarea data-test-id="shellman-shellman-input" placeholder="Talk to ShellMan..." @input="onPromptInput" />
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools />

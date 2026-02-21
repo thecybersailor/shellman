@@ -1,9 +1,9 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
-import { beforeAll, describe, expect, it, vi } from "vitest";
-import SessionPanel from "./SessionPanel.vue";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import ThreadPanel from "./ThreadPanel.vue";
 
-describe("SessionPanel", () => {
+describe("ThreadPanel", () => {
   beforeAll(() => {
     if (typeof globalThis.ResizeObserver === "undefined") {
       vi.stubGlobal("ResizeObserver", class {
@@ -13,9 +13,12 @@ describe("SessionPanel", () => {
       });
     }
   });
+  afterEach(() => {
+    localStorage.clear();
+  });
 
   it("renders user and assistant messages", async () => {
-    const wrapper = mount(SessionPanel, {
+    const wrapper = mount(ThreadPanel, {
       props: {
         taskId: "t1",
         taskTitle: "Task",
@@ -37,7 +40,7 @@ describe("SessionPanel", () => {
   });
 
   it("renders runtime typed message with runtime test id", async () => {
-    const wrapper = mount(SessionPanel, {
+    const wrapper = mount(ThreadPanel, {
       props: {
         taskId: "t1",
         taskTitle: "Task",
@@ -70,7 +73,7 @@ describe("SessionPanel", () => {
   });
 
   it("emits send-message when prompt is submitted", async () => {
-    const wrapper = mount(SessionPanel, {
+    const wrapper = mount(ThreadPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [] }
     });
     const input = wrapper.get("[data-test-id='shellman-shellman-input']");
@@ -79,8 +82,28 @@ describe("SessionPanel", () => {
     expect(wrapper.emitted("send-message")?.[0]?.[0]).toEqual({ content: "Reply exactly: SHELLMAN_E2E_OK" });
   });
 
+  it("restores draft title/description/prompt from localStorage", async () => {
+    localStorage.setItem(
+      "shellman.project-panel.thread.task:t1",
+      JSON.stringify({
+        titleDraft: "Draft title",
+        descriptionDraft: "Draft desc",
+        promptDraft: "Draft prompt"
+      })
+    );
+    const wrapper = mount(ThreadPanel, {
+      props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [] }
+    });
+    await nextTick();
+    await nextTick();
+
+    expect((wrapper.get("[data-test-id='shellman-task-title-input']").element as HTMLInputElement).value).toBe("Draft title");
+    expect((wrapper.get("[data-test-id='shellman-task-description-input']").element as HTMLTextAreaElement).value).toBe("Draft desc");
+    expect((wrapper.get("[data-test-id='shellman-shellman-input']").element as HTMLTextAreaElement).value).toBe("Draft prompt");
+  });
+
   it("emits set-autopilot when switch toggled", async () => {
-    const wrapper = mount(SessionPanel, {
+    const wrapper = mount(ThreadPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], autopilot: false }
     });
     const autopilotSwitch = wrapper.get("[data-test-id='shellman-shellman-autopilot-switch']");
@@ -91,7 +114,7 @@ describe("SessionPanel", () => {
   });
 
   it("renders responding and ai-elements tool blocks for structured assistant content", async () => {
-    const wrapper = mount(SessionPanel, {
+    const wrapper = mount(ThreadPanel, {
       props: {
         taskId: "t1",
         taskTitle: "Task",

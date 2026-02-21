@@ -1,7 +1,7 @@
 services:
   worker:
     image: node:20-bookworm
-    working_dir: /workspace/edge/cloudflare
+    working_dir: /workspace
     command: bash /workspace/scripts/e2e/docker/boot_worker.sh
     volumes:
       - ./:/workspace

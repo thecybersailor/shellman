@@ -9,6 +9,7 @@ import { toast } from "vue-sonner";
 const props = withDefaults(
   defineProps<{
     taskId: string;
+    projectId?: string;
     aiLoading?: boolean;
     submitLoading?: boolean;
   }>(),
@@ -28,10 +29,52 @@ const submitInternalLoading = ref(false);
 const error = ref("");
 const commitMessage = ref("");
 const diffText = ref("");
+const storageKey = computed(() => `shellman.project-panel.diff.project:${String(props.projectId ?? "").trim()}`);
 
 const files = ref<{ path: string; status: string }[]>([]);
 const selectedFilePath = ref("");
 const selectedFileContent = ref("");
+
+type SCMDraftSnapshot = {
+  commitMessage?: string;
+  selectedFilePath?: string;
+};
+
+function readDraftSnapshot(): SCMDraftSnapshot | null {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(storageKey.value);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    return {
+      commitMessage: typeof parsed.commitMessage === "string" ? parsed.commitMessage : undefined,
+      selectedFilePath: typeof parsed.selectedFilePath === "string" ? parsed.selectedFilePath : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistDraftSnapshot() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      storageKey.value,
+      JSON.stringify({
+        commitMessage: commitMessage.value,
+        selectedFilePath: selectedFilePath.value
+      })
+    );
+  } catch {
+    // ignore storage quota and serialization errors
+  }
+}
 
 type DiffRowType = "add" | "remove" | "context" | "meta";
 
@@ -338,8 +381,16 @@ function formatLineNo(value: number | null): string {
 }
 
 watch(
-  () => props.taskId,
-  async (taskId) => {
+  () => `${String(props.projectId ?? "").trim()}|${props.taskId}`,
+  async (_, prevKey) => {
+    const nextProject = String(props.projectId ?? "").trim();
+    const prevProject = String(prevKey ?? "").split("|")[0] ?? "";
+    if (nextProject !== prevProject) {
+      const snapshot = readDraftSnapshot();
+      commitMessage.value = snapshot?.commitMessage ?? "";
+      selectedFilePath.value = snapshot?.selectedFilePath ?? "";
+    }
+    const taskId = props.taskId;
     await refreshTaskData(taskId);
   },
   { immediate: true }
@@ -353,6 +404,8 @@ watch(
     }
   }
 );
+
+watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
 </script>
 
 <template>

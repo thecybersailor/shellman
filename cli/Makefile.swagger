@@ -1,0 +1,50 @@
+# Swagger API Documentation and TypeScript Generation for shellman/cli
+# Usage: make -f Makefile.swagger <target>
+
+.PHONY: swagger-install swagger-gen-localapi swagger-sdk-localapi swagger-all swagger-clean
+
+SWAG := $(shell command -v swag 2> /dev/null)
+
+swagger-install:
+	@echo "Installing swag..."
+	@go install github.com/swaggo/swag/cmd/swag@latest
+	@echo "swag installed"
+
+swagger-gen-localapi:
+ifndef SWAG
+	@echo "swag not found, installing..."
+	@$(MAKE) -f Makefile.swagger swagger-install
+endif
+	@echo "Generating LocalAPI Swagger..."
+	@mkdir -p types/localapi
+	@export PATH=$$PATH:$$(go env GOPATH)/bin && swag init \
+		-g cmd/shellman/main.go \
+		--dir .,internal/localapi,internal/projectstate,internal/global,internal/fsbrowser,internal/historydb \
+		--output types/localapi \
+		--parseDependency \
+		--parseInternal \
+		--parseDepth 4 \
+		--instanceName localapi \
+		--outputTypes json
+	@echo "LocalAPI Swagger generated: cli/types/localapi/localapi_swagger.json"
+
+swagger-sdk-localapi: swagger-gen-localapi
+	@echo "Generating LocalAPI TypeScript API SDK..."
+	@mkdir -p ../webui/src/generated/localapi
+	@npx --yes swagger-typescript-api@13.0.22 -p types/localapi/localapi_swagger.json -o ../webui/src/generated/localapi -n api.ts --extract-enums
+	@cp scripts/unwrap-pin-response.ts ../webui/src/generated/localapi/unwrap-pin-response.ts
+	@echo "LocalAPI TypeScript SDK generated: webui/src/generated/localapi/api.ts"
+	@echo "Post-processing LocalAPI..."
+	@node scripts/post-process-api.js ../webui/src/generated/localapi/api.ts
+	@echo "Generating LocalAPI wrapper..."
+	@node scripts/generate-api-wrapper.js ../webui/src/generated/localapi/api.ts ../webui/src/generated/localapi/api-wrapper.ts
+	@echo "LocalAPI wrapper generated: webui/src/generated/localapi/api-wrapper.ts"
+
+swagger-all: swagger-sdk-localapi
+	@echo "All Swagger codegen complete."
+
+swagger-clean:
+	@echo "Cleaning generated files..."
+	@rm -rf types/localapi
+	@rm -rf ../webui/src/generated/localapi
+	@echo "Cleaned"

@@ -1,0 +1,444 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/_schema/types": {
+            "get": {
+                "description": "Documentation-only contract endpoint for SDK generation.",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "schema"
+                ],
+                "summary": "Swagger type surface",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/internal_localapi.SwaggerTypeSurface"
+                        }
+                    }
+                }
+            }
+        }
+    },
+    "definitions": {
+        "internal_localapi.SwaggerTypeSurface": {
+            "type": "object",
+            "properties": {
+                "active_project": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.ActiveProject"
+                },
+                "app_programs_config": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.AppProgramsConfig"
+                },
+                "fs_item": {
+                    "$ref": "#/definitions/shellman_cli_internal_fsbrowser.Item"
+                },
+                "fs_list_result": {
+                    "$ref": "#/definitions/shellman_cli_internal_fsbrowser.ListResult"
+                },
+                "global_config": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.GlobalConfig"
+                },
+                "pane_binding": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneBinding"
+                },
+                "pane_runtime_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneRuntimeRecord"
+                },
+                "pane_snapshot": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneSnapshot"
+                },
+                "task_message_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskMessageRecord"
+                },
+                "task_node": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskNode"
+                },
+                "task_note_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskNoteRecord"
+                },
+                "task_runtime_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskRuntimeRecord"
+                },
+                "task_tree": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskTree"
+                }
+            }
+        },
+        "shellman_cli_internal_fsbrowser.Item": {
+            "type": "object",
+            "properties": {
+                "is_dir": {
+                    "type": "boolean"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_fsbrowser.ListResult": {
+            "type": "object",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/shellman_cli_internal_fsbrowser.Item"
+                    }
+                },
+                "path": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_global.ActiveProject": {
+            "type": "object",
+            "properties": {
+                "project_id": {
+                    "type": "string"
+                },
+                "repo_root": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_global.AppProgramProvider": {
+            "type": "object",
+            "properties": {
+                "command": {
+                    "type": "string"
+                },
+                "commit_message_command": {
+                    "type": "string"
+                },
+                "display_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_global.AppProgramsConfig": {
+            "type": "object",
+            "properties": {
+                "providers": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/shellman_cli_internal_global.AppProgramProvider"
+                    }
+                },
+                "version": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_global.GlobalConfig": {
+            "type": "object",
+            "properties": {
+                "default_launch_program": {
+                    "type": "string"
+                },
+                "defaults": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.GlobalDefaults"
+                },
+                "local_port": {
+                    "type": "integer"
+                },
+                "task_completion": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.TaskCompletionConfig"
+                }
+            }
+        },
+        "shellman_cli_internal_global.GlobalDefaults": {
+            "type": "object",
+            "properties": {
+                "helper_program": {
+                    "type": "string"
+                },
+                "session_program": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_global.TaskCompletionConfig": {
+            "type": "object",
+            "properties": {
+                "notify_command": {
+                    "type": "string"
+                },
+                "notify_enabled": {
+                    "type": "boolean"
+                },
+                "notify_idle_duration_seconds": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_localapi.SwaggerTypeSurface": {
+            "type": "object",
+            "properties": {
+                "active_project": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.ActiveProject"
+                },
+                "app_programs_config": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.AppProgramsConfig"
+                },
+                "fs_item": {
+                    "$ref": "#/definitions/shellman_cli_internal_fsbrowser.Item"
+                },
+                "fs_list_result": {
+                    "$ref": "#/definitions/shellman_cli_internal_fsbrowser.ListResult"
+                },
+                "global_config": {
+                    "$ref": "#/definitions/shellman_cli_internal_global.GlobalConfig"
+                },
+                "pane_binding": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneBinding"
+                },
+                "pane_runtime_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneRuntimeRecord"
+                },
+                "pane_snapshot": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.PaneSnapshot"
+                },
+                "task_message_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskMessageRecord"
+                },
+                "task_node": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskNode"
+                },
+                "task_note_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskNoteRecord"
+                },
+                "task_runtime_record": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskRuntimeRecord"
+                },
+                "task_tree": {
+                    "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskTree"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.PaneBinding": {
+            "type": "object",
+            "properties": {
+                "pane_id": {
+                    "type": "string"
+                },
+                "pane_target": {
+                    "type": "string"
+                },
+                "pane_uuid": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.PaneRuntimeRecord": {
+            "type": "object",
+            "properties": {
+                "current_command": {
+                    "type": "string"
+                },
+                "cursor_x": {
+                    "type": "integer"
+                },
+                "cursor_y": {
+                    "type": "integer"
+                },
+                "has_cursor": {
+                    "type": "boolean"
+                },
+                "pane_id": {
+                    "type": "string"
+                },
+                "pane_target": {
+                    "type": "string"
+                },
+                "runtime_status": {
+                    "type": "string"
+                },
+                "snapshot": {
+                    "type": "string"
+                },
+                "snapshot_hash": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.PaneSnapshot": {
+            "type": "object",
+            "properties": {
+                "cursor_x": {
+                    "type": "integer"
+                },
+                "cursor_y": {
+                    "type": "integer"
+                },
+                "frame_data": {
+                    "type": "string"
+                },
+                "frame_mode": {
+                    "type": "string"
+                },
+                "has_cursor": {
+                    "type": "boolean"
+                },
+                "output": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.TaskMessageRecord": {
+            "type": "object",
+            "properties": {
+                "content": {
+                    "type": "string"
+                },
+                "created_at": {
+                    "type": "integer"
+                },
+                "error_text": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.TaskNode": {
+            "type": "object",
+            "properties": {
+                "archived": {
+                    "type": "boolean"
+                },
+                "checked": {
+                    "type": "boolean"
+                },
+                "children": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    }
+                },
+                "current_command": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "flag": {
+                    "type": "string"
+                },
+                "flag_desc": {
+                    "type": "string"
+                },
+                "flag_readed": {
+                    "type": "boolean"
+                },
+                "last_modified": {
+                    "type": "integer"
+                },
+                "parent_task_id": {
+                    "type": "string"
+                },
+                "pending_children_count": {
+                    "type": "integer"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.TaskNoteRecord": {
+            "type": "object",
+            "properties": {
+                "created_at": {
+                    "type": "integer"
+                },
+                "flag": {
+                    "type": "string"
+                },
+                "notes": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.TaskRuntimeRecord": {
+            "type": "object",
+            "properties": {
+                "current_command": {
+                    "type": "string"
+                },
+                "runtime_status": {
+                    "type": "string"
+                },
+                "snapshot_hash": {
+                    "type": "string"
+                },
+                "source_pane_id": {
+                    "type": "string"
+                },
+                "task_id": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "integer"
+                }
+            }
+        },
+        "shellman_cli_internal_projectstate.TaskTree": {
+            "type": "object",
+            "properties": {
+                "nodes": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/shellman_cli_internal_projectstate.TaskNode"
+                    }
+                },
+                "project_id": {
+                    "type": "string"
+                }
+            }
+        }
+    }
+}

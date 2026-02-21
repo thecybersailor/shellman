@@ -47,13 +47,13 @@ describe("ProjectInfoPanel", () => {
     expect(wrapper.text()).not.toContain("placeholder");
   });
 
-  it("shows session tab and emits save-task-meta on title/desc change (auto-save)", async () => {
+  it("shows thread tab and emits save-task-meta on title/desc change (auto-save)", async () => {
     vi.useFakeTimers();
     const wrapper = mount(ProjectInfoPanel, {
       props: {
         taskId: "t1",
         projectId: "p1",
-        activeTab: "session",
+        activeTab: "thread",
         taskTitle: "Old",
         taskDescription: "Old desc",
         taskMessages: [
@@ -74,7 +74,7 @@ describe("ProjectInfoPanel", () => {
     vi.useRealTimers();
   });
 
-  it("uses different scope keys: diff/file by project, session by task", async () => {
+  it("uses different scope keys: diff/file by project, thread by task", async () => {
     const wrapper = mount(ProjectInfoPanel, {
       props: {
         taskId: "t1",
@@ -85,14 +85,14 @@ describe("ProjectInfoPanel", () => {
 
     expect(wrapper.get("[data-test-id='shellman-project-tab-diff-body']").attributes("data-scope-key")).toBe("project:p1");
 
-    const sessionWrapper = mount(ProjectInfoPanel, {
+    const threadWrapper = mount(ProjectInfoPanel, {
       props: {
         taskId: "t2",
         projectId: "p1",
-        activeTab: "session"
+        activeTab: "thread"
       }
     });
 
-    expect(sessionWrapper.get("[data-test-id='shellman-project-tab-session-body']").attributes("data-scope-key")).toBe("task:t2");
+    expect(threadWrapper.get("[data-test-id='shellman-project-tab-thread-body']").attributes("data-scope-key")).toBe("task:t2");
   });
 });

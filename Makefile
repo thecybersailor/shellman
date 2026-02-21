@@ -1,4 +1,4 @@
-.PHONY: help dev build server server-turn dev-turn webui-dev test e2e-docker
+.PHONY: help dev build server server-turn dev-turn webui-dev test e2e-docker gen-api-types
 
 WORKER_BASE_URL ?= https://turn.runbok.com
 TMUX_SOCKET ?=
@@ -64,6 +64,12 @@ webui-dev:
 test:
 	cd cli && go test ./...
 
+gen-api-types:
+	cd cli && $(MAKE) -f Makefile.swagger swagger-sdk-localapi
+
 e2e-docker:
 	@mkdir -p logs
 	docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e-runner
+
+# Validation targets live in Makefile.validate.
+include Makefile.validate

@@ -48,7 +48,7 @@ const fileViewerPath = ref("");
 const fileViewerContent = ref("");
 const showRemoveProjectDialog = ref(false);
 const pendingRemoveProjectId = ref("");
-const projectPanelActiveTab = ref<"diff" | "file" | "session">("session");
+const projectPanelActiveTab = ref<"diff" | "file" | "thread">("thread");
 
 function logInfo(event: string, payload: Record<string, unknown> = {}) {
   if (import.meta.env.MODE === "test") {
@@ -358,11 +358,11 @@ function onTerminalResize(size: { cols: number; rows: number }) {
 }
 
 function onOpenSessionDetail() {
-  projectPanelActiveTab.value = "session";
+  projectPanelActiveTab.value = "thread";
 }
 
 function onProjectPanelActiveTabChange(next: string) {
-  if (next === "diff" || next === "file" || next === "session") {
+  if (next === "diff" || next === "file" || next === "thread") {
     projectPanelActiveTab.value = next;
   }
 }

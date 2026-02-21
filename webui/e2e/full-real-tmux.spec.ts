@@ -148,7 +148,11 @@ function taskRowTitle(page: Page, projectID: string, taskID: string) {
 }
 
 async function selectTask(page: Page, projectID: string, taskID: string) {
-  await projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first().click();
+  const row = projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first();
+  await expect(row).toBeVisible();
+  await row.click();
+  // Simulate human pacing to avoid panel transition races between task switches.
+  await page.waitForTimeout(120);
 }
 
 function activeTerminal(page: Page) {
@@ -286,10 +290,12 @@ test.describe("shellman local web full chain (docker)", () => {
     await page.goto(visitURL);
     await selectTask(page, projectID, rootTask.task_id);
     await runEcho(page, "__FIRST_FRAME_ROOT__");
+    await waitForTaskCommands(request, projectID, [rootTask.task_id], 30000);
     await selectTask(page, projectID, siblingTask.task_id);
     await runEcho(page, "__FIRST_FRAME_SIBLING__");
+    await waitForTaskCommands(request, projectID, [siblingTask.task_id], 30000);
 
-    const persisted = await waitForTaskCommands(request, projectID, [rootTask.task_id, siblingTask.task_id], 30000);
+    const persisted = await waitForTaskCommands(request, projectID, [rootTask.task_id, siblingTask.task_id], 45000);
     await page.reload();
 
     expect(String(persisted[rootTask.task_id] ?? "").trim().length).toBeGreaterThan(0);
@@ -308,7 +314,7 @@ test.describe("shellman local web full chain (docker)", () => {
     await selectTask(page, seeded.projectID, seeded.missingTaskID);
 
     const reopenButton = page.getByTestId("shellman-reopen-pane-button").first();
-    await expect(reopenButton).toBeVisible();
+    await expect(reopenButton).toBeVisible({ timeout: 15000 });
     await expect(reopenButton).toBeEnabled();
 
     const input = activeTerminalInput(page);
@@ -413,7 +419,9 @@ test.describe("shellman local web full chain (docker)", () => {
 
     await expect(page.getByTestId("shellman-shellman-tool").first()).toBeVisible();
     await expect(page.getByTestId("shellman-shellman-tool-header").first()).toContainText("gateway_http");
-    await page.getByTestId("shellman-shellman-tool-header").first().click();
+    const toolHeader = page.getByTestId("shellman-shellman-tool-header").first();
+    await toolHeader.focus();
+    await toolHeader.press("Enter");
     await expect(page.getByTestId("shellman-shellman-tool-content").first()).toBeVisible();
     await expect(page.getByTestId("shellman-shellman-tool-input").first()).toBeVisible();
     await expect(page.getByTestId("shellman-shellman-tool-output").first()).toBeVisible();

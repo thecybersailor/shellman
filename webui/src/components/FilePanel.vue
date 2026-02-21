@@ -23,6 +23,7 @@ type APIResponse<T> = {
 
 const props = defineProps<{
   taskId: string;
+  projectId?: string;
   repoRoot?: string;
 }>();
 
@@ -42,6 +43,53 @@ const searchEntries = ref<FileTreeEntry[]>([]);
 const previewLoading = ref(false);
 const selectedFilePath = ref("");
 const selectedFileContent = ref("");
+const storageKey = computed(() => `shellman.project-panel.file.project:${String(props.projectId ?? "").trim()}`);
+
+type FilePanelDraftSnapshot = {
+  searchQuery?: string;
+  expandedPaths?: string[];
+  selectedFilePath?: string;
+};
+
+function readDraftSnapshot(): FilePanelDraftSnapshot | null {
+  if (typeof localStorage === "undefined") {
+    return null;
+  }
+  try {
+    const raw = localStorage.getItem(storageKey.value);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const expandedRaw = Array.isArray(parsed.expandedPaths) ? parsed.expandedPaths : [];
+    const expandedPaths = expandedRaw.filter((item): item is string => typeof item === "string");
+    return {
+      searchQuery: typeof parsed.searchQuery === "string" ? parsed.searchQuery : undefined,
+      expandedPaths,
+      selectedFilePath: typeof parsed.selectedFilePath === "string" ? parsed.selectedFilePath : undefined
+    };
+  } catch {
+    return null;
+  }
+}
+
+function persistDraftSnapshot() {
+  if (typeof localStorage === "undefined") {
+    return;
+  }
+  try {
+    localStorage.setItem(
+      storageKey.value,
+      JSON.stringify({
+        searchQuery: searchQuery.value,
+        expandedPaths: Object.keys(expandedDirs.value),
+        selectedFilePath: selectedFilePath.value
+      })
+    );
+  } catch {
+    // ignore storage quota and serialization errors
+  }
+}
 
 type FlatNode = {
   key: string;
@@ -178,15 +226,26 @@ async function refreshRoot() {
   }
   loading.value = true;
   error.value = "";
-  searchQuery.value = "";
+  const snapshot = readDraftSnapshot();
+  searchQuery.value = snapshot?.searchQuery ?? "";
   searchEntries.value = [];
   treeByPath.value = {};
   expandedDirs.value = {};
-  selectedFilePath.value = "";
+  selectedFilePath.value = snapshot?.selectedFilePath ?? "";
   selectedFileContent.value = "";
   previewLoading.value = false;
   try {
     await loadDir(ROOT);
+    for (const path of snapshot?.expandedPaths ?? []) {
+      if (!path || path === ROOT) {
+        continue;
+      }
+      setExpanded(path, true);
+      await loadDir(path, true);
+    }
+    if (selectedFilePath.value) {
+      await selectFile(selectedFilePath.value);
+    }
   } finally {
     loading.value = false;
   }
@@ -262,7 +321,7 @@ function emitEdit() {
 }
 
 watch(
-  () => props.taskId,
+  () => `${String(props.projectId ?? "").trim()}|${props.taskId}`,
   async () => {
     await refreshRoot();
   },
@@ -275,6 +334,8 @@ watch(
     await searchFiles(next);
   }
 );
+
+watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { deep: true });
 </script>
 
 <template>

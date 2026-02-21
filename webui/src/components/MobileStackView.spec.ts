@@ -80,7 +80,7 @@ describe("MobileStackView", () => {
     expect(tree.props("showOrphanSection")).toBe(false);
   });
 
-  it("opens mobile info panel and switches to session tab on header click", async () => {
+  it("opens mobile info panel and switches to thread tab on header click", async () => {
     const TerminalPaneStub = defineComponent({
       name: "TerminalPane",
       emits: ["open-session-detail"],
@@ -90,7 +90,7 @@ describe("MobileStackView", () => {
     const ProjectInfoPanelStub = defineComponent({
       name: "ProjectInfoPanel",
       props: {
-        activeTab: { type: String, default: "session" }
+        activeTab: { type: String, default: "thread" }
       },
       template: "<div data-test-id='project-info-panel-stub' />"
     });
@@ -115,7 +115,7 @@ describe("MobileStackView", () => {
     await wrapper.get("[data-test-id='shellman-task-meta-display']").trigger("click");
 
     const panel = wrapper.getComponent(ProjectInfoPanelStub);
-    expect(panel.props("activeTab")).toBe("session");
+    expect(panel.props("activeTab")).toBe("thread");
   });
 
   it("forwards remove-project event from mobile tree", async () => {

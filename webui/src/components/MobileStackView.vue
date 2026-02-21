@@ -62,7 +62,7 @@ const emit = defineEmits<{
 }>();
 
 const showInfoPanel = ref(false);
-const projectPanelActiveTab = ref<"diff" | "file" | "session">("session");
+const projectPanelActiveTab = ref<"diff" | "file" | "thread">("thread");
 
 function onSelectTask(taskId: string) {
   emit("select-task", taskId);
@@ -87,12 +87,12 @@ function resolveSelectedTaskTitle() {
 }
 
 function openSessionDetailPanel() {
-  projectPanelActiveTab.value = "session";
+  projectPanelActiveTab.value = "thread";
   showInfoPanel.value = true;
 }
 
 function onProjectPanelActiveTabChange(next: string) {
-  if (next === "diff" || next === "file" || next === "session") {
+  if (next === "diff" || next === "file" || next === "thread") {
     projectPanelActiveTab.value = next;
   }
 }

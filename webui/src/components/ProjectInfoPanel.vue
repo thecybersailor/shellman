@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import SCMPanel from "./SCMPanel.vue";
 import FilePanel from "./FilePanel.vue";
-import SessionPanel from "./SessionPanel.vue";
+import ThreadPanel from "./ThreadPanel.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import shellmanIcon from "@/asserts/icon.svg";
 
-type ProjectPanelTab = "diff" | "file" | "session";
+type ProjectPanelTab = "diff" | "file" | "thread";
 
 type SCMAIPayload = {
   taskId: string;
@@ -38,7 +38,7 @@ const props = withDefaults(
     taskId: "",
     projectId: "",
     repoRoot: "",
-    activeTab: "session",
+    activeTab: "thread",
     taskTitle: "",
     taskDescription: "",
     taskMessages: () => [],
@@ -61,7 +61,7 @@ const emit = defineEmits<{
 }>();
 
 function onTabChange(next: string) {
-  if (next === "diff" || next === "file" || next === "session") {
+  if (next === "diff" || next === "file" || next === "thread") {
     emit("update:active-tab", next);
   }
 }
@@ -71,18 +71,18 @@ function onTabChange(next: string) {
   <div class="h-full p-2">
     <Tabs :model-value="props.activeTab" class="h-full flex flex-col" @update:model-value="onTabChange">
       <TabsList class="w-full grid grid-cols-3">
-        <TabsTrigger value="session" class="text-xs">SideCar</TabsTrigger>
+        <TabsTrigger value="thread" class="text-xs">Thread</TabsTrigger>
         <TabsTrigger value="diff" class="text-xs">Diff</TabsTrigger>
         <TabsTrigger value="file" class="text-xs">File</TabsTrigger>
       </TabsList>
-      <TabsContent value="session" class="flex-1 min-h-0 mt-2">
+      <TabsContent value="thread" force-mount class="flex-1 min-h-0 mt-2">
         <div
           :key="`task:${props.taskId || ''}`"
-          data-test-id="shellman-project-tab-session-body"
+          data-test-id="shellman-project-tab-thread-body"
           :data-scope-key="`task:${props.taskId || ''}`"
           class="h-full min-h-0"
         >
-          <SessionPanel
+          <ThreadPanel
             :task-id="props.taskId"
             :task-title="props.taskTitle"
             :task-description="props.taskDescription"
@@ -96,14 +96,16 @@ function onTabChange(next: string) {
           />
         </div>
       </TabsContent>
-      <TabsContent value="diff" class="flex-1 min-h-0 mt-2">
+      <TabsContent value="diff" force-mount class="flex-1 min-h-0 mt-2">
         <div
+          :key="`project:${props.projectId || ''}`"
           data-test-id="shellman-project-tab-diff-body"
           :data-scope-key="`project:${props.projectId || ''}`"
           class="h-full min-h-0"
         >
           <SCMPanel
             :task-id="props.taskId"
+            :project-id="props.projectId"
             :ai-loading="props.aiLoading"
             :submit-loading="props.submitLoading"
             @ai="(payload) => emit('ai', payload)"
@@ -111,14 +113,16 @@ function onTabChange(next: string) {
           />
         </div>
       </TabsContent>
-      <TabsContent value="file" class="flex-1 min-h-0 mt-2">
+      <TabsContent value="file" force-mount class="flex-1 min-h-0 mt-2">
         <div
+          :key="`project:${props.projectId || ''}`"
           data-test-id="shellman-project-tab-file-body"
           :data-scope-key="`project:${props.projectId || ''}`"
           class="h-full min-h-0"
         >
           <FilePanel
             :task-id="props.taskId"
+            :project-id="props.projectId"
             :repo-root="props.repoRoot"
             @file-open="(path) => emit('file-open', path)"
           />
