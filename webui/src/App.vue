@@ -550,10 +550,10 @@ onBeforeUnmount(() => {
       <ResizablePanel :default-size="20" :min-size="15" :max-size="30" class="min-w-[340px]">
         <aside class="h-full flex flex-col bg-sidebar">
           <!-- Top Global Actions (Theme Toggle for Shellman) -->
-          <div class="flex items-center justify-between px-4 py-2 opacity-50 hover:opacity-100 transition-opacity">
+          <div class="flex items-center justify-between px-4 py-4 opacity-50 hover:opacity-100 transition-opacity">
             <span class="flex items-center gap-1">
-              <img :src="shellmanIcon" alt="" class="h-4 max-h-full dark:invert" />
-              <span class="text-xs">ShellMan</span>
+              <img :src="shellmanIcon" alt="" class="h-6 max-h-full dark:invert" />
+              <span>ShellMan</span>
             </span>
             <Button variant="ghost" size="icon" @click="mode = mode === 'dark' ? 'light' : 'dark'" class="h-6 w-6 rounded-md">
               <Sun v-if="mode === 'dark'" class="h-3.5 w-3.5" />

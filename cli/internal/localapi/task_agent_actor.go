@@ -631,7 +631,7 @@ func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, task
 	}
 	switch mode {
 	case taskAgentToolModeAIAgent:
-		names = append(names, "task.input_prompt")
+		names = append(names, "task.input_prompt", "write_stdin")
 	case taskAgentToolModeShell:
 		names = append(names, "exec_command", "write_stdin")
 	default:

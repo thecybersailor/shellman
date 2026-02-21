@@ -10,6 +10,11 @@ type TaskAgentTTYContext struct {
 	CurrentCommand string
 	OutputTail     string
 	Cwd            string
+	CursorX        int
+	CursorY        int
+	HasCursor      bool
+	CursorHint     string
+	CursorSemantic string
 }
 
 type TaskAgentParentContext struct {
@@ -80,7 +85,7 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 		b.WriteString(strings.TrimSpace(input.HistoryBlock))
 		b.WriteString("\n\n")
 	}
-	b.WriteString("context_json:\n")
+	b.WriteString("terminal_screen_state_json:\n")
 	b.WriteString(mustBuildTaskContextJSON(input.PrevFlag, input.PrevStatusMessage, input.TTY, input.ParentTask, input.ChildTasks))
 	b.WriteString("\n\n")
 	b.WriteString("Rules:\n")
@@ -103,7 +108,7 @@ func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessa
 		b.WriteString(strings.TrimSpace(historyBlock))
 		b.WriteString("\n\n")
 	}
-	b.WriteString("context_json:\n")
+	b.WriteString("terminal_screen_state_json:\n")
 	b.WriteString(mustBuildTaskContextJSON(prevFlag, prevStatusMessage, tty, parent, children))
 	b.WriteString("\n")
 	return strings.TrimSpace(b.String())
@@ -115,6 +120,14 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 	tty.CurrentCommand = strings.TrimSpace(tty.CurrentCommand)
 	tty.OutputTail = strings.TrimSpace(tty.OutputTail)
 	tty.Cwd = strings.TrimSpace(tty.Cwd)
+	tty.CursorHint = strings.TrimSpace(tty.CursorHint)
+	tty.CursorSemantic = strings.TrimSpace(tty.CursorSemantic)
+	if tty.CursorHint == "" {
+		tty.CursorHint = inferCursorHint(tty)
+	}
+	if tty.CursorSemantic == "" {
+		tty.CursorSemantic = inferCursorSemantic(tty)
+	}
 	parentObj := map[string]any{
 		"name":           "",
 		"description":    "",
@@ -142,16 +155,49 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 		"task_context": map[string]any{
 			"prev_flag":           prevFlag,
 			"prev_status_message": prevStatus,
-			"tty": map[string]any{
-				"current_command": tty.CurrentCommand,
-				"output_tail":     tty.OutputTail,
-				"cwd":             tty.Cwd,
+		},
+		"terminal_screen_state": map[string]any{
+			"current_command": tty.CurrentCommand,
+			"viewport_text":   tty.OutputTail,
+			"cwd":             tty.Cwd,
+			"cursor": map[string]any{
+				"row":     tty.CursorY,
+				"col":     tty.CursorX,
+				"visible": tty.HasCursor,
 			},
+			"cursor_hint":     tty.CursorHint,
+			"cursor_semantic": tty.CursorSemantic,
 		},
 		"parent_task": parentObj,
 		"child_tasks": childList,
 	})
 	return string(raw)
+}
+
+func inferCursorHint(tty TaskAgentTTYContext) string {
+	if !tty.HasCursor {
+		return "cursor_unavailable"
+	}
+	tail := strings.TrimSpace(tty.OutputTail)
+	if strings.HasSuffix(tail, "$") || strings.HasSuffix(tail, "#") || strings.HasSuffix(tail, ">") {
+		return "cursor_at_shell_prompt_ready_for_input"
+	}
+	return "cursor_on_terminal_screen"
+}
+
+func inferCursorSemantic(tty TaskAgentTTYContext) string {
+	if !tty.HasCursor {
+		return "cursor_unavailable"
+	}
+	tail := strings.TrimSpace(tty.OutputTail)
+	if strings.HasSuffix(tail, "$") || strings.HasSuffix(tail, "#") || strings.HasSuffix(tail, ">") {
+		return "shell_prompt_ready"
+	}
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(tty.CurrentCommand)), "bash") ||
+		strings.HasPrefix(strings.ToLower(strings.TrimSpace(tty.CurrentCommand)), "zsh") {
+		return "command_typing"
+	}
+	return "terminal_program"
 }
 
 func buildTaskAgentAutoProgressDisplayContent(taskID, summary, runID string) string {

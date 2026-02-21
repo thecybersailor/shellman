@@ -411,6 +411,11 @@ func (s *Server) buildTaskTTYContext(store *projectstate.Store, entry projectsta
 				tty.CurrentCommand = strings.TrimSpace(runtimeRow.CurrentCommand)
 			}
 			tty.OutputTail = tailText(strings.TrimSpace(runtimeRow.Snapshot), 4000)
+			tty.HasCursor = runtimeRow.HasCursor
+			if runtimeRow.HasCursor {
+				tty.CursorX = runtimeRow.CursorX
+				tty.CursorY = runtimeRow.CursorY
+			}
 		}
 	}
 	if strings.TrimSpace(tty.CurrentCommand) == "" {

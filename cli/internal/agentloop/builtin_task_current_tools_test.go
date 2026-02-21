@@ -66,6 +66,54 @@ func TestWriteStdinTool_SendsRawInputWithoutNewlineAppend(t *testing.T) {
 	}
 }
 
+func TestTaskInputPromptTool_AppendsEnter(t *testing.T) {
+	var gotPrompt string
+	tool := &TaskInputPromptTool{
+		Exec: func(ctx context.Context, taskID, prompt string) (string, error) {
+			if taskID != "t1" {
+				t.Fatalf("expected task_id=t1, got %q", taskID)
+			}
+			gotPrompt = prompt
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	out, err := tool.Execute(ctx, json.RawMessage(`{"prompt":"hello world"}`), "call_1")
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if out != `{"ok":true}` {
+		t.Fatalf("unexpected output: %s", out)
+	}
+	if gotPrompt != "hello world\r" {
+		t.Fatalf("expected prompt to append enter, got %q", gotPrompt)
+	}
+}
+
+func TestTaskInputPromptTool_DoesNotDuplicateEnter(t *testing.T) {
+	var gotPrompt string
+	tool := &TaskInputPromptTool{
+		Exec: func(ctx context.Context, taskID, prompt string) (string, error) {
+			if taskID != "t1" {
+				t.Fatalf("expected task_id=t1, got %q", taskID)
+			}
+			gotPrompt = prompt
+			return `{"ok":true}`, nil
+		},
+	}
+	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t1"})
+	out, err := tool.Execute(ctx, json.RawMessage("{\"prompt\":\"hello world\\r\"}"), "call_1")
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if out != `{"ok":true}` {
+		t.Fatalf("unexpected output: %s", out)
+	}
+	if gotPrompt != "hello world\r" {
+		t.Fatalf("expected prompt keep single enter, got %q", gotPrompt)
+	}
+}
+
 func TestTaskChildSendMessageTool_ValidateInput(t *testing.T) {
 	tool := &TaskChildSendMessageTool{Exec: func(context.Context, string, string, string) (string, error) {
 		return `{"ok":true}`, nil

@@ -567,10 +567,12 @@ func TestTaskMessages_ListAndSend(t *testing.T) {
 		t.Fatalf("expected prompt keep user content, got: %q", runner.calls[0])
 	}
 	requiredPromptContext := []string{
-		"\"task_context\"",
+		"\"terminal_screen_state\"",
 		"\"current_command\"",
-		"\"output_tail\"",
+		"\"viewport_text\"",
 		"\"cwd\"",
+		"\"cursor\"",
+		"\"cursor_hint\"",
 	}
 	for _, item := range requiredPromptContext {
 		if !strings.Contains(runner.calls[0], item) {
@@ -1495,9 +1497,12 @@ func TestTaskCompletionActions_AutoProgressCreatesTimeline(t *testing.T) {
 	}
 	requiredAutoProgressContext := []string{
 		"\"task_context\"",
+		"\"terminal_screen_state\"",
 		"\"current_command\"",
-		"\"output_tail\"",
+		"\"viewport_text\"",
 		"\"cwd\"",
+		"\"cursor\"",
+		"\"cursor_hint\"",
 		"\"parent_task\"",
 		"\"child_tasks\"",
 	}

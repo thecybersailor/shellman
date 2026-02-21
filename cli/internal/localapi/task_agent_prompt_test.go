@@ -66,13 +66,16 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 		"TTY_OUTPUT_EVENT",
 		"conversation_history:",
 		"[assistant#2] done",
-		"context_json:",
-		"\"task_context\"",
+		"terminal_screen_state_json:",
+		"\"terminal_screen_state\"",
 		"\"prev_flag\":\"notify\"",
 		"\"prev_status_message\":\"need check\"",
 		"\"current_command\":\"bash\"",
-		"\"output_tail\":\"$ echo ok\"",
+		"\"viewport_text\":\"$ echo ok\"",
 		"\"cwd\":\"/tmp/repo\"",
+		"\"cursor\"",
+		"\"cursor_hint\"",
+		"\"cursor_semantic\"",
 		"\"parent_task\"",
 		"\"child_tasks\"",
 		"\"report_message\":\"report\"",
@@ -100,7 +103,7 @@ func TestBuildTaskAgentUserPrompt_IncludesConversationHistoryBlock(t *testing.T)
 		"USER_INPUT_EVENT",
 		"conversation_history:",
 		"[user#1] hi",
-		"context_json:",
+		"terminal_screen_state_json:",
 	}
 	for _, s := range required {
 		if !strings.Contains(prompt, s) {
@@ -120,5 +123,45 @@ func TestBuildTaskAgentAutoProgressPrompt_IncludesConversationHistoryBlock(t *te
 	}
 	if !strings.Contains(prompt, "[assistant#2] done") {
 		t.Fatalf("expected history content in prompt, got %q", prompt)
+	}
+}
+
+func TestBuildTaskAgentPrompt_CursorSemanticReadyAtShellPrompt(t *testing.T) {
+	prompt := buildTaskAgentUserPrompt(
+		"ls",
+		"",
+		"",
+		TaskAgentTTYContext{
+			CurrentCommand: "bash",
+			OutputTail:     "$ ",
+			HasCursor:      true,
+			CursorX:        2,
+			CursorY:        20,
+		},
+		nil,
+		nil,
+		"",
+	)
+	if !strings.Contains(prompt, "\"cursor_semantic\":\"shell_prompt_ready\"") {
+		t.Fatalf("expected shell_prompt_ready semantic, got %q", prompt)
+	}
+}
+
+func TestBuildTaskAgentPrompt_CursorSemanticUnavailable(t *testing.T) {
+	prompt := buildTaskAgentUserPrompt(
+		"ls",
+		"",
+		"",
+		TaskAgentTTYContext{
+			CurrentCommand: "bash",
+			OutputTail:     "running task",
+			HasCursor:      false,
+		},
+		nil,
+		nil,
+		"",
+	)
+	if !strings.Contains(prompt, "\"cursor_semantic\":\"cursor_unavailable\"") {
+		t.Fatalf("expected cursor_unavailable semantic, got %q", prompt)
 	}
 }

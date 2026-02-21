@@ -155,9 +155,12 @@ func (t *TaskInputPromptTool) Execute(ctx context.Context, input json.RawMessage
 	if err := json.Unmarshal(input, &req); err != nil {
 		return "", err
 	}
-	prompt := strings.TrimSpace(req.Prompt)
-	if prompt == "" {
+	prompt := strings.Trim(req.Prompt, " \t")
+	if strings.TrimSpace(prompt) == "" {
 		return "", errors.New("INVALID_PROMPT")
+	}
+	if !strings.HasSuffix(prompt, "\r") && !strings.HasSuffix(prompt, "\n") {
+		prompt += "\r"
 	}
 	return t.Exec(ctx, taskID, prompt)
 }

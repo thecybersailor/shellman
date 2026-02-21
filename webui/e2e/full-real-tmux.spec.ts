@@ -381,6 +381,7 @@ test.describe("shellman local web full chain (docker)", () => {
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
     await expect(page.getByTestId("shellman-shellman-message-user").last()).toContainText("SHELLMAN_E2E_OK", { timeout: 15000 });
+    await expect(page.getByText("SHELLMAN_E2E_OK").last()).toBeVisible({ timeout: 15000 });
 
     await expect
       .poll(
@@ -493,6 +494,8 @@ test.describe("shellman local web full chain (docker)", () => {
     await page.goto(visitURL);
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
+    await expect(page.getByText("tool test").first()).toBeVisible();
+    await expect(page.getByText("tool finished").first()).toBeVisible();
     await expect(page.getByTestId("shellman-shellman-tool").first()).toBeVisible();
     await expect(page.getByTestId("shellman-shellman-tool-header").first()).toContainText("gateway_http");
     const toolHeader = page.getByTestId("shellman-shellman-tool-header").first();
