@@ -69,7 +69,7 @@ func TestResolveTaskAgentToolModeAndNames_AutopilotAIAgentIncludesWriteStdin(t *
 	}
 }
 
-func TestResolveTaskAgentToolModeAndNamesRealtime_PrefersPaneCommandInAutopilot(t *testing.T) {
+func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopilot(t *testing.T) {
 	store := projectstate.NewStore(t.TempDir())
 	taskID := fmt.Sprintf("t_mode_realtime_%d", time.Now().UTC().UnixNano())
 	mode := projectstate.SidecarModeAutopilot
@@ -105,10 +105,10 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_PrefersPaneCommandInAutopilot(
 		},
 	})
 	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID)
-	if gotMode != string(taskAgentToolModeAIAgent) {
+	if gotMode != string(taskAgentToolModeShell) {
 		t.Fatalf("unexpected mode: got=%q", gotMode)
 	}
-	if gotCommand != "codex" {
+	if gotCommand != "zsh" {
 		t.Fatalf("unexpected current command: got=%q", gotCommand)
 	}
 	if !reflect.DeepEqual(gotTools, []string{
@@ -118,7 +118,7 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_PrefersPaneCommandInAutopilot(
 		"task.child.spawn",
 		"task.child.send_message",
 		"task.parent.report",
-		"task.input_prompt",
+		"exec_command",
 		"readfile",
 		"write_stdin",
 	}) {

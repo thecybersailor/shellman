@@ -388,6 +388,9 @@ func (s *Server) loadTaskCompletionContext(projectID string) []taskCompletionCon
 	if projectID != "" {
 		if repoRoot, err := s.findProjectRepoRoot(projectID); err == nil {
 			path := filepath.Join(strings.TrimSpace(repoRoot), "AGENTS-SIDECAR.md")
+			if absPath, absErr := filepath.Abs(path); absErr == nil {
+				path = absPath
+			}
 			if content := s.readTaskCompletionContextFile(path); content != "" {
 				return []taskCompletionContextDocument{{
 					Path:    path,
@@ -398,6 +401,9 @@ func (s *Server) loadTaskCompletionContext(projectID string) []taskCompletionCon
 	}
 	if configDir, err := global.DefaultConfigDir(); err == nil {
 		path := filepath.Join(strings.TrimSpace(configDir), "AGENTS-SIDECAR.md")
+		if absPath, absErr := filepath.Abs(path); absErr == nil {
+			path = absPath
+		}
 		if content := s.readTaskCompletionContextFile(path); content != "" {
 			return []taskCompletionContextDocument{{
 				Path:    path,

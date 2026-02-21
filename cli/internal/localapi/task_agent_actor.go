@@ -657,11 +657,6 @@ func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode stri
 
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
 	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
-	if normalizeSidecarMode(sidecarMode) == projectstate.SidecarModeAutopilot {
-		if paneCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID)); paneCommand != "" {
-			currentCommand = paneCommand
-		}
-	}
 	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode)
 }
 
