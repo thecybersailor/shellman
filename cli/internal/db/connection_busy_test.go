@@ -11,7 +11,7 @@ func TestOpenSQLiteWithMigrations_SetsBusyTimeout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSQLiteWithMigrations failed: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	var timeout int
 	if err := sqlDB.QueryRow(`PRAGMA busy_timeout;`).Scan(&timeout); err != nil {
@@ -21,4 +21,3 @@ func TestOpenSQLiteWithMigrations_SetsBusyTimeout(t *testing.T) {
 		t.Fatalf("expected busy_timeout >= 5000, got %d", timeout)
 	}
 }
-

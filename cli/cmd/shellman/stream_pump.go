@@ -269,19 +269,6 @@ func debugLineCount(text string) int {
 	return strings.Count(text, "\n") + 1
 }
 
-func commonPrefixLen(a, b string) int {
-	max := len(a)
-	if len(b) < max {
-		max = len(b)
-	}
-	for i := 0; i < max; i++ {
-		if a[i] != b[i] {
-			return i
-		}
-	}
-	return max
-}
-
 type termFrame struct {
 	Mode string
 	Data string

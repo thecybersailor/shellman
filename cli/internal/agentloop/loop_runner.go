@@ -458,14 +458,6 @@ func resolveResponsesStoreFromContext(ctx context.Context) bool {
 	return scope.ResponsesStore
 }
 
-func resolveDisableStoreContextFromContext(ctx context.Context) bool {
-	scope, ok := TaskScopeFromContext(ctx)
-	if !ok {
-		return true
-	}
-	return scope.DisableStoreContext
-}
-
 func boolPtr(v bool) *bool {
 	return &v
 }
@@ -542,9 +534,7 @@ func summarizeResponseInput(input any) string {
 		return fmt.Sprintf("text(len=%d)", len(strings.TrimSpace(v)))
 	case []map[string]any:
 		items := make([]map[string]any, 0, len(v))
-		for _, item := range v {
-			items = append(items, item)
-		}
+		items = append(items, v...)
 		return summarizeResponseInputItems(items)
 	case []any:
 		items := make([]map[string]any, 0, len(v))

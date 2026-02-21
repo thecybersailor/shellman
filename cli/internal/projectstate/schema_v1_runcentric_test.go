@@ -16,7 +16,7 @@ func TestInitGlobalDB_CreatesRunCentricSchema(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	mustHave := []string{"tasks", "task_runs", "run_bindings", "run_events", "completion_inbox", "action_outbox", "tmux_servers"}
 	for _, name := range mustHave {
@@ -30,7 +30,7 @@ func TestInitGlobalDB_CreatesRunCentricSchema(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PRAGMA table_info(tasks) failed: %v", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	hasLastAutoProgressAt := false
 	for rows.Next() {
 		var cid int

@@ -10,7 +10,6 @@ import (
 	"shellman/cli/internal/db"
 )
 
-
 var (
 	globalDBMu   sync.Mutex
 	globalDB     *sql.DB
@@ -95,7 +94,7 @@ func (s *Store) SavePaneSnapshots(index PaneSnapshotsIndex) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	tx, err := db.Begin()
@@ -139,7 +138,7 @@ func (s *Store) saveJSON(column string, raw []byte) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	switch column {
@@ -163,7 +162,7 @@ func (s *Store) loadJSON(column string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	switch column {
 	case "panes_json", "pane_snapshots_json":

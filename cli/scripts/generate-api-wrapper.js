@@ -18,7 +18,7 @@ console.log(`📖 Reading: ${API_FILE}`);
 
 const apiContent = fs.readFileSync(API_FILE, 'utf-8');
 
-const apiClassMatch = apiContent.match(/export class Api<SecurityDataType[^{]+\{([\s\S]+)\}\s*$/m);
+const apiClassMatch = apiContent.match(/export class Api<SecurityDataType[^{]+\{([\s\S]*)\}\s*$/m);
 if (!apiClassMatch) {
   console.error('❌ Failed to find Api class in generated file');
   process.exit(1);

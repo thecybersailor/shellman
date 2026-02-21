@@ -3,7 +3,7 @@ package turn
 import (
 	"context"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 type RealDialer struct{}

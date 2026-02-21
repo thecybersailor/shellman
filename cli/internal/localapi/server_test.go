@@ -91,7 +91,7 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		panic(err)
 	}
-	defer os.RemoveAll(dir)
+	defer func() { _ = os.RemoveAll(dir) }()
 	if err := projectstate.InitGlobalDB(filepath.Join(dir, "shellman.db")); err != nil {
 		panic(err)
 	}
@@ -219,7 +219,7 @@ func TestServer_Config_GetAndPatch_HelperOpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PATCH config failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -228,7 +228,7 @@ func TestServer_Config_GetAndPatch_HelperOpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET config failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -282,7 +282,7 @@ func TestServer_Config_Get_AgentOpenAI(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET config failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -359,7 +359,7 @@ func TestServer_SystemCapabilities_DefaultFalse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET capabilities failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -403,7 +403,7 @@ func TestServer_AppProgramsEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET app-programs failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -440,7 +440,7 @@ func TestServer_SelectDirectory_Unavailable(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST select-directory failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotImplemented {
 		t.Fatalf("expected 501, got %d", resp.StatusCode)
 	}
@@ -459,7 +459,7 @@ func TestServer_SelectDirectory_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST select-directory failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -508,7 +508,7 @@ func TestServer_UploadImage_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post upload failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -565,7 +565,7 @@ func TestServer_UploadImage_Rejects_MissingFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post upload failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
@@ -618,7 +618,7 @@ func TestServer_UploadImage_Rejects_NonImage(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post upload failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
@@ -671,7 +671,7 @@ func TestServer_UploadImage_Rejects_EmptyFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post upload failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d", resp.StatusCode)
 	}
@@ -725,7 +725,7 @@ func TestServer_UploadImage_Rejects_TooLarge(t *testing.T) {
 	if err != nil {
 		t.Fatalf("post upload failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusRequestEntityTooLarge {
 		t.Fatalf("expected 413, got %d", resp.StatusCode)
 	}

@@ -4,6 +4,7 @@ import FilePanel from "./FilePanel.vue";
 import ThreadPanel from "./ThreadPanel.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import shellmanIcon from "@/asserts/icon.svg";
+import type { TaskMessage } from "@/stores/shellman";
 
 type ProjectPanelTab = "diff" | "file" | "thread";
 
@@ -27,7 +28,7 @@ const props = withDefaults(
     activeTab?: ProjectPanelTab;
     taskTitle?: string;
     taskDescription?: string;
-    taskMessages?: Array<{ id: number; task_id: string; role: "user" | "assistant"; content: string; status: "running" | "completed" | "error"; error_text?: string }>;
+    taskMessages?: TaskMessage[];
     autopilot?: boolean;
     paneUuid?: string;
     currentCommand?: string;
@@ -60,9 +61,10 @@ const emit = defineEmits<{
   (e: "file-open", path: string): void;
 }>();
 
-function onTabChange(next: string) {
-  if (next === "diff" || next === "file" || next === "thread") {
-    emit("update:active-tab", next);
+function onTabChange(next: string | number) {
+  const value = String(next);
+  if (value === "diff" || value === "file" || value === "thread") {
+    emit("update:active-tab", value);
   }
 }
 </script>

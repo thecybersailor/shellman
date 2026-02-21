@@ -168,6 +168,10 @@ function scheduleTerminalSizeSync(forceEmit = false) {
   });
 }
 
+const handleWindowResize = () => {
+  scheduleTerminalSizeSync();
+};
+
 function scheduleScrollToBottom(reason: string) {
   if (scrollRAF) {
     cancelAnimationFrame(scrollRAF);
@@ -516,20 +520,20 @@ onMounted(() => {
       emit("terminal-input", data);
     });
     scheduleTerminalSizeSync(true);
-    window.addEventListener("resize", scheduleTerminalSizeSync);
-  logInfo("shellman.term.view.resize_listener.added");
-  if (typeof ResizeObserver !== "undefined") {
-    resizeObserver = new ResizeObserver(() => scheduleTerminalSizeSync());
-    resizeObserver.observe(root.value);
-    logInfo("shellman.term.view.resize_observer.added");
-  }
+    window.addEventListener("resize", handleWindowResize);
+    logInfo("shellman.term.view.resize_listener.added");
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(() => scheduleTerminalSizeSync());
+      resizeObserver.observe(root.value);
+      logInfo("shellman.term.view.resize_observer.added");
+    }
   }
 });
 
 onBeforeUnmount(() => {
   logInfo("shellman.term.view.before_unmount");
   unbindPasteHandler();
-  window.removeEventListener("resize", scheduleTerminalSizeSync);
+  window.removeEventListener("resize", handleWindowResize);
   if (resizeRAF) {
     cancelAnimationFrame(resizeRAF);
     resizeRAF = 0;

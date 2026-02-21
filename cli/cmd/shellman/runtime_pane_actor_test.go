@@ -414,7 +414,7 @@ func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 
 	time.Sleep(220 * time.Millisecond)
 	cancel()
-	_ = <-done
+	<-done
 
 	if got := autoCompleteCalls.Load(); got != 1 {
 		t.Fatalf("expected auto-complete exactly once per ready edge, got %d", got)
@@ -467,7 +467,7 @@ func TestPaneActor_ColdStartStaticPane_DoesNotTriggerAutoComplete(t *testing.T) 
 
 	time.Sleep(120 * time.Millisecond)
 	cancel()
-	_ = <-done
+	<-done
 
 	if got := autoCompleteCalls.Load(); got != 0 {
 		t.Fatalf("expected no auto-complete on cold-start static pane, got %d", got)

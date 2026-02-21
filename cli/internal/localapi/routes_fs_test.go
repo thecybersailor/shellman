@@ -30,7 +30,7 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new history store failed: %v", err)
 	}
-	defer hist.Close()
+	defer func() { _ = hist.Close() }()
 
 	srv := NewServer(Deps{ConfigStore: &fakeConfigStore{}, ProjectsStore: &fakeProjectsStore{}, FSBrowser: svc, DirHistory: hist})
 	ts := httptest.NewServer(srv.Handler())
@@ -40,7 +40,7 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list request failed: %v", err)
 	}
-	defer res1.Body.Close()
+	defer func() { _ = res1.Body.Close() }()
 	if res1.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", res1.StatusCode)
 	}
@@ -50,7 +50,7 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolve request failed: %v", err)
 	}
-	defer res2.Body.Close()
+	defer func() { _ = res2.Body.Close() }()
 	if res2.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", res2.StatusCode)
 	}
@@ -65,7 +65,7 @@ func TestServer_FSHistory_CRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new history store failed: %v", err)
 	}
-	defer hist.Close()
+	defer func() { _ = hist.Close() }()
 
 	srv := NewServer(Deps{
 		ConfigStore:   &fakeConfigStore{},

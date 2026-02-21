@@ -199,7 +199,7 @@ func TestProjectTree_ReadsFromTasksTableOnly(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET tree expected 200, got %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var treeRes struct {
 		OK   bool `json:"ok"`
@@ -230,7 +230,7 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task failed: %v", err)
 	}
-	defer createResp.Body.Close()
+	defer func() { _ = createResp.Body.Close() }()
 	var created struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -244,7 +244,7 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET autopilot failed: %v", err)
 	}
-	defer getResp.Body.Close()
+	defer func() { _ = getResp.Body.Close() }()
 	if getResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 from GET, got %d", getResp.StatusCode)
 	}
@@ -266,7 +266,7 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("PATCH autopilot failed: %v", err)
 	}
-	defer patchResp.Body.Close()
+	defer func() { _ = patchResp.Body.Close() }()
 	if patchResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 from PATCH, got %d", patchResp.StatusCode)
 	}
@@ -286,7 +286,7 @@ func TestTaskAutopilotRoutes_GetAndPatch(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET autopilot (after patch) failed: %v", err)
 	}
-	defer getResp2.Body.Close()
+	defer func() { _ = getResp2.Body.Close() }()
 	var getBody2 struct {
 		Data struct {
 			Autopilot bool `json:"autopilot"`
@@ -577,7 +577,7 @@ func TestTaskMessages_SendEnqueuesActorAndPersistsTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST tasks failed: %v", err)
 	}
-	defer createResp.Body.Close()
+	defer func() { _ = createResp.Body.Close() }()
 	var createOut struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -593,7 +593,7 @@ func TestTaskMessages_SendEnqueuesActorAndPersistsTimeline(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST task messages failed: %v", err)
 	}
-	defer sendResp.Body.Close()
+	defer func() { _ = sendResp.Body.Close() }()
 	if sendResp.StatusCode != http.StatusOK {
 		t.Fatalf("POST task messages expected 200, got %d", sendResp.StatusCode)
 	}
@@ -669,7 +669,7 @@ func TestTaskAgentSetFlagViaMessagesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST tasks failed: %v", err)
 	}
-	defer createResp.Body.Close()
+	defer func() { _ = createResp.Body.Close() }()
 	var createOut struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -685,7 +685,7 @@ func TestTaskAgentSetFlagViaMessagesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST set-flag failed: %v", err)
 	}
-	defer flagResp.Body.Close()
+	defer func() { _ = flagResp.Body.Close() }()
 	if flagResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", flagResp.StatusCode)
 	}
@@ -694,7 +694,7 @@ func TestTaskAgentSetFlagViaMessagesSource(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET tree failed: %v", err)
 	}
-	defer treeResp.Body.Close()
+	defer func() { _ = treeResp.Body.Close() }()
 	var treeOut struct {
 		Data struct {
 			Nodes []struct {
@@ -741,7 +741,7 @@ func TestTaskAgentWriteStdinViaMessagesSource_SendsRawInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST tasks failed: %v", err)
 	}
-	defer createResp.Body.Close()
+	defer func() { _ = createResp.Body.Close() }()
 	var createOut struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -771,7 +771,7 @@ func TestTaskAgentWriteStdinViaMessagesSource_SendsRawInput(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST messages tty_write_stdin failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200, got %d", resp.StatusCode)
 	}
@@ -859,7 +859,7 @@ func TestProjectArchiveDone_HidesArchivedTasksFromTree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET tree failed: %v", err)
 	}
-	defer treeResp.Body.Close()
+	defer func() { _ = treeResp.Body.Close() }()
 	if treeResp.StatusCode != http.StatusOK {
 		t.Fatalf("GET tree expected 200, got %d", treeResp.StatusCode)
 	}
@@ -1511,7 +1511,7 @@ func TestTaskCompletionLogs_IncludeRequestMetaOnAutoProgress(t *testing.T) {
 	taskID := createOut.Data.TaskID
 
 	_, runErr := postRunReportResult(t, srv, ts, repo, taskID, "done", map[string]string{
-		"User-Agent":            "shellman-e2e-diagnostic/1.0",
+		"User-Agent":                "shellman-e2e-diagnostic/1.0",
 		"X-Shellman-Turn-UUID":      "turn-test-123",
 		"X-Shellman-Gateway-Source": "unit-test-gateway",
 	})

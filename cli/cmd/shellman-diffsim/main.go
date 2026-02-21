@@ -15,16 +15,17 @@ func run(out io.Writer, scenario string) error {
 	repaints := 0
 	for i := 1; i < len(frames); i++ {
 		delta := streamdiff.DecideDelta(frames[i-1].Text, frames[i].Text, true)
-		if delta.Mode == "reset" {
+		switch delta.Mode {
+		case "reset":
 			resets++
-		} else if delta.Mode == "append" {
+		case "append":
 			appends++
 			if delta.Reason == "ansi_repaint" {
 				repaints++
 			}
 		}
 	}
-	fmt.Fprintf(out, "scenario=%s frames=%d resets=%d appends=%d repaints=%d\n",
+	_, _ = fmt.Fprintf(out, "scenario=%s frames=%d resets=%d appends=%d repaints=%d\n",
 		scenario, len(frames), resets, appends, repaints)
 	return nil
 }

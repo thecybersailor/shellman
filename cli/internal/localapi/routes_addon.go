@@ -614,7 +614,9 @@ func (s *Server) buildCommitMessageWithOpenAI(ctx context.Context, prompt string
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return "", err
@@ -718,72 +720,4 @@ func parseGitStatusPorcelain(status string) []map[string]string {
 		})
 	}
 	return files
-}
-
-func buildCommitMessageDraft(files []map[string]string, diff string) string {
-	if len(files) == 0 {
-		if strings.TrimSpace(diff) == "" {
-			return "chore: update working tree"
-		}
-		return "chore: update source code"
-	}
-
-	addCount := 0
-	modCount := 0
-	delCount := 0
-	renameCount := 0
-	for _, item := range files {
-		code := strings.ToUpper(strings.TrimSpace(item["status"]))
-		switch {
-		case strings.Contains(code, "??"), strings.Contains(code, "A"):
-			addCount++
-		case strings.Contains(code, "D"):
-			delCount++
-		case strings.Contains(code, "R"):
-			renameCount++
-		default:
-			modCount++
-		}
-	}
-
-	action := "update"
-	switch {
-	case addCount > modCount && addCount >= delCount:
-		action = "add"
-	case delCount > modCount && delCount > addCount:
-		action = "remove"
-	case renameCount > 0 && renameCount >= addCount && renameCount >= modCount && renameCount >= delCount:
-		action = "rename"
-	}
-
-	scope := "files"
-	if path := strings.TrimSpace(files[0]["path"]); path != "" {
-		scope = path
-		if idx := strings.LastIndex(scope, "/"); idx >= 0 && idx+1 < len(scope) {
-			scope = scope[idx+1:]
-		}
-	}
-
-	header := "chore: " + action + " " + scope + " and related changes (" + strconv.Itoa(len(files)) + " files)"
-	if len(files) >= 10 {
-		header = "chore: " + action + " " + scope + " and related changes"
-	}
-
-	lines := make([]string, 0, 8)
-	maxLines := 6
-	if len(files) < maxLines {
-		maxLines = len(files)
-	}
-	for i := 0; i < maxLines; i++ {
-		item := files[i]
-		lines = append(lines, "- "+strings.TrimSpace(item["status"])+" "+strings.TrimSpace(item["path"]))
-	}
-	if len(files) > maxLines {
-		lines = append(lines, "- ... and more files")
-	}
-
-	if len(lines) == 0 {
-		return header
-	}
-	return header + "\n\n" + strings.Join(lines, "\n")
 }

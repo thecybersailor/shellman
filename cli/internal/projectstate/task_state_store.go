@@ -11,7 +11,7 @@ func (s *Store) ListTasksByProject(projectID string) ([]TaskRecordRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	rows, err := db.Query(`
 SELECT task_id, project_id, parent_task_id, title, current_command, status, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
@@ -22,7 +22,7 @@ ORDER BY created_at ASC, task_id ASC
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	result := make([]TaskRecordRow, 0)
 	for rows.Next() {
@@ -58,7 +58,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	if input.TaskID == "" {
 		return errors.New("task id is required")
@@ -134,7 +134,7 @@ func (s *Store) ArchiveCheckedTasksByProject(projectID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	res, err := db.Exec(`
@@ -153,7 +153,7 @@ func (s *Store) BatchUpsertRuntime(input RuntimeBatchUpdate) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	tx, err := db.Begin()
 	if err != nil {
@@ -219,7 +219,7 @@ func (s *Store) GetPaneRuntimeByPaneID(paneID string) (PaneRuntimeRecord, bool, 
 	if err != nil {
 		return PaneRuntimeRecord{}, false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var row PaneRuntimeRecord
 	err = db.QueryRow(`
@@ -252,7 +252,7 @@ func (s *Store) GetProjectMaxTaskLastModified(projectID string) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var lastModified int64
 	if err := db.QueryRow(`SELECT COALESCE(MAX(last_modified), 0) FROM tasks WHERE repo_root = ? AND project_id = ?`, s.repoRoot, projectID).Scan(&lastModified); err != nil {
@@ -266,7 +266,7 @@ func (s *Store) DeleteTask(taskID string) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	_, err = db.Exec(`DELETE FROM tasks WHERE repo_root = ? AND task_id = ?`, s.repoRoot, taskID)
 	return err

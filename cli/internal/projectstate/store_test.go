@@ -141,7 +141,7 @@ func TestStore_SavePaneSnapshots_DoesNotUpdateTaskLastModified(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open db failed: %v", err)
 	}
-	defer release()
+	defer func() { _ = release() }()
 	if _, err := db.Exec(`UPDATE tasks SET last_modified = 1 WHERE task_id = ?`, "task_1"); err != nil {
 		t.Fatalf("seed last_modified failed: %v", err)
 	}

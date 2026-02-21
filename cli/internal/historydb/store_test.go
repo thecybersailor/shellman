@@ -21,7 +21,7 @@ func TestStore_UpsertAndListRecent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new store failed: %v", err)
 	}
-	defer st.Close()
+	defer func() { _ = st.Close() }()
 
 	if err := st.Upsert("/tmp/a"); err != nil {
 		t.Fatalf("upsert a: %v", err)

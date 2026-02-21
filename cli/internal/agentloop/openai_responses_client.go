@@ -106,7 +106,9 @@ func (c *ResponsesClient) CreateResponseStream(ctx context.Context, req CreateRe
 	if stream == nil {
 		return nil, fmt.Errorf("responses stream unavailable request=%s", summarizeCreateResponseRequest(req))
 	}
-	defer stream.Close()
+	defer func() {
+		_ = stream.Close()
+	}()
 
 	out := &CreateResponseResult{}
 	eventTrace := make([]string, 0, 32)

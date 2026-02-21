@@ -1,0 +1,25 @@
+version: 2
+
+run:
+  timeout: 5m
+  modules-download-mode: readonly
+
+formatters:
+  enable:
+    - gofmt
+
+linters:
+  enable:
+    - errcheck
+    - gocyclo
+    - govet
+    - ineffassign
+    - misspell
+    - unused
+  disable:
+    - staticcheck
+  settings:
+    gocyclo:
+      min-complexity: 80
+    staticcheck:
+      checks: ["all", "-SA1019"]

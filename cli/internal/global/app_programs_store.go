@@ -58,9 +58,9 @@ func normalizeAppPrograms(cfg AppProgramsConfig) AppProgramsConfig {
 			nextCommand = command
 		}
 		out.Providers = append(out.Providers, AppProgramProvider{
-			ID:          id,
-			DisplayName: nextDisplayName,
-			Command:     nextCommand,
+			ID:                   id,
+			DisplayName:          nextDisplayName,
+			Command:              nextCommand,
 			CommitMessageCommand: nextCommitMessageCommand,
 		})
 	}

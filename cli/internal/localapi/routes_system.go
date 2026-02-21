@@ -79,7 +79,9 @@ func (s *Server) handleSystemImageUpload(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusBadRequest, "INVALID_UPLOAD", "missing file")
 		return
 	}
-	defer file.Close()
+	defer func() {
+		_ = file.Close()
+	}()
 
 	contentType := strings.ToLower(strings.TrimSpace(header.Header.Get("Content-Type")))
 	if contentType == "" && header.Filename != "" {
@@ -95,7 +97,9 @@ func (s *Server) handleSystemImageUpload(w http.ResponseWriter, r *http.Request)
 		respondError(w, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", err.Error())
 		return
 	}
-	defer tmp.Close()
+	defer func() {
+		_ = tmp.Close()
+	}()
 
 	size, err := io.CopyN(tmp, file, maxUploadImageSize+1)
 	if err != nil && err != io.EOF {

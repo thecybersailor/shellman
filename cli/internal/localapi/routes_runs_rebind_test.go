@@ -49,7 +49,7 @@ func TestRunBinding_BecomesStaleWhenServerInstanceChanges(t *testing.T) {
 	}
 
 	old := os.Getenv("SHELLMAN_SERVER_INSTANCE_ID")
-	defer os.Setenv("SHELLMAN_SERVER_INSTANCE_ID", old)
+	defer func() { _ = os.Setenv("SHELLMAN_SERVER_INSTANCE_ID", old) }()
 	if err := os.Setenv("SHELLMAN_SERVER_INSTANCE_ID", "srv_new"); err != nil {
 		t.Fatalf("Setenv failed: %v", err)
 	}

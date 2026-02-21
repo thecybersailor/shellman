@@ -131,7 +131,7 @@ import (
 	"os"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 )
 
 func main() {

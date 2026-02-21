@@ -2,10 +2,11 @@
 # Automated validation chain using Makefile's native dependency mechanism
 
 .PHONY: validate-all validate-quick validate-clean validate-status validate-task-system validate-e2e-entry-guard
-.PHONY: validate-api-types validate-cli-tests validate-worker-tests validate-webui-types validate-webui-tests
+.PHONY: validate-api-types validate-cli-lint validate-cli-tests validate-worker-tests validate-webui-types validate-webui-tests
 
 STATUS_DIR := .build-status
 STATUS_API_TYPES := $(STATUS_DIR)/api-types.status
+STATUS_CLI_LINT := $(STATUS_DIR)/cli-lint.status
 STATUS_CLI_TESTS := $(STATUS_DIR)/cli-tests.status
 STATUS_WORKER_TESTS := $(STATUS_DIR)/worker-tests.status
 STATUS_WEBUI_TYPES := $(STATUS_DIR)/webui-types.status
@@ -19,11 +20,11 @@ WEBUI_FILES := $(shell find webui/src webui/package.json webui/tsconfig*.json we
 $(STATUS_DIR):
 	@mkdir -p $(STATUS_DIR)
 
-validate-all: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_TESTS)
+validate-all: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES) $(STATUS_WEBUI_TESTS)
 	@echo ""
 	@echo "✅ All validations passed!"
 
-validate-quick: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES)
+validate-quick: validate-e2e-entry-guard $(STATUS_API_TYPES) $(STATUS_CLI_LINT) $(STATUS_CLI_TESTS) $(STATUS_WORKER_TESTS) $(STATUS_WEBUI_TYPES)
 	@echo ""
 	@echo "✅ Quick validation passed!"
 
@@ -36,6 +37,7 @@ validate-status:
 	@echo "📊 Validation Status:"
 	@echo ""
 	@if [ -f $(STATUS_API_TYPES) ]; then echo "  ✓ API Types"; else echo "  ✗ API Types: Not validated"; fi
+	@if [ -f $(STATUS_CLI_LINT) ]; then echo "  ✓ CLI Lint"; else echo "  ✗ CLI Lint: Not validated"; fi
 	@if [ -f $(STATUS_CLI_TESTS) ]; then echo "  ✓ CLI Tests"; else echo "  ✗ CLI Tests: Not validated"; fi
 	@if [ -f $(STATUS_WORKER_TESTS) ]; then echo "  ✓ Worker Tests"; else echo "  ✗ Worker Tests: Not validated"; fi
 	@if [ -f $(STATUS_WEBUI_TYPES) ]; then echo "  ✓ WebUI Types"; else echo "  ✗ WebUI Types: Not validated"; fi
@@ -48,6 +50,14 @@ $(STATUS_API_TYPES): $(STATUS_DIR) $(CLI_SRC_FILES) $(CLI_SWAGGER_FILES)
 	@echo "✅ API types generated"
 
 validate-api-types: $(STATUS_API_TYPES)
+
+$(STATUS_CLI_LINT): $(STATUS_DIR) $(CLI_SRC_FILES)
+	@echo "🔄 Running CLI lint..."
+	@cd cli && $(MAKE) lint
+	@touch $(STATUS_CLI_LINT)
+	@echo "✅ CLI lint validated"
+
+validate-cli-lint: $(STATUS_CLI_LINT)
 
 $(STATUS_CLI_TESTS): $(STATUS_DIR) $(CLI_SRC_FILES)
 	@echo "🔄 Running CLI tests..."

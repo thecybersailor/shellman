@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/protocol"
 )
@@ -27,7 +27,7 @@ func TestWSHub(t *testing.T) {
 	if err != nil {
 		t.Fatalf("websocket dial failed: %v", err)
 	}
-	defer conn.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	srv.hub.Publish("task.tree.updated", "p1", "t1", map[string]any{"version": 1})
 	_, msg, err := conn.Read(ctx)

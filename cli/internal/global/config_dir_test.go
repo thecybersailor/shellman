@@ -12,4 +12,3 @@ func TestDefaultConfigDir_UsesOverride(t *testing.T) {
 		t.Fatalf("expected override path, got %q", got)
 	}
 }
-

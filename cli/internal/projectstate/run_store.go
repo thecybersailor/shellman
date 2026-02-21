@@ -13,7 +13,7 @@ func (s *Store) InsertTask(task TaskRecord) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	status := task.Status
@@ -32,7 +32,7 @@ func (s *Store) InsertRun(run RunRecord) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	status := run.RunStatus
@@ -55,7 +55,7 @@ func (s *Store) GetRun(runID string) (RunRecord, error) {
 	if err != nil {
 		return RunRecord{}, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var run RunRecord
 	err = db.QueryRow(`
@@ -74,7 +74,7 @@ func (s *Store) UpsertRunBinding(binding RunBinding) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	status := binding.BindingStatus
@@ -100,7 +100,7 @@ func (s *Store) MarkBindingsStaleByServer(serverInstanceID, reason string) error
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	tx, err := db.Begin()
@@ -135,7 +135,7 @@ func (s *Store) AppendRunEvent(runID, eventType string, payload map[string]any) 
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -153,7 +153,7 @@ func (s *Store) InsertCompletionInbox(runID, requestID, summary, source string) 
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	_, err = db.Exec(`
 INSERT INTO completion_inbox(run_id, request_id, summary, source, created_at)
@@ -180,7 +180,7 @@ func (s *Store) GetLiveBindingByRunID(runID string) (RunBinding, bool, error) {
 	if err != nil {
 		return RunBinding{}, false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var binding RunBinding
 	err = db.QueryRow(`
@@ -209,7 +209,7 @@ func (s *Store) GetBindingByRunID(runID string) (RunBinding, bool, error) {
 	if err != nil {
 		return RunBinding{}, false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var binding RunBinding
 	err = db.QueryRow(`
@@ -238,7 +238,7 @@ func (s *Store) MarkRunCompleted(runID string) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
 	_, err = db.Exec(`
@@ -254,7 +254,7 @@ func (s *Store) SetRunStatus(runID, status string) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	_, err = db.Exec(`
 UPDATE task_runs
@@ -269,7 +269,7 @@ func (s *Store) FindLiveRunningRunByPaneTarget(paneTarget string) (RunRecord, bo
 	if err != nil {
 		return RunRecord{}, false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var run RunRecord
 	err = db.QueryRow(`
@@ -302,7 +302,7 @@ func (s *Store) ListRunCandidatesByPaneTarget(paneTarget string, limit int) ([]R
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	paneTarget = strings.TrimSpace(paneTarget)
 	if paneTarget == "" {
@@ -323,7 +323,7 @@ LIMIT ?
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]RunLookupCandidate, 0, limit)
 	for rows.Next() {
@@ -355,7 +355,7 @@ func (s *Store) EnqueueRunAction(runID, actionType string, payload map[string]an
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -374,7 +374,7 @@ func (s *Store) CountOutboxByRunID(runID string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(1) FROM action_outbox WHERE run_id = ?`, runID).Scan(&count); err != nil {
@@ -388,7 +388,7 @@ func (s *Store) CountRunEventsByType(runID, eventType string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	var count int
 	if err := db.QueryRow(`SELECT COUNT(1) FROM run_events WHERE run_id = ? AND event_type = ?`, runID, eventType).Scan(&count); err != nil {
@@ -402,7 +402,7 @@ func (s *Store) TryMarkTaskAutoProgressObserved(task TaskRecord, observedAt int6
 	if err != nil {
 		return false, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	taskID := strings.TrimSpace(task.TaskID)
 	if taskID == "" || observedAt <= 0 {
@@ -436,7 +436,7 @@ func (s *Store) InsertTaskNote(taskID, notes, flag string) error {
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	taskID = strings.TrimSpace(taskID)
 	notes = strings.TrimSpace(notes)
@@ -456,7 +456,7 @@ func (s *Store) ListTaskNotes(taskID string, limit int) ([]TaskNoteRecord, error
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
@@ -475,7 +475,7 @@ LIMIT ?
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]TaskNoteRecord, 0, limit)
 	for rows.Next() {
@@ -496,7 +496,7 @@ func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string)
 	if err != nil {
 		return 0, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	taskID = strings.TrimSpace(taskID)
 	role = strings.TrimSpace(role)
@@ -525,7 +525,7 @@ func (s *Store) UpdateTaskMessage(id int64, content, status, errText string) err
 	if err != nil {
 		return err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	if id <= 0 {
 		return nil
@@ -549,7 +549,7 @@ func (s *Store) ListTaskMessages(taskID string, limit int) ([]TaskMessageRecord,
 	if err != nil {
 		return nil, err
 	}
-	defer release()
+	defer func() { _ = release() }()
 
 	taskID = strings.TrimSpace(taskID)
 	if taskID == "" {
@@ -568,7 +568,7 @@ LIMIT ?
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	out := make([]TaskMessageRecord, 0, limit)
 	for rows.Next() {

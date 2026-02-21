@@ -296,6 +296,16 @@ func (s *Server) findTaskByPaneTarget(paneTarget string) (string, *projectstate.
 	return bestProjectID, bestStore, bestEntry, true, diag, nil
 }
 
+func paneRefMatchesBinding(paneHint string, binding projectstate.PaneBinding) bool {
+	paneHint = strings.TrimSpace(paneHint)
+	if paneHint == "" {
+		return false
+	}
+	return paneHint == strings.TrimSpace(binding.PaneTarget) ||
+		paneHint == strings.TrimSpace(binding.PaneID) ||
+		paneHint == strings.TrimSpace(binding.PaneUUID)
+}
+
 func (s *Server) findLiveRunningRunByPaneTargetForTask(store *projectstate.Store, paneTarget, taskID string) (projectstate.RunRecord, bool, runLookupDiagnostics, error) {
 	diag := runLookupDiagnostics{
 		PaneTarget: paneTarget,

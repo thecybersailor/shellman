@@ -410,22 +410,3 @@ func ageMilliseconds(now, at time.Time) int64 {
 	}
 	return now.Sub(at).Milliseconds()
 }
-
-func targetsSample(targets []string, limit int) []string {
-	if limit <= 0 {
-		limit = 8
-	}
-	if len(targets) <= limit {
-		out := make([]string, 0, len(targets))
-		for _, t := range targets {
-			out = append(out, strings.TrimSpace(t))
-		}
-		return out
-	}
-	out := make([]string, 0, limit+1)
-	for i := 0; i < limit; i++ {
-		out = append(out, strings.TrimSpace(targets[i]))
-	}
-	out = append(out, "...truncated")
-	return out
-}

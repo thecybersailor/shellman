@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
 	"runtime"
 	"strconv"
 	"strings"
@@ -15,8 +14,6 @@ import (
 
 	"shellman/cli/internal/projectstate"
 )
-
-var numberRegexp = regexp.MustCompile(`\d+`)
 
 var validTaskFlag = map[string]struct{}{
 	"success": {},
@@ -48,10 +45,6 @@ func (s *Server) evaluateTaskCompletionDispatch() completionDispatchDecision {
 	}
 	decision.Reason = "no-enabled-actions"
 	return decision
-}
-
-func (s *Server) shouldDispatchTaskCompletionActions() bool {
-	return s.evaluateTaskCompletionDispatch().Dispatch
 }
 
 func (s *Server) completeRunAndEnqueueActions(runID, summary, source string, reqMeta map[string]any) error {
@@ -328,17 +321,6 @@ func (s *Server) dispatchRunCompletionActions(runID, projectID, taskID, summary 
 	})
 }
 
-func (s *Server) taskCompletionIdleSatisfied(threshold int) bool {
-	if threshold <= 0 {
-		return true
-	}
-	idle, err := estimateIdleSeconds()
-	if err != nil {
-		return true
-	}
-	return idle >= threshold
-}
-
 func runTaskCompletionCommand(taskID, command string, payload map[string]string) error {
 	shell, shellArg, err := resolveShell()
 	if err != nil {
@@ -607,51 +589,4 @@ func resolveShell() (string, string, error) {
 	default:
 		return "", "", errors.New("unsupported shell")
 	}
-}
-
-func estimateIdleSeconds() (int, error) {
-	switch runtime.GOOS {
-	case "darwin":
-		return estimateIdleSecondsDarwin()
-	case "linux":
-		return estimateIdleSecondsLinux()
-	default:
-		return 0, errors.New("idle detection not supported")
-	}
-}
-
-func estimateIdleSecondsDarwin() (int, error) {
-	out, err := exec.Command("ioreg", "-w0", "-c", "IOHIDSystem").Output()
-	if err != nil {
-		return 0, err
-	}
-	nanos, err := parseFirstNumber(string(out))
-	if err != nil {
-		return 0, err
-	}
-	return nanos / 1000000000, nil
-}
-
-func estimateIdleSecondsLinux() (int, error) {
-	out, err := exec.Command("xprintidle").Output()
-	if err != nil {
-		return 0, err
-	}
-	millis, err := parseFirstNumber(string(out))
-	if err != nil {
-		return 0, err
-	}
-	return millis / 1000, nil
-}
-
-func parseFirstNumber(text string) (int, error) {
-	matches := numberRegexp.FindString(text)
-	if matches == "" {
-		return 0, errors.New("no number in output")
-	}
-	v, err := strconv.Atoi(matches)
-	if err != nil {
-		return 0, err
-	}
-	return v, nil
 }

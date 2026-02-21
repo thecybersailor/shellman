@@ -57,14 +57,6 @@ type wsDialer interface {
 type gatewayHTTPExecutor func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error)
 type paneAutoCompletionExecutor func(paneTarget string, observedLastActiveAt time.Time) (localapi.AutoCompleteByPaneResult, error)
 
-type gatewayHTTPExecAdapter struct {
-	exec gatewayHTTPExecutor
-}
-
-func (g gatewayHTTPExecAdapter) Exec(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
-	return g.exec(method, path, headers, body)
-}
-
 type gatewayHTTPExecutorRef struct {
 	mu   sync.RWMutex
 	exec gatewayHTTPExecutor
@@ -156,7 +148,7 @@ func run(
 	dialer wsDialer,
 	tmuxService bridge.TmuxService,
 ) error {
-	fmt.Fprintf(out, "shellman %s\n", version)
+	_, _ = fmt.Fprintf(out, "shellman %s\n", version)
 	logger := newRuntimeLogger(errOut)
 	logger.Debug("runtime config", "trace_stream", traceStreamEnabled)
 
@@ -166,14 +158,14 @@ func run(
 		return err
 	}
 
-	fmt.Fprintf(out, "visit_url=%s\n", resp.VisitURL)
-	fmt.Fprintf(out, "agent_ws_url=%s\n", resp.AgentWSURL)
+	_, _ = fmt.Fprintf(out, "visit_url=%s\n", resp.VisitURL)
+	_, _ = fmt.Fprintf(out, "agent_ws_url=%s\n", resp.AgentWSURL)
 
 	sock, err := dialer.Dial(ctx, resp.AgentWSURL)
 	if err != nil {
 		return err
 	}
-	defer sock.Close()
+	defer func() { _ = sock.Close() }()
 
 	configDir, err := global.DefaultConfigDir()
 	if err != nil {
@@ -320,11 +312,12 @@ func bindMessageLoop(
 		if out.Error != nil {
 			logger.Warn("ws op failed", "op", out.Op, "id", out.ID, "code", out.Error.Code, "msg", out.Error.Message)
 		} else if payloadTarget != "" {
-			if msg.Op == "tmux.select_pane" {
+			switch msg.Op {
+			case "tmux.select_pane":
 				if registry != nil {
 					registry.Subscribe(connID, payloadTarget)
 				}
-			} else if msg.Op == "term.input" {
+			case "term.input":
 				if conn != nil {
 					conn.Select(payloadTarget)
 				}
@@ -436,7 +429,7 @@ func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
 		server.PublishClientEvent("local", topic, projectID, taskID, payload)
 	})
 	addr := fmt.Sprintf("%s:%d", cfg.LocalHost, cfg.LocalPort)
-	fmt.Fprintf(out, "shellman local web server listening at http://%s\n", addr)
+	_, _ = fmt.Fprintf(out, "shellman local web server listening at http://%s\n", addr)
 
 	httpServer := &http.Server{
 		Addr:    addr,

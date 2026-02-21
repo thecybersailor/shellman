@@ -834,48 +834,6 @@ func buildTaskCompletionRequestMeta(r *http.Request) map[string]any {
 	}
 }
 
-func resolveTaskIDFromPaneHint(store *projectstate.Store, requestedTaskID, paneHint string) (string, bool, error) {
-	if store == nil {
-		return requestedTaskID, false, nil
-	}
-	requestedTaskID = strings.TrimSpace(requestedTaskID)
-	paneHint = strings.TrimSpace(paneHint)
-	if requestedTaskID == "" || paneHint == "" {
-		return requestedTaskID, false, nil
-	}
-	panes, err := store.LoadPanes()
-	if err != nil {
-		return requestedTaskID, false, err
-	}
-	if binding, ok := panes[requestedTaskID]; ok {
-		if paneRefMatchesBinding(paneHint, binding) {
-			return requestedTaskID, false, nil
-		}
-		if strings.TrimSpace(binding.PaneTarget) != "" || strings.TrimSpace(binding.PaneID) != "" || strings.TrimSpace(binding.PaneUUID) != "" {
-			return requestedTaskID, false, nil
-		}
-	}
-	for candidateTaskID, binding := range panes {
-		if paneRefMatchesBinding(paneHint, binding) {
-			if candidateTaskID == requestedTaskID {
-				return requestedTaskID, false, nil
-			}
-			return candidateTaskID, true, nil
-		}
-	}
-	return requestedTaskID, false, nil
-}
-
-func paneRefMatchesBinding(paneHint string, binding projectstate.PaneBinding) bool {
-	paneHint = strings.TrimSpace(paneHint)
-	if paneHint == "" {
-		return false
-	}
-	return paneHint == strings.TrimSpace(binding.PaneTarget) ||
-		paneHint == strings.TrimSpace(binding.PaneID) ||
-		paneHint == strings.TrimSpace(binding.PaneUUID)
-}
-
 func (s *Server) createTask(projectID, parentTaskID, title string) (string, error) {
 	repoRoot, err := s.findProjectRepoRoot(projectID)
 	if err != nil {

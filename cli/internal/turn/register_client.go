@@ -35,7 +35,9 @@ func (c *RegisterClient) Register() (RegisterResponse, error) {
 	if err != nil {
 		return RegisterResponse{}, err
 	}
-	defer res.Body.Close()
+	defer func() {
+		_ = res.Body.Close()
+	}()
 
 	if res.StatusCode != http.StatusOK {
 		return RegisterResponse{}, fmt.Errorf("register failed with status: %d", res.StatusCode)

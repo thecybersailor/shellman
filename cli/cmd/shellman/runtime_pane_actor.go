@@ -28,7 +28,7 @@ type paneLastActiveProvider interface {
 }
 
 const (
-	toolHashTransitionFastMs = 1200 * time.Millisecond
+	toolHashTransitionFast = 1200 * time.Millisecond
 )
 
 type PaneActor struct {
@@ -382,8 +382,8 @@ func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
 		lastInputAt = p.inputTracker.Last(p.target)
 	}
 	transitionDelay := statusTransitionDelay
-	if transitionDelay <= 0 || transitionDelay > toolHashTransitionFastMs {
-		transitionDelay = toolHashTransitionFastMs
+	if transitionDelay <= 0 || transitionDelay > toolHashTransitionFast {
+		transitionDelay = toolHashTransitionFast
 	}
 	next := advancePaneStatus(
 		prev,
@@ -532,15 +532,6 @@ func (p *PaneActor) stopRealtime() {
 		stop()
 		p.logger.Debug("realtime output unsubscribed", "pane_target", p.target)
 	}
-}
-
-func (p *PaneActor) subscriberCount() int {
-	if p == nil {
-		return 0
-	}
-	p.mu.RLock()
-	defer p.mu.RUnlock()
-	return len(p.subscribers)
 }
 
 func termOutputMessages(target, mode, data string, cursorX, cursorY int, hasCursor bool) []protocol.Message {

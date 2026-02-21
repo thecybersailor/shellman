@@ -45,13 +45,6 @@ export function createApi(config: ConstructorParameters<typeof GeneratedApi<any>
   const rawApi = new GeneratedApi<any>(config)
   const wrappedApi: any = {}
   
-  wrappedApi.schema = {}
-  for (const key in rawApi.schema) {
-    const method = (rawApi.schema as any)[key]
-    if (typeof method === 'function') {
-      wrappedApi.schema[key] = (...args: any[]) => unwrapData(method.apply(rawApi.schema, args))
-    }
-  }
   return wrappedApi as UnwrappedApi
 }
 

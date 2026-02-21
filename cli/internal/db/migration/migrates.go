@@ -13,18 +13,9 @@ type step struct {
 
 var steps []step
 
-func add(name string, f func(*Migration) error) {
-	for _, s := range steps {
-		if s.name == name {
-			panic(fmt.Sprintf("duplicate migration: %s", name))
-		}
-	}
-	steps = append(steps, step{name: name, run: f})
-}
-
 // Migration is passed to each migration step. DB is set by RunAll.
 type Migration struct {
-	DB  *gorm.DB
+	DB   *gorm.DB
 	logs []string
 }
 

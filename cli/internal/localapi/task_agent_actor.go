@@ -576,7 +576,6 @@ const (
 )
 
 func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
-	mode := taskAgentToolModeDefault
 	currentCommand := ""
 	if store != nil && strings.TrimSpace(projectID) != "" && strings.TrimSpace(taskID) != "" {
 		if rows, err := store.ListTasksByProject(strings.TrimSpace(projectID)); err == nil {
@@ -589,7 +588,7 @@ func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, task
 			}
 		}
 	}
-	mode = resolveTaskAgentToolModeFromCommand(currentCommand)
+	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
 	names := []string{
 		"task.current.set_flag",
 		"task.child.get_context",

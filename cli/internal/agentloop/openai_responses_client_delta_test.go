@@ -62,4 +62,3 @@ func TestResponsesClient_CreateResponseStream_CollectsArgumentsFromDeltaChunks(t
 		t.Fatalf("expected merged arguments from delta chunks, got %q", args)
 	}
 }
-

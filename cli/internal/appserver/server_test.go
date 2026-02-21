@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/localapi"
 	"shellman/cli/internal/protocol"
@@ -119,14 +119,14 @@ func TestServer_EdgeWSBridge(t *testing.T) {
 		t.Fatalf("dial agent failed: %v", err)
 	}
 	agent.SetReadLimit(-1)
-	defer agent.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = agent.Close(websocket.StatusNormalClosure, "") }()
 
 	client, _, err := websocket.Dial(ctx, baseWS+"/ws/client/u1", nil)
 	if err != nil {
 		t.Fatalf("dial client failed: %v", err)
 	}
 	client.SetReadLimit(-1)
-	defer client.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client.Close(websocket.StatusNormalClosure, "") }()
 
 	reqRaw := []byte(`{"id":"req_1","type":"req","op":"tmux.list","payload":{"scope":"all"}}`)
 	if err := client.Write(ctx, websocket.MessageText, reqRaw); err != nil {
@@ -178,14 +178,14 @@ func TestServer_EdgeWSBridge_AllowsLargeAgentMessage(t *testing.T) {
 		t.Fatalf("dial agent failed: %v", err)
 	}
 	agent.SetReadLimit(-1)
-	defer agent.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = agent.Close(websocket.StatusNormalClosure, "") }()
 
 	client, _, err := websocket.Dial(ctx, baseWS+"/ws/client/u1", nil)
 	if err != nil {
 		t.Fatalf("dial client failed: %v", err)
 	}
 	client.SetReadLimit(-1)
-	defer client.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client.Close(websocket.StatusNormalClosure, "") }()
 
 	msg := map[string]any{
 		"id":   "evt_status_big",
@@ -240,19 +240,19 @@ func TestEdgeWSHub_MultiClientRoutesByConnID(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial agent failed: %v", err)
 	}
-	defer agent.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = agent.Close(websocket.StatusNormalClosure, "") }()
 
 	client1, _, err := websocket.Dial(ctx, baseWS+"/ws/client/u1", nil)
 	if err != nil {
 		t.Fatalf("dial client1 failed: %v", err)
 	}
-	defer client1.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client1.Close(websocket.StatusNormalClosure, "") }()
 
 	client2, _, err := websocket.Dial(ctx, baseWS+"/ws/client/u1", nil)
 	if err != nil {
 		t.Fatalf("dial client2 failed: %v", err)
 	}
-	defer client2.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client2.Close(websocket.StatusNormalClosure, "") }()
 
 	reqRaw := []byte(`{"id":"1","type":"req","op":"tmux.list","payload":{"scope":"all"}}`)
 	if err := client1.Write(ctx, websocket.MessageText, reqRaw); err != nil {
@@ -314,7 +314,7 @@ func TestServer_PublishClientEvent_DeliversToWSClient(t *testing.T) {
 		t.Fatalf("dial client failed: %v", err)
 	}
 	client.SetReadLimit(-1)
-	defer client.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client.Close(websocket.StatusNormalClosure, "") }()
 
 	srv.PublishClientEvent("local", "task.messages.updated", "p1", "t1", map[string]any{"source": "auto_progress"})
 

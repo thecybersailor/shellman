@@ -169,7 +169,7 @@ func TestRun_EmitsTmuxStatusEvent(t *testing.T) {
 	}()
 	time.Sleep(35 * time.Millisecond)
 	cancel()
-	_ = <-done
+	<-done
 
 	found := false
 	for _, line := range sock.writes {

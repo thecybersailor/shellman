@@ -3,6 +3,7 @@ module shellman/cli
 go 1.24.0
 
 require (
+	github.com/coder/websocket v1.8.14
 	github.com/google/uuid v1.6.0
 	github.com/openai/openai-go v1.12.0
 	github.com/pelletier/go-toml/v2 v2.2.4
@@ -10,7 +11,6 @@ require (
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 	modernc.org/sqlite v1.29.10
-	nhooyr.io/websocket v1.8.17
 )
 
 require (

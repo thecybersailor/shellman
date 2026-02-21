@@ -195,7 +195,7 @@ function taskMatchesFilter(task: Task, key: TaskFilterKey) {
     return task.flag === "error";
   }
   if (key === "notice") {
-    return task.flag === "notify" || task.flag === "notice";
+    return task.flag === "notify";
   }
   return task.flag === "success";
 }

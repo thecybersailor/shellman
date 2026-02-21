@@ -12,7 +12,7 @@ func TestOpenSQLiteWithMigrations_CreatesCoreTables(t *testing.T) {
 	if err != nil {
 		t.Fatalf("OpenSQLiteWithMigrations failed: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	mustHave := []string{
 		"tasks",
@@ -50,7 +50,7 @@ func TestOpenSQLiteWithMigrations_IsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second open failed: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	var n int
 	if err := sqlDB.QueryRow(`SELECT COUNT(1) FROM sqlite_master WHERE type='table' AND name='tasks'`).Scan(&n); err != nil {
@@ -67,7 +67,7 @@ func TestOpenSQLiteWithMigrations_OpensReadableDB(t *testing.T) {
 	if err != nil {
 		t.Fatalf("open failed: %v", err)
 	}
-	defer sqlDB.Close()
+	defer func() { _ = sqlDB.Close() }()
 
 	if err := sqlDB.Ping(); err != nil {
 		t.Fatalf("ping failed: %v", err)

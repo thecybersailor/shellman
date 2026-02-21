@@ -547,7 +547,7 @@ func TestTaskPaneEndpoint_ReadsSnapshotFromPaneRuntime(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET pane expected 200, got %d", resp.StatusCode)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	var paneRes struct {
 		Data struct {

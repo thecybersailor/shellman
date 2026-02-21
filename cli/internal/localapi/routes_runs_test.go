@@ -24,7 +24,7 @@ func TestRunRoutes_CreateAndBindPersistForAutoComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create task failed: %v", err)
 	}
-	defer createTaskResp.Body.Close()
+	defer func() { _ = createTaskResp.Body.Close() }()
 	var created struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -43,7 +43,7 @@ func TestRunRoutes_CreateAndBindPersistForAutoComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("create run request failed: %v", err)
 	}
-	defer createRunResp.Body.Close()
+	defer func() { _ = createRunResp.Body.Close() }()
 	if createRunResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 from create run, got %d", createRunResp.StatusCode)
 	}
@@ -78,7 +78,7 @@ func TestRunRoutes_CreateAndBindPersistForAutoComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("bind pane request failed: %v", err)
 	}
-	defer bindResp.Body.Close()
+	defer func() { _ = bindResp.Body.Close() }()
 	if bindResp.StatusCode != http.StatusOK {
 		t.Fatalf("expected 200 from bind pane, got %d", bindResp.StatusCode)
 	}
@@ -174,7 +174,7 @@ func TestRunRoutes_AreRegistered(t *testing.T) {
 	if err != nil {
 		t.Fatalf("POST /api/v1/runs/auto-complete-by-pane failed: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("expected removed route to return 404, got %d", resp.StatusCode)
 	}
@@ -191,7 +191,7 @@ func TestRunAutoCompleteByPane_SkipsOnlyPaneActorSourceWhenAutopilotDisabled(t *
 	if err != nil {
 		t.Fatalf("create task failed: %v", err)
 	}
-	defer createTaskResp.Body.Close()
+	defer func() { _ = createTaskResp.Body.Close() }()
 	var created struct {
 		Data struct {
 			TaskID string `json:"task_id"`
@@ -254,7 +254,7 @@ func TestRunAutoCompleteByPane_DedupesPaneActorByObservedLastActiveAt(t *testing
 	if err != nil {
 		t.Fatalf("create task failed: %v", err)
 	}
-	defer createTaskResp.Body.Close()
+	defer func() { _ = createTaskResp.Body.Close() }()
 	var created struct {
 		Data struct {
 			TaskID string `json:"task_id"`

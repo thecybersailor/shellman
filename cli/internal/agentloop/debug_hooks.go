@@ -3,9 +3,9 @@ package agentloop
 import "context"
 
 type ResponsesDebugHooks struct {
-	OnRequestRaw       func(raw string)
-	OnResponseRaw      func(raw string)
-	OnStreamEventRaw   func(raw string)
+	OnRequestRaw     func(raw string)
+	OnResponseRaw    func(raw string)
+	OnStreamEventRaw func(raw string)
 }
 
 type responsesDebugHooksContextKey struct{}

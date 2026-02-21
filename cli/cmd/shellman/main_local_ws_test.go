@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"nhooyr.io/websocket"
+	"github.com/coder/websocket"
 	"shellman/cli/internal/appserver"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/localapi"
@@ -79,7 +79,7 @@ func TestStartLocalAgentLoop_RespondsToTmuxList(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dial client ws failed: %v", err)
 	}
-	defer client.Close(websocket.StatusNormalClosure, "")
+	defer func() { _ = client.Close(websocket.StatusNormalClosure, "") }()
 
 	req := protocol.Message{
 		ID:      "req_1",

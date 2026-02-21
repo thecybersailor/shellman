@@ -17,10 +17,10 @@ ifndef SWAG
 endif
 	@echo "Generating LocalAPI Swagger..."
 	@mkdir -p types/localapi
-	@export PATH=$$PATH:$$(go env GOPATH)/bin && swag init \
-		-g cmd/shellman/main.go \
-		--dir .,internal/localapi,internal/projectstate,internal/global,internal/fsbrowser,internal/historydb \
-		--output types/localapi \
+	@export PATH=$$PATH:$$(go env GOPATH)/bin && cd cmd/shellman && swag init \
+		-g main.go \
+		--dir .,../../internal/localapi,../../internal/projectstate,../../internal/global,../../internal/fsbrowser,../../internal/historydb \
+		--output ../../types/localapi \
 		--parseDependency \
 		--parseInternal \
 		--parseDepth 4 \
