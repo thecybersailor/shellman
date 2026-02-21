@@ -34,11 +34,13 @@ func (f *fakeProjectsStore) RemoveProject(projectID string) error          { ret
 
 type fakePaneService struct{}
 
-func (f *fakePaneService) CreateSiblingPane(targetTaskID string) (string, error) {
+func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
 	return "pane-1", nil
 }
-func (f *fakePaneService) CreateChildPane(targetTaskID string) (string, error) { return "pane-2", nil }
-func (f *fakePaneService) CreateRootPane() (string, error)                     { return "pane-0", nil }
+func (f *fakePaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string, error) {
+	return "pane-2", nil
+}
+func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) { return "pane-0", nil }
 
 func makeDeps() Deps {
 	return Deps{

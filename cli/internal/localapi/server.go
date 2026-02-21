@@ -34,9 +34,9 @@ type ProjectsStore interface {
 }
 
 type PaneService interface {
-	CreateSiblingPane(targetTaskID string) (string, error)
-	CreateChildPane(targetTaskID string) (string, error)
-	CreateRootPane() (string, error)
+	CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error)
+	CreateChildPaneInDir(targetTaskID, cwd string) (string, error)
+	CreateRootPaneInDir(cwd string) (string, error)
 }
 
 type FSBrowser interface {
