@@ -263,7 +263,7 @@ func TestAutoCompleteByPane_TriggersWhenTaskAlreadyCompleted(t *testing.T) {
 	}
 }
 
-func TestAutoCompleteByPane_PaneActorSkipsWhenTaskAlreadyCompleted(t *testing.T) {
+func TestAutoCompleteByPane_PaneActorTriggersWhenTaskAlreadyCompleted(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
 	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
@@ -340,11 +340,11 @@ func TestAutoCompleteByPane_PaneActorSkipsWhenTaskAlreadyCompleted(t *testing.T)
 	if runErr != nil {
 		t.Fatalf("AutoCompleteByPane failed: %v", runErr)
 	}
-	if out.Triggered {
-		t.Fatalf("expected triggered=false for pane-actor on terminal task, got true (status=%q reason=%q)", out.Status, out.Reason)
+	if !out.Triggered {
+		t.Fatalf("expected triggered=true for pane-actor on terminal task, got false (status=%q reason=%q)", out.Status, out.Reason)
 	}
-	if out.Reason != "task-already-terminal" {
-		t.Fatalf("expected reason task-already-terminal, got %q", out.Reason)
+	if out.Reason != "" {
+		t.Fatalf("expected empty reason on success, got %q", out.Reason)
 	}
 	if out.Status != projectstate.StatusCompleted {
 		t.Fatalf("expected status completed, got %q", out.Status)
