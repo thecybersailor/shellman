@@ -23,7 +23,7 @@ describe("ProjectTaskTree", () => {
 
     expect(wrapper.text()).toContain("Project One");
     expect(wrapper.text()).toContain("Root");
-    expect(wrapper.get("[data-test-id='muxt-task-status-t1']").attributes("data-status")).toBe("running");
+    expect(wrapper.get("[data-test-id='shellman-task-status-t1']").attributes("data-status")).toBe("running");
   });
 
   it("shows spinner for running runtime status and relative time otherwise", () => {
@@ -44,7 +44,7 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    expect(wrapper.get("[data-test-id='muxt-task-status-t1'] svg").classes()).toContain("animate-spin");
+    expect(wrapper.get("[data-test-id='shellman-task-status-t1'] svg").classes()).toContain("animate-spin");
     expect(wrapper.text()).toContain("2h");
     nowSpy.mockRestore();
   });
@@ -87,13 +87,13 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    expect(wrapper.get("[data-test-id='muxt-task-flag-dot-t_success']").attributes("data-flag")).toBe("success");
-    expect(wrapper.get("[data-test-id='muxt-task-flag-dot-t_notify']").attributes("data-flag")).toBe("notify");
-    expect(wrapper.get("[data-test-id='muxt-task-flag-dot-t_error']").attributes("data-flag")).toBe("error");
-    expect(wrapper.find("[data-test-id='muxt-task-flag-dot-t_plain']").exists()).toBe(false);
-    expect(wrapper.get("[data-test-id='muxt-task-flag-slot-t_success']").exists()).toBe(true);
-    expect(wrapper.get("[data-test-id='muxt-task-flag-slot-t_plain']").exists()).toBe(true);
-    expect(wrapper.get("[data-test-id='muxt-task-flag-slot-t_plain'] > span > span").classes()).toContain("opacity-0");
+    expect(wrapper.get("[data-test-id='shellman-task-flag-dot-t_success']").attributes("data-flag")).toBe("success");
+    expect(wrapper.get("[data-test-id='shellman-task-flag-dot-t_notify']").attributes("data-flag")).toBe("notify");
+    expect(wrapper.get("[data-test-id='shellman-task-flag-dot-t_error']").attributes("data-flag")).toBe("error");
+    expect(wrapper.find("[data-test-id='shellman-task-flag-dot-t_plain']").exists()).toBe(false);
+    expect(wrapper.get("[data-test-id='shellman-task-flag-slot-t_success']").exists()).toBe(true);
+    expect(wrapper.get("[data-test-id='shellman-task-flag-slot-t_plain']").exists()).toBe(true);
+    expect(wrapper.get("[data-test-id='shellman-task-flag-slot-t_plain'] > span > span").classes()).toContain("opacity-0");
   });
 
   it("hides flag dot when flag_readed is true", () => {
@@ -113,8 +113,8 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    expect(wrapper.find("[data-test-id='muxt-task-flag-dot-t_readed']").exists()).toBe(false);
-    expect(wrapper.get("[data-test-id='muxt-task-flag-dot-t_unread']").attributes("data-flag")).toBe("notify");
+    expect(wrapper.find("[data-test-id='shellman-task-flag-dot-t_readed']").exists()).toBe(false);
+    expect(wrapper.get("[data-test-id='shellman-task-flag-dot-t_unread']").attributes("data-flag")).toBe("notify");
   });
 
   it("emits create-root-pane from project section", async () => {
@@ -125,7 +125,7 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    await wrapper.get("[data-test-id='muxt-project-root-pane-p1']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-project-root-pane-p1']").trigger("click");
     expect(wrapper.emitted("create-root-pane")?.[0]).toEqual(["p1"]);
   });
 
@@ -158,8 +158,8 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    expect(wrapper.find("[data-test-id='muxt-orphan-toggle']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-orphan-item-e2e-0-1']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-orphan-toggle']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-orphan-item-e2e-0-1']").exists()).toBe(false);
   });
 
   it("expands orphan section and emits adopt-pane on drop to task", async () => {
@@ -172,8 +172,8 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    await wrapper.get("[data-test-id='muxt-orphan-toggle']").trigger("click");
-    const orphanItem = wrapper.get("[data-test-id='muxt-orphan-item-e2e-0-1']");
+    await wrapper.get("[data-test-id='shellman-orphan-toggle']").trigger("click");
+    const orphanItem = wrapper.get("[data-test-id='shellman-orphan-item-e2e-0-1']");
     await orphanItem.trigger("dragstart", {
       dataTransfer: {
         effectAllowed: "",
@@ -181,7 +181,7 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    const taskRow = wrapper.get("[data-test-id='muxt-task-row-t1']");
+    const taskRow = wrapper.get("[data-test-id='shellman-task-row-t1']");
     await taskRow.trigger("drop");
 
     expect(wrapper.emitted("adopt-pane")?.[0]).toEqual([{ parentTaskId: "t1", paneTarget: "e2e:0.1", title: "pane-a" }]);
@@ -208,41 +208,41 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    expect(wrapper.find("[data-test-id='muxt-task-filter-card']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-task-filter-card']").exists()).toBe(false);
 
-    await wrapper.get("[data-test-id='muxt-task-filter-toggle']").trigger("click");
-    expect(wrapper.find("[data-test-id='muxt-task-filter-card']").exists()).toBe(true);
+    await wrapper.get("[data-test-id='shellman-task-filter-toggle']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-filter-card']").exists()).toBe(true);
 
-    const options = wrapper.findAll("[data-test-id^='muxt-task-filter-option-']");
+    const options = wrapper.findAll("[data-test-id^='shellman-task-filter-option-']");
     const optionLabels = options.map((n) => n.text());
     expect(optionLabels).toEqual(["done", "error", "notice", "success"]);
 
     // done 选中时，全显示
-    expect(wrapper.find("[data-test-id='muxt-task-row-checked_error']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-error_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-checked_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-notice_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-success_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-plain']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-checked_error']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-error_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-checked_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-notice_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-success_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-plain']").exists()).toBe(true);
 
     // done 取消后，仅显示未勾选且命中 flag
-    await wrapper.get("[data-test-id='muxt-task-filter-option-done']").trigger("click");
-    expect(wrapper.find("[data-test-id='muxt-task-row-checked_error']").exists()).toBe(false);
-    expect(wrapper.find("[data-test-id='muxt-task-row-error_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-notice_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-success_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-plain']").exists()).toBe(false);
-    expect(wrapper.find("[data-test-id='muxt-task-row-checked_only']").exists()).toBe(false);
+    await wrapper.get("[data-test-id='shellman-task-filter-option-done']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-row-checked_error']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-task-row-error_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-notice_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-success_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-plain']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-task-row-checked_only']").exists()).toBe(false);
 
     // done 再次选中后恢复全显示
-    await wrapper.get("[data-test-id='muxt-task-filter-option-done']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-task-filter-option-notice']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-task-filter-option-success']").trigger("click");
-    expect(wrapper.find("[data-test-id='muxt-task-row-checked_error']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-error_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-notice_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-success_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-plain']").exists()).toBe(true);
+    await wrapper.get("[data-test-id='shellman-task-filter-option-done']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-filter-option-notice']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-filter-option-success']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-row-checked_error']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-error_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-notice_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-success_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-plain']").exists()).toBe(true);
   });
 
   it("restores full task list when filter card is collapsed", async () => {
@@ -262,16 +262,16 @@ describe("ProjectTaskTree", () => {
       }
     });
 
-    await wrapper.get("[data-test-id='muxt-task-filter-toggle']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-task-filter-option-done']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-task-filter-option-notice']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-task-filter-option-success']").trigger("click");
-    expect(wrapper.find("[data-test-id='muxt-task-row-error_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-plain']").exists()).toBe(false);
+    await wrapper.get("[data-test-id='shellman-task-filter-toggle']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-filter-option-done']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-filter-option-notice']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-filter-option-success']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-row-error_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-plain']").exists()).toBe(false);
 
-    await wrapper.get("[data-test-id='muxt-task-filter-toggle']").trigger("click");
-    expect(wrapper.find("[data-test-id='muxt-task-filter-card']").exists()).toBe(false);
-    expect(wrapper.find("[data-test-id='muxt-task-row-error_only']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-task-row-plain']").exists()).toBe(true);
+    await wrapper.get("[data-test-id='shellman-task-filter-toggle']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-filter-card']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-task-row-error_only']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-task-row-plain']").exists()).toBe(true);
   });
 });

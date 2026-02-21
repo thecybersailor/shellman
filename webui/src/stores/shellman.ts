@@ -72,8 +72,8 @@ export function classifyTermFrame(mode: TerminalFrame["mode"], data: string): Te
 }
 
 function isTermFrameProfileEnabled() {
-  const globalRef = globalThis as typeof globalThis & { __MUXT_TERM_PROFILE__?: boolean };
-  return globalRef.__MUXT_TERM_PROFILE__ === true;
+  const globalRef = globalThis as typeof globalThis & { __SHELLMAN_TERM_PROFILE__?: boolean };
+  return globalRef.__SHELLMAN_TERM_PROFILE__ === true;
 }
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -183,7 +183,7 @@ interface ProtocolMessage {
   error?: { code?: string; message?: string };
 }
 
-export function createMuxtStore(
+export function createShellmanStore(
   fetchImpl: typeof fetch = fetch,
   wsFactory: (url: string) => WebSocket = (url) => new WebSocket(url),
   context?: APIContext
@@ -247,7 +247,7 @@ export function createMuxtStore(
     const windowMs = Math.max(1, nowMs - termFrameProfileStats.startedAtMs);
     const record = {
       ts: new Date(nowMs).toISOString(),
-      event: "muxt.term.output.profile",
+      event: "shellman.term.output.profile",
       windowMs,
       frameRate: Number(((termFrameProfileStats.total * 1000) / windowMs).toFixed(2)),
       total: termFrameProfileStats.total,
@@ -303,7 +303,7 @@ export function createMuxtStore(
       Object.assign(out, extra as Record<string, string>);
     }
     if (ctx.turnUUID) {
-      out["X-Muxt-Turn-UUID"] = ctx.turnUUID;
+      out["X-Shellman-Turn-UUID"] = ctx.turnUUID;
     }
     return out;
   }
@@ -322,7 +322,7 @@ export function createMuxtStore(
     // Logging disabled
   }
 
-  logInfo("muxt.store.created");
+  logInfo("shellman.store.created");
 
   function normalizeLaunchProgram(value: unknown): LaunchProgram {
     const raw = String(value ?? "").trim().toLowerCase();
@@ -730,20 +730,20 @@ export function createMuxtStore(
     const prefetchAllTaskPanes = options.prefetchAllTaskPanes !== false;
     const preferredTaskID = String(options.preferredTaskId ?? "").trim();
     const taskIDsInTree = new Set<string>();
-    logInfo("muxt.load.start");
+    logInfo("shellman.load.start");
     const projectsRes = (await fetchImpl(apiURL("/api/v1/projects/active"), {
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<
       Array<{ project_id: string; repo_root: string }>
     >;
-    logInfo("muxt.load.projects", {
+    logInfo("shellman.load.projects", {
       ok: projectsRes.ok,
       count: projectsRes.data?.length ?? 0
     });
     state.projects = projectsRes.data.map((p) => ({ projectId: p.project_id, repoRoot: p.repo_root }));
 
     for (const project of state.projects) {
-      logInfo("muxt.load.project_tree.start", { projectId: project.projectId });
+      logInfo("shellman.load.project_tree.start", { projectId: project.projectId });
       const treeRes = (await fetchImpl(apiURL(`/api/v1/projects/${project.projectId}/tree`), {
         headers: apiHeaders()
       }).then((r) => r.json())) as APIResponse<{
@@ -760,7 +760,7 @@ export function createMuxtStore(
           updated_at?: number | string;
         }>;
       }>;
-      logInfo("muxt.load.project_tree.done", {
+      logInfo("shellman.load.project_tree.done", {
         projectId: project.projectId,
         ok: treeRes.ok,
         nodeCount: treeRes.data?.nodes?.length ?? 0
@@ -795,7 +795,7 @@ export function createMuxtStore(
       await loadTaskPane(state.selectedTaskId);
     }
     recomputePaneLookupComplete();
-    logInfo("muxt.load.done", {
+    logInfo("shellman.load.done", {
       selectedTaskId: state.selectedTaskId,
       projectCount: state.projects.length
     });
@@ -831,10 +831,10 @@ export function createMuxtStore(
         recomputePaneLookupComplete();
       }
     } catch {
-      logInfo("muxt.task.refresh.tree.error", { taskId, projectID });
+      logInfo("shellman.task.refresh.tree.error", { taskId, projectID });
     }
     await loadTaskPane(taskId);
-    logInfo("muxt.task.refresh.done", { taskId, projectID });
+    logInfo("shellman.task.refresh.done", { taskId, projectID });
   }
 
   function scheduleRefreshTaskFromServer(taskId: string) {
@@ -868,11 +868,11 @@ export function createMuxtStore(
 
   async function loadTaskPane(taskId: string) {
     if (paneLookupStatus[taskId] === "missing") {
-      logInfo("muxt.http.pane_lookup.skip", { taskId, reason: "cached-missing" });
+      logInfo("shellman.http.pane_lookup.skip", { taskId, reason: "cached-missing" });
       recomputePaneLookupComplete();
       return;
     }
-    logInfo("muxt.http.pane_lookup.start", { taskId });
+    logInfo("shellman.http.pane_lookup.start", { taskId });
     try {
       const paneRes = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/pane`), {
         headers: apiHeaders()
@@ -885,12 +885,12 @@ export function createMuxtStore(
       }>;
       if (!paneRes.ok) {
         paneLookupStatus[taskId] = "missing";
-        console.warn("[muxt] pane binding missing", {
+        console.warn("[shellman] pane binding missing", {
           taskId,
           code: String(paneRes.error?.code ?? "UNKNOWN"),
           message: String(paneRes.error?.message ?? "")
         });
-        logInfo("muxt.http.pane_lookup.missing", {
+        logInfo("shellman.http.pane_lookup.missing", {
           taskId,
           code: String(paneRes.error?.code ?? "UNKNOWN"),
           message: String(paneRes.error?.message ?? "")
@@ -901,7 +901,7 @@ export function createMuxtStore(
       const paneID = String(paneRes.data.pane_id ?? "");
       if (!paneID) {
         paneLookupStatus[taskId] = "missing";
-        logInfo("muxt.http.pane_lookup.empty", { taskId });
+        logInfo("shellman.http.pane_lookup.empty", { taskId });
 
         return;
       }
@@ -916,7 +916,7 @@ export function createMuxtStore(
         persistedSnapshotByPaneUuid[paneUuid] = snapshotCache;
       }
       paneLookupStatus[taskId] = "bound";
-      logInfo("muxt.http.pane_lookup.bound", {
+      logInfo("shellman.http.pane_lookup.bound", {
         taskId,
         paneId: paneID,
         paneTarget: state.paneByTaskId[taskId]?.paneTarget ?? "",
@@ -924,7 +924,7 @@ export function createMuxtStore(
       });
     } catch {
       paneLookupStatus[taskId] = "missing";
-      logInfo("muxt.http.pane_lookup.error", { taskId });
+      logInfo("shellman.http.pane_lookup.error", { taskId });
     }
     recomputePaneLookupComplete();
   }
@@ -964,7 +964,7 @@ export function createMuxtStore(
   }
 
   function applyProtocolMessage(msg: ProtocolMessage) {
-    logInfo("muxt.ws.recv.message", {
+    logInfo("shellman.ws.recv.message", {
       id: String(msg.id ?? ""),
       type: String(msg.type ?? ""),
       op: String(msg.op ?? "")
@@ -981,7 +981,7 @@ export function createMuxtStore(
         if (!hasError) {
           lastTermInputAckAtMs = nowMs;
         }
-        logInfo("muxt.term.input.ack", {
+        logInfo("shellman.term.input.ack", {
           reqID,
           inputSeq: pending.inputSeq,
           target: pending.target,
@@ -992,7 +992,7 @@ export function createMuxtStore(
           message: String(msg.error?.message ?? "")
         });
       } else {
-        logInfo("muxt.term.input.ack", {
+        logInfo("shellman.term.input.ack", {
           reqID,
           inputSeq: null,
           hasError,
@@ -1007,7 +1007,7 @@ export function createMuxtStore(
       const message = String(msg.error.message ?? "");
       const reqID = String(msg.id ?? "");
       const reqPaneUuid = reqID ? selectReqPaneUuidByReqId[reqID] ?? "" : "";
-      console.warn("[muxt] ws response error", {
+      console.warn("[shellman] ws response error", {
         id: reqID,
         op: String(msg.op ?? ""),
         code,
@@ -1016,7 +1016,7 @@ export function createMuxtStore(
       if (reqID && selectReqPaneUuidByReqId[reqID]) {
         delete selectReqPaneUuidByReqId[reqID];
       }
-      logInfo("muxt.ws.recv.error", {
+      logInfo("shellman.ws.recv.error", {
         id: reqID,
         op: String(msg.op ?? ""),
         code,
@@ -1028,7 +1028,7 @@ export function createMuxtStore(
         if (code === TMUX_PANE_NOT_FOUND_CODE || isSyntheticMissingPaneTarget(reqPaneTarget)) {
           markPaneEnded(reqPaneUuid, code || TMUX_PANE_NOT_FOUND_CODE);
         } else {
-          logInfo("muxt.tmux.select_pane.error.ignore", {
+          logInfo("shellman.tmux.select_pane.error.ignore", {
             paneUuid: reqPaneUuid,
             paneTarget: reqPaneTarget,
             code,
@@ -1065,7 +1065,7 @@ export function createMuxtStore(
         });
       }
       state.tmuxPaneItems = next;
-      logInfo("muxt.tmux.list.apply", { itemCount: next.length });
+      logInfo("shellman.tmux.list.apply", { itemCount: next.length });
       return;
     }
 
@@ -1081,7 +1081,7 @@ export function createMuxtStore(
         (selectedTarget && target && selectedTarget === target ? selectedPaneUuid : "") ||
         findPaneUUIDByTarget(target);
       if (selectedPaneUuid && incomingPaneUuid && selectedPaneUuid !== incomingPaneUuid) {
-        logInfo("muxt.term.output.ignore", {
+        logInfo("shellman.term.output.ignore", {
           target,
           selectedPaneUuid,
           incomingPaneUuid,
@@ -1090,7 +1090,7 @@ export function createMuxtStore(
         return;
       }
       if (selectedTarget && target && selectedTarget !== target) {
-        logInfo("muxt.term.output.ignore", {
+        logInfo("shellman.term.output.ignore", {
           target,
           selectedPaneTarget: selectedTarget,
           reason: "target-mismatch"
@@ -1103,7 +1103,7 @@ export function createMuxtStore(
       const outputSeq = ++termOutputSeq;
       const beforeLen = state.terminalOutput.length;
       const nowMs = Date.now();
-      logInfo("muxt.term.output.apply", {
+      logInfo("shellman.term.output.apply", {
         outputSeq,
         target,
         mode,
@@ -1122,7 +1122,7 @@ export function createMuxtStore(
       state.terminalEnded = false;
       if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {
         state.terminalCursor = { x: payload.cursor.x, y: payload.cursor.y };
-        logInfo("muxt.term.cursor.update", {
+        logInfo("shellman.term.cursor.update", {
           outputSeq,
           target,
           x: payload.cursor.x,
@@ -1132,9 +1132,9 @@ export function createMuxtStore(
         });
       } else if (mode === "reset") {
         state.terminalCursor = null;
-        logInfo("muxt.term.cursor.clear", { target });
+        logInfo("shellman.term.cursor.clear", { target });
       } else {
-        logInfo("muxt.term.cursor.keep", { target, mode, hasData: text.length > 0 });
+        logInfo("shellman.term.cursor.keep", { target, mode, hasData: text.length > 0 });
       }
       const cachePaneUUID =
         payloadPaneUUID || findPaneUUIDByTarget(target) || selectedBinding?.paneUuid || state.selectedPaneUuid;
@@ -1169,7 +1169,7 @@ export function createMuxtStore(
       const reasonKey = String(payload.reason_key ?? payload.code ?? payload.reason ?? TMUX_PANE_NOT_FOUND_CODE);
       const paneUuid = String(payload.pane_uuid ?? "") || findPaneUUIDByTarget(target);
       if (!paneUuid) {
-        logInfo("muxt.pane.ended.ignore", { reason: "missing-pane-uuid", target });
+        logInfo("shellman.pane.ended.ignore", { reason: "missing-pane-uuid", target });
         return;
       }
       markPaneEnded(paneUuid, reasonKey);
@@ -1186,7 +1186,7 @@ export function createMuxtStore(
       const paneID = String(payload.pane_id ?? "");
       const paneUUID = String(payload.pane_uuid ?? paneID);
       if (!taskID || !paneID) {
-        logInfo("muxt.ws.pane_created.ignore", { reason: "missing-task-or-pane" });
+        logInfo("shellman.ws.pane_created.ignore", { reason: "missing-task-or-pane" });
         return;
       }
       state.paneByTaskId[taskID] = {
@@ -1199,7 +1199,7 @@ export function createMuxtStore(
         state.selectedPaneUuid = paneUUID;
         state.selectedPaneTarget = String(payload.pane_target ?? paneID);
       }
-      logInfo("muxt.ws.pane_created.apply", {
+      logInfo("shellman.ws.pane_created.apply", {
         taskId: taskID,
         paneUuid: paneUUID,
         paneId: paneID,
@@ -1276,7 +1276,7 @@ export function createMuxtStore(
       }
       state.taskRuntimeByTaskId = runtimeByTaskId;
       state.paneMetaByTarget = paneMetaByTarget;
-      logInfo("muxt.tmux.status.apply", {
+      logInfo("shellman.tmux.status.apply", {
         itemCount: items.length,
         mappedTaskCount: Object.keys(runtimeByTaskId).length
       });
@@ -1285,13 +1285,13 @@ export function createMuxtStore(
 
   function send(data: unknown) {
     if (!ws) {
-      logInfo("muxt.ws.send.skip", { reason: "socket-null" });
+      logInfo("shellman.ws.send.skip", { reason: "socket-null" });
       return;
     }
     if (typeof data === "object" && data !== null) {
       const msg = data as { id?: string; type?: string; op?: string; payload?: Record<string, unknown> };
       const payload = msg.payload ?? {};
-      logInfo("muxt.ws.send", {
+      logInfo("shellman.ws.send", {
         id: String(msg.id ?? ""),
         type: String(msg.type ?? ""),
         op: String(msg.op ?? ""),
@@ -1359,7 +1359,7 @@ export function createMuxtStore(
     const selectedBinding = resolveSelectedPaneBinding();
     if (selectedBinding?.paneTarget) {
       if (endedPaneUuids[selectedBinding.paneUuid]) {
-        logInfo("muxt.target.resolve.miss", {
+        logInfo("shellman.target.resolve.miss", {
           reason: "pane-ended",
           selectedTaskId: state.selectedTaskId,
           selectedPaneUuid: selectedBinding.paneUuid
@@ -1368,7 +1368,7 @@ export function createMuxtStore(
       }
       state.selectedPaneUuid = selectedBinding.paneUuid;
       state.selectedPaneTarget = selectedBinding.paneTarget;
-      logInfo("muxt.target.resolve.hit_selected", {
+      logInfo("shellman.target.resolve.hit_selected", {
         selectedTaskId: state.selectedTaskId,
         selectedPaneUuid: state.selectedPaneUuid,
         selectedPaneTarget: state.selectedPaneTarget
@@ -1376,7 +1376,7 @@ export function createMuxtStore(
       return state.selectedPaneTarget;
     }
     if (state.selectedPaneTarget) {
-      logInfo("muxt.target.resolve.hit_selected", {
+      logInfo("shellman.target.resolve.hit_selected", {
         selectedTaskId: state.selectedTaskId,
         selectedPaneUuid: state.selectedPaneUuid,
         selectedPaneTarget: state.selectedPaneTarget
@@ -1384,10 +1384,10 @@ export function createMuxtStore(
       return state.selectedPaneTarget;
     }
     if (!state.selectedTaskId) {
-      logInfo("muxt.target.resolve.miss", { reason: "no-selected-task" });
+      logInfo("shellman.target.resolve.miss", { reason: "no-selected-task" });
       return "";
     }
-    logInfo("muxt.target.resolve.miss", {
+    logInfo("shellman.target.resolve.miss", {
       reason: "no-pane-binding",
       selectedTaskId: state.selectedTaskId
     });
@@ -1469,15 +1469,15 @@ export function createMuxtStore(
       state.terminalCursor = null;
       state.selectedPaneTarget = "";
       state.terminalEnded = true;
-      logInfo("muxt.pane.ended.selected", { paneUuid, reason });
+      logInfo("shellman.pane.ended.selected", { paneUuid, reason });
     } else {
-      logInfo("muxt.pane.ended.cached", { paneUuid, reason });
+      logInfo("shellman.pane.ended.cached", { paneUuid, reason });
     }
   }
 
   function sendResizeToTarget(target: string, size: { cols: number; rows: number }, reason: string) {
     if (!state.wsConnected) {
-      logInfo("muxt.term.resize.skip", {
+      logInfo("shellman.term.resize.skip", {
         reason: "ws-not-connected",
         selectedTaskId: state.selectedTaskId,
         target,
@@ -1492,7 +1492,7 @@ export function createMuxtStore(
       op: "term.resize",
       payload: { target, cols: size.cols, rows: size.rows }
     });
-    logInfo("muxt.term.resize.sent", {
+    logInfo("shellman.term.resize.sent", {
       target,
       cols: size.cols,
       rows: size.rows,
@@ -1501,7 +1501,7 @@ export function createMuxtStore(
   }
 
   async function selectTask(taskId: string, options: { forceRefreshNotes?: boolean; skipNotesHydration?: boolean } = {}) {
-    logInfo("muxt.select_task.start", { taskId });
+    logInfo("shellman.select_task.start", { taskId });
     const prevTaskId = state.selectedTaskId;
     const prevPaneTarget = state.selectedPaneTarget;
     state.selectedTaskId = taskId;
@@ -1511,7 +1511,7 @@ export function createMuxtStore(
     try {
       await loadTaskAutopilot(taskId);
     } catch {
-      logInfo("muxt.task.autopilot.load.error", { taskId });
+      logInfo("shellman.task.autopilot.load.error", { taskId });
     }
 
     if (!state.paneByTaskId[taskId]) {
@@ -1555,7 +1555,7 @@ export function createMuxtStore(
       state.terminalEnded = false;
     }
     if (!target || !state.wsConnected) {
-      logInfo("muxt.select_task.skip", {
+      logInfo("shellman.select_task.skip", {
         taskId,
         target,
         wsConnected: state.wsConnected
@@ -1569,7 +1569,7 @@ export function createMuxtStore(
     const alreadySentInCurrentConnection =
       lastSelectSent?.target === target && lastSelectSent?.connectionSeq === wsConnectionSeq;
     if (sameTaskAndTarget && alreadySentInCurrentConnection) {
-      logInfo("muxt.select_task.skip", {
+      logInfo("shellman.select_task.skip", {
         taskId,
         target,
         reason: "duplicate-select-same-target"
@@ -1592,12 +1592,12 @@ export function createMuxtStore(
       payload: selectPayload
     });
     lastSelectSent = { target, connectionSeq: wsConnectionSeq };
-    logInfo("muxt.select_task.sent", { taskId, target });
+    logInfo("shellman.select_task.sent", { taskId, target });
   }
 
   function sendTerminalInput(text: string) {
     const inputSeq = ++termInputSeq;
-    logInfo("muxt.term.input.request", {
+    logInfo("shellman.term.input.request", {
       inputSeq,
       selectedTaskId: state.selectedTaskId,
       selectedPaneTarget: state.selectedPaneTarget,
@@ -1607,7 +1607,7 @@ export function createMuxtStore(
     });
     const target = resolveSelectedPaneTarget();
     if (!target) {
-      logInfo("muxt.term.input.skip", {
+      logInfo("shellman.term.input.skip", {
         reason: "no-target",
         selectedTaskId: state.selectedTaskId
       });
@@ -1626,7 +1626,7 @@ export function createMuxtStore(
       op: "term.input",
       payload: { target, text }
     });
-    logInfo("muxt.term.input.sent", {
+    logInfo("shellman.term.input.sent", {
       inputSeq,
       reqID,
       target,
@@ -1659,7 +1659,7 @@ export function createMuxtStore(
 
   function sendTerminalResize(size: { cols: number; rows: number }) {
     latestTerminalSize = { cols: size.cols, rows: size.rows };
-    logInfo("muxt.term.resize.request", {
+    logInfo("shellman.term.resize.request", {
       selectedTaskId: state.selectedTaskId,
       selectedPaneTarget: state.selectedPaneTarget,
       cols: size.cols,
@@ -1667,7 +1667,7 @@ export function createMuxtStore(
     });
     const target = resolveSelectedPaneTarget();
     if (!target) {
-      logInfo("muxt.term.resize.skip", {
+      logInfo("shellman.term.resize.skip", {
         reason: "no-target",
         selectedTaskId: state.selectedTaskId,
         cols: size.cols,
@@ -1686,7 +1686,7 @@ export function createMuxtStore(
     for (const reqID of Object.keys(pendingTermInputByReqID)) {
       delete pendingTermInputByReqID[reqID];
     }
-    logInfo("muxt.term.input.pending.clear", { reason, pendingCount });
+    logInfo("shellman.term.input.pending.clear", { reason, pendingCount });
   }
 
   function connectWS(url?: string) {
@@ -1698,14 +1698,14 @@ export function createMuxtStore(
         const turnPath = ctx.turnUUID || "local";
         return `${wsProtocol}//${base.host}/ws/client/${turnPath}`;
       })();
-    logInfo("muxt.ws.connect.start", { url: wsURL });
+    logInfo("shellman.ws.connect.start", { url: wsURL });
     ws = wsFactory(wsURL);
     ws.addEventListener("open", () => {
       state.wsConnected = true;
       wsConnectionSeq += 1;
       lastSelectSent = null;
       clearPendingTermInput("ws-open");
-      logInfo("muxt.ws.connect.open", { url: wsURL });
+      logInfo("shellman.ws.connect.open", { url: wsURL });
       requestTmuxList();
       if (state.selectedTaskId) {
         void selectTask(state.selectedTaskId, { skipNotesHydration: true });
@@ -1715,22 +1715,22 @@ export function createMuxtStore(
       state.wsConnected = false;
       lastSelectSent = null;
       clearPendingTermInput("ws-close");
-      logInfo("muxt.ws.connect.close", { url: wsURL });
+      logInfo("shellman.ws.connect.close", { url: wsURL });
     });
     ws.addEventListener("message", (event: MessageEvent<string>) => {
       const raw = String(event.data ?? "");
-      logInfo("muxt.ws.recv.raw", { len: raw.length });
+      logInfo("shellman.ws.recv.raw", { len: raw.length });
       try {
         applyProtocolMessage(JSON.parse(raw) as ProtocolMessage);
       } catch {
-        logInfo("muxt.ws.recv.parse_error", { raw });
+        logInfo("shellman.ws.recv.parse_error", { raw });
       }
     });
   }
 
   function disconnectWS() {
     if (ws) {
-      logInfo("muxt.ws.disconnect", {});
+      logInfo("shellman.ws.disconnect", {});
       ws.close();
       ws = null;
       lastSelectSent = null;
@@ -1756,7 +1756,7 @@ export function createMuxtStore(
   }
 
   async function createSiblingPane(taskId: string, title: string) {
-    logInfo("muxt.pane.create_sibling.start", { taskId, title });
+    logInfo("shellman.pane.create_sibling.start", { taskId, title });
     const res = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/panes/sibling`), {
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
@@ -1777,14 +1777,14 @@ export function createMuxtStore(
       paneTarget: String(res.data.pane_target ?? res.data.pane_id),
       relation: "sibling"
     };
-    logInfo("muxt.pane.create_sibling.done", {
+    logInfo("shellman.pane.create_sibling.done", {
       taskId: res.data.task_id,
       paneTarget: state.paneByTaskId[res.data.task_id]?.paneTarget ?? ""
     });
   }
 
   async function createChildTask(taskId: string, title: string) {
-    logInfo("muxt.task.create_child.start", { taskId, title });
+    logInfo("shellman.task.create_child.start", { taskId, title });
     const projectId = findProjectIDByTask(taskId);
     const res = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/derive`), {
       method: "POST",
@@ -1810,12 +1810,12 @@ export function createMuxtStore(
     state.treesByProject[projectId] = nodes;
     paneLookupStatus[res.data.task_id] = "missing";
     recomputePaneLookupComplete();
-    logInfo("muxt.task.create_child.done", { taskId: res.data.task_id });
+    logInfo("shellman.task.create_child.done", { taskId: res.data.task_id });
     await selectTask(res.data.task_id);
   }
 
   async function createRootTask(projectId: string, title: string) {
-    logInfo("muxt.task.create_root.start", { projectId, title });
+    logInfo("shellman.task.create_root.start", { projectId, title });
     const res = (await fetchImpl(apiURL(`/api/v1/tasks`), {
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
@@ -1831,7 +1831,7 @@ export function createMuxtStore(
     state.treesByProject[projectId] = nodes;
     paneLookupStatus[res.data.task_id] = "missing";
     recomputePaneLookupComplete();
-    logInfo("muxt.task.create_root.done", { taskId: res.data.task_id });
+    logInfo("shellman.task.create_root.done", { taskId: res.data.task_id });
     await selectTask(res.data.task_id);
   }
 
@@ -1903,7 +1903,7 @@ export function createMuxtStore(
   async function addActiveProject(projectId: string, repoRoot: string) {
     const id = projectId.trim();
     const root = repoRoot.trim();
-    logInfo("muxt.project.add.start", {
+    logInfo("shellman.project.add.start", {
       projectIdRaw: projectId,
       repoRootRaw: repoRoot,
       projectId: id,
@@ -1916,7 +1916,7 @@ export function createMuxtStore(
     }).then((r) => r.json())) as APIResponse<{ project_id: string }>;
 
     if (!res.ok) {
-      logInfo("muxt.project.add.fail", {
+      logInfo("shellman.project.add.fail", {
         projectId: id,
         code: String(res.error?.code ?? "PROJECT_ADD_FAILED")
       });
@@ -1952,7 +1952,7 @@ export function createMuxtStore(
     for (const node of nodes) {
       await loadTaskPane(node.taskId);
     }
-    logInfo("muxt.project.add.done", {
+    logInfo("shellman.project.add.done", {
       projectId: id,
       treeCount: nodes.length
     });
@@ -1960,7 +1960,7 @@ export function createMuxtStore(
 
   async function removeActiveProject(projectId: string) {
     const id = projectId.trim();
-    logInfo("muxt.project.remove.start", {
+    logInfo("shellman.project.remove.start", {
       projectIdRaw: projectId,
       projectId: id
     });
@@ -1969,7 +1969,7 @@ export function createMuxtStore(
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<{ project_id: string }>;
     if (!res.ok) {
-      logInfo("muxt.project.remove.fail", {
+      logInfo("shellman.project.remove.fail", {
         projectId: id,
         code: String(res.error?.code ?? "PROJECT_REMOVE_FAILED")
       });
@@ -1999,7 +1999,7 @@ export function createMuxtStore(
     }
 
     recomputePaneLookupComplete();
-    logInfo("muxt.project.remove.done", {
+    logInfo("shellman.project.remove.done", {
       projectId: id,
       projectCount: state.projects.length
     });
@@ -2007,7 +2007,7 @@ export function createMuxtStore(
 
   async function archiveDoneTasksByProject(projectId: string) {
     const id = projectId.trim();
-    logInfo("muxt.project.archive_done.start", {
+    logInfo("shellman.project.archive_done.start", {
       projectIdRaw: projectId,
       projectId: id
     });
@@ -2016,7 +2016,7 @@ export function createMuxtStore(
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<{ project_id: string; archived_count: number }>;
     if (!res.ok) {
-      logInfo("muxt.project.archive_done.fail", {
+      logInfo("shellman.project.archive_done.fail", {
         projectId: id,
         code: String(res.error?.code ?? "TASK_ARCHIVE_FAILED")
       });
@@ -2064,7 +2064,7 @@ export function createMuxtStore(
       state.terminalEnded = false;
     }
     recomputePaneLookupComplete();
-    logInfo("muxt.project.archive_done.done", {
+    logInfo("shellman.project.archive_done.done", {
       projectId: id,
       archivedCount: Number(res.data?.archived_count ?? 0),
       treeCount: nextNodes.length
@@ -2565,7 +2565,7 @@ export function createMuxtStore(
         try {
           await setTaskTitle(taskId, inferredTitle);
         } catch {
-          logInfo("muxt.task.title.auto_from_prompt.error", { taskId });
+          logInfo("shellman.task.title.auto_from_prompt.error", { taskId });
         }
       }
     }

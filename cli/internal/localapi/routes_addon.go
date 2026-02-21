@@ -17,7 +17,7 @@ import (
 	"strings"
 	"time"
 
-	"termteam/cli/internal/helperconfig"
+	"shellman/cli/internal/helperconfig"
 )
 
 func (s *Server) handleGetTaskDiff(w http.ResponseWriter, _ *http.Request, taskID string) {

@@ -5,17 +5,17 @@ import (
 	"os"
 	"path/filepath"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 func main() {
 	home, _ := os.UserHomeDir()
-	db := filepath.Join(home, ".config", "muxt", "muxt.db")
+	db := filepath.Join(home, ".config", "shellman", "shellman.db")
 	if err := projectstate.InitGlobalDB(db); err != nil {
 		fmt.Println("InitGlobalDB err:", err)
 		return
 	}
-	repo := "/Users/wanglei/Projects/github-flaboy/muxt"
+	repo := "/Users/wanglei/Projects/github-flaboy/shellman"
 	s := projectstate.NewStore(repo)
 	rows, err := s.ListTasksByProject("p1")
 	if err != nil {

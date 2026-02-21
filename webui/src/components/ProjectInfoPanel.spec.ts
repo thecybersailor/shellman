@@ -41,9 +41,9 @@ describe("ProjectInfoPanel", () => {
     const wrapper = mount(ProjectInfoPanel, { props: { taskId: "t1", activeTab: "diff" } });
     await flushPromises();
 
-    expect(wrapper.get("[data-test-id='muxt-scm-commit-message']").exists()).toBe(true);
-    expect(wrapper.get("[data-test-id='muxt-addon-file-list']").text()).toContain("a.txt");
-    expect(wrapper.get("[data-test-id='muxt-addon-file-content']").text()).toContain("hello world");
+    expect(wrapper.get("[data-test-id='shellman-scm-commit-message']").exists()).toBe(true);
+    expect(wrapper.get("[data-test-id='shellman-addon-file-list']").text()).toContain("a.txt");
+    expect(wrapper.get("[data-test-id='shellman-addon-file-content']").text()).toContain("hello world");
     expect(wrapper.text()).not.toContain("placeholder");
   });
 
@@ -62,15 +62,15 @@ describe("ProjectInfoPanel", () => {
       } as any
     });
 
-    await wrapper.get("[data-test-id='muxt-task-title-input']").setValue("New");
-    await wrapper.get("[data-test-id='muxt-task-description-input']").setValue("New desc");
+    await wrapper.get("[data-test-id='shellman-task-title-input']").setValue("New");
+    await wrapper.get("[data-test-id='shellman-task-description-input']").setValue("New desc");
     await vi.advanceTimersByTimeAsync(500);
 
     expect(wrapper.emitted("save-task-meta")?.[0]?.[0]).toEqual({
       title: "New",
       description: "New desc"
     });
-    expect(wrapper.find("[data-test-id='muxt-shellman-message-assistant']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-message-assistant']").exists()).toBe(true);
     vi.useRealTimers();
   });
 
@@ -83,7 +83,7 @@ describe("ProjectInfoPanel", () => {
       }
     });
 
-    expect(wrapper.get("[data-test-id='muxt-project-tab-diff-body']").attributes("data-scope-key")).toBe("project:p1");
+    expect(wrapper.get("[data-test-id='shellman-project-tab-diff-body']").attributes("data-scope-key")).toBe("project:p1");
 
     const sessionWrapper = mount(ProjectInfoPanel, {
       props: {
@@ -93,6 +93,6 @@ describe("ProjectInfoPanel", () => {
       }
     });
 
-    expect(sessionWrapper.get("[data-test-id='muxt-project-tab-session-body']").attributes("data-scope-key")).toBe("task:t2");
+    expect(sessionWrapper.get("[data-test-id='shellman-project-tab-session-body']").attributes("data-scope-key")).toBe("task:t2");
   });
 });

@@ -7,7 +7,7 @@ import (
 )
 
 func TestDetectPaneCurrentCommand_UsesConfiguredTmuxSocket(t *testing.T) {
-	t.Setenv("TERMTEAM_TMUX_SOCKET", "tt_e2e")
+	t.Setenv("SHELLMAN_TMUX_SOCKET", "tt_e2e")
 	var gotArgs []string
 	srv := NewServer(Deps{
 		ExecuteCommand: func(_ context.Context, _ string, args ...string) ([]byte, error) {

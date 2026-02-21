@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
-import type { TerminalFrame } from "@/stores/muxt";
+import type { TerminalFrame } from "@/stores/shellman";
 import ProjectInfoPanel from "./ProjectInfoPanel.vue";
 import ProjectTaskTree from "./ProjectTaskTree.vue";
 import TerminalPane from "./TerminalPane.vue";
@@ -99,12 +99,12 @@ function onProjectPanelActiveTabChange(next: string) {
 </script>
 
 <template>
-  <div class="muxt-mobile h-screen flex flex-col bg-background text-foreground overflow-hidden">
+  <div class="shellman-mobile h-screen flex flex-col bg-background text-foreground overflow-hidden">
     <!-- Explorer Screen -->
     <template v-if="!props.selectedTaskId">
       <header class="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-md z-10">
         <div class="flex items-center gap-2">
-          <span class="text-xs font-mono font-bold uppercase tracking-[0.2em] text-primary/80">muxt</span>
+          <span class="text-xs font-mono font-bold uppercase tracking-[0.2em] text-primary/80">shellman</span>
         </div>
         <div class="flex items-center gap-1">
           <Button variant="ghost" size="icon" @click="emit('toggle-dark')" class="h-8 w-8 text-muted-foreground">
@@ -220,7 +220,7 @@ function onProjectPanelActiveTabChange(next: string) {
 </template>
 
 <style scoped>
-.muxt-mobile {
+.shellman-mobile {
   position: fixed;
   top: 0;
   left: 0;

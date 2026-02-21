@@ -6,7 +6,7 @@ import (
 )
 
 func TestOpenSQLiteWithMigrations_SetsBusyTimeout(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	sqlDB, err := OpenSQLiteWithMigrations(dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLiteWithMigrations failed: %v", err)

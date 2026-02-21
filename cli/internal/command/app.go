@@ -7,7 +7,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"termteam/cli/internal/config"
+	"shellman/cli/internal/config"
 )
 
 type Deps struct {
@@ -19,7 +19,7 @@ type Deps struct {
 
 func BuildApp(deps Deps) *cli.App {
 	return &cli.App{
-		Name:  "termteam",
+		Name:  "shellman",
 		Usage: "tmux runtime bridge",
 		Action: func(ctx *cli.Context) error {
 			cfg := loadConfig(deps)

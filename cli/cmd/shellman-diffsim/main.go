@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"termteam/cli/internal/streamdiff"
+	"shellman/cli/internal/streamdiff"
 )
 
 func run(out io.Writer, scenario string) error {

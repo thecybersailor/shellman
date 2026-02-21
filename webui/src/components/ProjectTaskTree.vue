@@ -339,7 +339,7 @@ function onTaskDrop(taskId: string) {
           size="sm"
           class="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
           :class="filterCardOpen ? 'bg-accent/50 text-foreground' : ''"
-          data-test-id="muxt-task-filter-toggle"
+          data-test-id="shellman-task-filter-toggle"
           aria-label="Toggle task filters"
           @click="filterCardOpen = !filterCardOpen"
         >
@@ -355,14 +355,14 @@ function onTaskDrop(taskId: string) {
           <div
             v-if="filterCardOpen"
             class="mb-2 rounded-md bg-accent/35 px-2 py-2"
-            data-test-id="muxt-task-filter-card"
+            data-test-id="shellman-task-filter-card"
           >
             <button
               v-for="option in taskFilterOptions"
               :key="option"
               type="button"
               class="flex w-full items-center gap-2 rounded px-1.5 py-1 text-left text-[12px] text-muted-foreground/90 hover:bg-accent/40"
-              :data-test-id="`muxt-task-filter-option-${option}`"
+              :data-test-id="`shellman-task-filter-option-${option}`"
               @click="toggleTaskFilter(option)"
             >
               <Checkbox
@@ -429,7 +429,7 @@ function onTaskDrop(taskId: string) {
                       class="h-5 w-5 text-muted-foreground/60 hover:text-foreground hover:bg-accent"
                       @click.stop="emit('create-root-pane', project.projectId)"
                       :title="`Start new thread in ${project.title}`"
-                      :data-test-id="`muxt-project-root-pane-${project.projectId}`"
+                      :data-test-id="`shellman-project-root-pane-${project.projectId}`"
                     >
                       <SquarePen class="h-3.5 w-3.5" />
                     </Button>
@@ -450,7 +450,7 @@ function onTaskDrop(taskId: string) {
                         'text-muted-foreground/80': selectedTaskId !== row.task.taskId,
                         'ring-1 ring-border/80 bg-accent/40': dragOverTaskId === row.task.taskId
                       }"
-                      :data-test-id="`muxt-task-row-${row.task.taskId}`"
+                      :data-test-id="`shellman-task-row-${row.task.taskId}`"
                       :style="{ paddingLeft: `${8 + row.depth * 14}px` }"
                       @click="emit('select-task', row.task.taskId)"
                       @dragover.prevent="onTaskDragOver(row.task.taskId)"
@@ -467,14 +467,14 @@ function onTaskDrop(taskId: string) {
                             class="task-check-input h-3.5 w-3.5 rounded border-border/70 accent-foreground/80 transition-opacity pointer-events-none"
                             :model-value="isTaskChecked(row.task)"
                             :data-checked="isTaskChecked(row.task)"
-                            :data-test-id="`muxt-task-check-${row.task.taskId}`"
+                            :data-test-id="`shellman-task-check-${row.task.taskId}`"
                             @update:model-value="(checked) => onTaskCheckModelUpdate(row.task, checked)"
                           />
                         </span>
                         <TaskTitleResolver
                           :task-title="row.task.title"
                           :current-command="row.task.currentCommand"
-                          data-test-id="muxt-task-row-title"
+                          data-test-id="shellman-task-row-title"
                           class="truncate flex-1"
                         />
                       </div>
@@ -482,7 +482,7 @@ function onTaskDrop(taskId: string) {
                       <div class="flex items-center gap-2 ml-2">
                         <div>
                           <span
-                            :data-test-id="`muxt-task-status-${row.task.taskId}`"
+                            :data-test-id="`shellman-task-status-${row.task.taskId}`"
                             :data-status="row.task.runtimeStatus || row.task.status"
                             class="inline-flex"
                           >
@@ -507,11 +507,11 @@ function onTaskDrop(taskId: string) {
                             <Plus class="h-3 w-3" />
                         </Button>
 
-                        <span :data-test-id="`muxt-task-flag-slot-${row.task.taskId}`">
+                        <span :data-test-id="`shellman-task-flag-slot-${row.task.taskId}`">
                           <TaskFlagDot
                             :flag="row.task.flag && !row.task.flagReaded ? row.task.flag : undefined"
                             :flag-desc="row.task.flagDesc"
-                            :test-id="`muxt-task-flag-dot-${row.task.taskId}`"
+                            :test-id="`shellman-task-flag-dot-${row.task.taskId}`"
                           />
                         </span>
                       </div>
@@ -531,7 +531,7 @@ function onTaskDrop(taskId: string) {
             <button
               type="button"
               class="w-full flex items-center justify-between rounded-md px-2 py-1.5 text-xs uppercase tracking-wide text-muted-foreground/70 hover:bg-accent/40"
-              data-test-id="muxt-orphan-toggle"
+              data-test-id="shellman-orphan-toggle"
               @click="orphanOpen = !orphanOpen"
             >
               <span>Other Tmux</span>
@@ -544,7 +544,7 @@ function onTaskDrop(taskId: string) {
                 v-for="pane in (props.orphanPanes ?? [])"
                 :key="pane.target"
                 class="rounded-md border border-border/60 px-2 py-1.5 text-[12px] text-muted-foreground/90 hover:bg-accent/30 cursor-grab active:cursor-grabbing"
-                :data-test-id="`muxt-orphan-item-${stableTarget(pane.target)}`"
+                :data-test-id="`shellman-orphan-item-${stableTarget(pane.target)}`"
                 draggable="true"
                 @dragstart="onOrphanDragStart($event, pane)"
                 @dragend="onOrphanDragEnd"

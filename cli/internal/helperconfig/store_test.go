@@ -5,11 +5,11 @@ import (
 	"strings"
 	"testing"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestStore_SaveAndLoad_OpenAIConfig_EncryptsAPIKey(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	secretPath := filepath.Join(t.TempDir(), ".secret")
 	if err := projectstate.InitGlobalDB(dbPath); err != nil {
 		t.Fatal(err)

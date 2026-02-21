@@ -7,8 +7,8 @@ import (
 	"log/slog"
 	"time"
 
-	"termteam/cli/internal/bridge"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/bridge"
+	"shellman/cli/internal/turn"
 )
 
 func startLocalAgentLoop(

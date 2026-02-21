@@ -109,20 +109,20 @@ function withSnapshot(prefix: string, s: BufferSnapshot): Record<string, number 
 
 function logInfo(event: string, payload: Record<string, unknown> = {}) {
   const g = globalThis as typeof globalThis & {
-    __MUXT_TERM_DEBUG__?: boolean;
-    __MUXT_TERM_DEBUG_LOGS__?: Array<{ event: string; payload: Record<string, unknown> }>;
+    __SHELLMAN_TERM_DEBUG__?: boolean;
+    __SHELLMAN_TERM_DEBUG_LOGS__?: Array<{ event: string; payload: Record<string, unknown> }>;
   };
-  if (g.__MUXT_TERM_DEBUG__ !== true) {
+  if (g.__SHELLMAN_TERM_DEBUG__ !== true) {
     return;
   }
-  if (!Array.isArray(g.__MUXT_TERM_DEBUG_LOGS__)) {
-    g.__MUXT_TERM_DEBUG_LOGS__ = [];
+  if (!Array.isArray(g.__SHELLMAN_TERM_DEBUG_LOGS__)) {
+    g.__SHELLMAN_TERM_DEBUG_LOGS__ = [];
   }
-  g.__MUXT_TERM_DEBUG_LOGS__.push({ event, payload });
-  if (g.__MUXT_TERM_DEBUG_LOGS__.length > 600) {
-    g.__MUXT_TERM_DEBUG_LOGS__.shift();
+  g.__SHELLMAN_TERM_DEBUG_LOGS__.push({ event, payload });
+  if (g.__SHELLMAN_TERM_DEBUG_LOGS__.length > 600) {
+    g.__SHELLMAN_TERM_DEBUG_LOGS__.shift();
   }
-  console.info("[muxt-term]", event, payload);
+  console.info("[shellman-term]", event, payload);
 }
 
 function readRendererState() {
@@ -144,13 +144,13 @@ function tryEnableCanvasRenderer(addon: CanvasAddon, attempt: "initial" | "retry
   try {
     term.loadAddon(addon);
   } catch (error) {
-    console.warn("[muxt] failed to enable xterm canvas renderer, fallback to DOM renderer", { attempt, error });
+    console.warn("[shellman] failed to enable xterm canvas renderer, fallback to DOM renderer", { attempt, error });
     return false;
   }
   const state = readRendererState();
   const enabled = state.rendererName === "CanvasRenderer" || state.canvasCount > 0;
   if (!enabled) {
-    console.warn("[muxt] xterm canvas addon loaded but renderer is not canvas", { attempt, ...state });
+    console.warn("[shellman] xterm canvas addon loaded but renderer is not canvas", { attempt, ...state });
   }
   return enabled;
 }
@@ -175,13 +175,13 @@ function scheduleScrollToBottom(reason: string) {
   scrollRAF = requestAnimationFrame(() => {
     scrollRAF = 0;
     if (!opened.value) {
-      logInfo("muxt.term.view.scroll_bottom.skip", { reason: "terminal-not-opened", trigger: reason });
+      logInfo("shellman.term.view.scroll_bottom.skip", { reason: "terminal-not-opened", trigger: reason });
       return;
     }
     const terminal = term as unknown as { scrollToBottom?: () => void };
     terminal.scrollToBottom?.();
     moveCursor(props.cursor ?? null);
-    logInfo("muxt.term.view.scroll_bottom", { trigger: reason });
+    logInfo("shellman.term.view.scroll_bottom", { trigger: reason });
   });
 }
 
@@ -191,15 +191,15 @@ function isTerminalVisible() {
 
 function focusTerminal(reason: string) {
   if (!opened.value) {
-    logInfo("muxt.term.view.focus.skip", { reason: "terminal-not-opened", trigger: reason });
+    logInfo("shellman.term.view.focus.skip", { reason: "terminal-not-opened", trigger: reason });
     return;
   }
   if (!isTerminalVisible()) {
-    logInfo("muxt.term.view.focus.skip", { reason: "terminal-hidden", trigger: reason });
+    logInfo("shellman.term.view.focus.skip", { reason: "terminal-hidden", trigger: reason });
     return;
   }
   if (props.isNoPaneTask || props.isEnded) {
-    logInfo("muxt.term.view.focus.skip", {
+    logInfo("shellman.term.view.focus.skip", {
       reason: props.isNoPaneTask ? "no-pane-task" : "pane-ended",
       trigger: reason
     });
@@ -210,26 +210,26 @@ function focusTerminal(reason: string) {
   if (input && document.activeElement !== input) {
     input.focus({ preventScroll: true });
   }
-  logInfo("muxt.term.view.focus.apply", { trigger: reason });
+  logInfo("shellman.term.view.focus.apply", { trigger: reason });
 }
 
 function syncTerminalSize() {
   if (!opened.value || !root.value) {
-    logInfo("muxt.term.view.resize.skip", { reason: "not-opened-or-no-root" });
+    logInfo("shellman.term.view.resize.skip", { reason: "not-opened-or-no-root" });
     return;
   }
 
   const width = root.value.clientWidth;
   const height = root.value.clientHeight;
   if (width <= 0 || height <= 0) {
-    logInfo("muxt.term.view.resize.skip", { reason: "invalid-viewport", width, height });
+    logInfo("shellman.term.view.resize.skip", { reason: "invalid-viewport", width, height });
     return;
   }
 
   try {
     fitAddon.fit();
   } catch {
-    logInfo("muxt.term.view.resize.skip", { reason: "fit-failed", width, height });
+    logInfo("shellman.term.view.resize.skip", { reason: "fit-failed", width, height });
     if (fitRetryCount < 20) {
       fitRetryCount += 1;
       scheduleTerminalSizeSync();
@@ -240,11 +240,11 @@ function syncTerminalSize() {
 
   const actualSize = { cols: Math.max(2, term.cols), rows: Math.max(2, term.rows) };
   if (lastSize.value && lastSize.value.cols === actualSize.cols && lastSize.value.rows === actualSize.rows) {
-    logInfo("muxt.term.view.resize.skip", { reason: "same-size", cols: actualSize.cols, rows: actualSize.rows });
+    logInfo("shellman.term.view.resize.skip", { reason: "same-size", cols: actualSize.cols, rows: actualSize.rows });
     return;
   }
   lastSize.value = actualSize;
-  logInfo("muxt.term.view.resize.emit", {
+  logInfo("shellman.term.view.resize.emit", {
     width,
     height,
     cols: actualSize.cols,
@@ -256,7 +256,7 @@ function syncTerminalSize() {
 
 function moveCursor(cursor: { x: number; y: number } | null | undefined) {
   if (!cursor || !opened.value) {
-    logInfo("muxt.term.view.cursor.skip", {
+    logInfo("shellman.term.view.cursor.skip", {
       reason: !cursor ? "cursor-empty" : "terminal-not-opened"
     });
     return;
@@ -265,7 +265,7 @@ function moveCursor(cursor: { x: number; y: number } | null | undefined) {
   const col = Math.max(1, cursor.x + 1);
   const seq = ++cursorMoveSeq;
   const before = readBufferSnapshot();
-  logInfo("muxt.term.view.cursor.move.before", {
+  logInfo("shellman.term.view.cursor.move.before", {
     seq,
     x: cursor.x,
     y: cursor.y,
@@ -275,7 +275,7 @@ function moveCursor(cursor: { x: number; y: number } | null | undefined) {
   });
   term.write(`\u001b[${row};${col}H`, () => {
     const after = readBufferSnapshot();
-    logInfo("muxt.term.view.cursor.move.after", {
+    logInfo("shellman.term.view.cursor.move.after", {
       seq,
       x: cursor.x,
       y: cursor.y,
@@ -289,7 +289,7 @@ function moveCursor(cursor: { x: number; y: number } | null | undefined) {
 function writeOutput(text: string, onDone?: () => void) {
   const seq = ++viewWriteSeq;
   const before = readBufferSnapshot();
-  logInfo("muxt.term.view.output.write.before", {
+  logInfo("shellman.term.view.output.write.before", {
     seq,
     dataLen: text.length,
     dataEscaped: escapeForLog(text),
@@ -297,7 +297,7 @@ function writeOutput(text: string, onDone?: () => void) {
   });
   term.write(text, () => {
     const after = readBufferSnapshot();
-    logInfo("muxt.term.view.output.write.after", {
+    logInfo("shellman.term.view.output.write.after", {
       seq,
       dataLen: text.length,
       dataEscaped: escapeForLog(text),
@@ -369,12 +369,12 @@ watch(
     }
     const rawText = next.data ?? "";
     const text = next.mode === "reset" ? normalizeResetFrameData(rawText) : rawText;
-    logInfo("muxt.term.view.frame.watch", { mode: next.mode, dataLen: text.length, rawDataLen: rawText.length });
+    logInfo("shellman.term.view.frame.watch", { mode: next.mode, dataLen: text.length, rawDataLen: rawText.length });
     if (next.mode === "reset") {
       const beforeReset = readBufferSnapshot();
       (term as unknown as { reset?: () => void }).reset?.();
       const afterReset = readBufferSnapshot();
-      logInfo("muxt.term.view.frame.reset", {
+      logInfo("shellman.term.view.frame.reset", {
         dataLen: text.length,
         ...withSnapshot("bufferBefore", beforeReset),
         ...withSnapshot("bufferAfter", afterReset)
@@ -394,7 +394,7 @@ watch(
     if (text) {
       writeOutput(text);
     }
-    logInfo("muxt.term.view.frame.append", { dataLen: text.length });
+    logInfo("shellman.term.view.frame.append", { dataLen: text.length });
   }
 );
 
@@ -408,7 +408,7 @@ watch(
 watch(
   () => Boolean(props.isEnded),
   (next) => {
-    logInfo("muxt.term.view.ended.watch", { ended: next });
+    logInfo("shellman.term.view.ended.watch", { ended: next });
     syncTerminalInputDisabled();
   },
   { immediate: true }
@@ -420,7 +420,7 @@ watch(
     if (!opened.value || !next || next === prev) {
       return;
     }
-    logInfo("muxt.term.view.task.switch", { fromTaskId: prev, toTaskId: next });
+    logInfo("shellman.term.view.task.switch", { fromTaskId: prev, toTaskId: next });
     scheduleTerminalSizeSync(true);
     scheduleScrollToBottom("task-switch");
     focusTerminal("task-switch");
@@ -446,23 +446,23 @@ watch(
 );
 
 onMounted(() => {
-  logInfo("muxt.term.view.mounted.start");
+  logInfo("shellman.term.view.mounted.start");
   if (root.value) {
     if (typeof window.matchMedia !== "function") {
-      logInfo("muxt.term.view.mounted.skip", { reason: "matchMedia-missing" });
+      logInfo("shellman.term.view.mounted.skip", { reason: "matchMedia-missing" });
       return;
     }
     term.open(root.value);
     {
       const g = globalThis as typeof globalThis & {
-        __MUXT_TERM_DEBUG__?: boolean;
-        __MUXT_TERM_INSTANCES__?: unknown[];
+        __SHELLMAN_TERM_DEBUG__?: boolean;
+        __SHELLMAN_TERM_INSTANCES__?: unknown[];
       };
-      if (g.__MUXT_TERM_DEBUG__ === true) {
-        if (!Array.isArray(g.__MUXT_TERM_INSTANCES__)) {
-          g.__MUXT_TERM_INSTANCES__ = [];
+      if (g.__SHELLMAN_TERM_DEBUG__ === true) {
+        if (!Array.isArray(g.__SHELLMAN_TERM_INSTANCES__)) {
+          g.__SHELLMAN_TERM_INSTANCES__ = [];
         }
-        g.__MUXT_TERM_INSTANCES__.push(term);
+        g.__SHELLMAN_TERM_INSTANCES__.push(term);
       }
     }
     let canvasEnabled = tryEnableCanvasRenderer(canvasAddon, "initial");
@@ -472,15 +472,15 @@ onMounted(() => {
     const finalRendererState = readRendererState();
     root.value.dataset.renderer = canvasEnabled ? "canvas" : "dom";
     if (!canvasEnabled) {
-      console.warn("[muxt] xterm renderer remains non-canvas after retry", finalRendererState);
+      console.warn("[shellman] xterm renderer remains non-canvas after retry", finalRendererState);
     }
     term.loadAddon(fitAddon);
     opened.value = true;
-    logInfo("muxt.term.view.opened");
+    logInfo("shellman.term.view.opened");
     const input = root.value?.querySelector("textarea.xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (input) {
       input.setAttribute("data-test-id", "tt-terminal-input");
-      logInfo("muxt.term.view.input.ready");
+      logInfo("shellman.term.view.input.ready");
       bindPasteHandler(input);
       syncTerminalInputDisabled();
     }
@@ -499,7 +499,7 @@ onMounted(() => {
         !ev.isComposing
       ) {
         ev.preventDefault();
-        logInfo("muxt.term.view.key.shift_enter", { action: "emit-lf" });
+        logInfo("shellman.term.view.key.shift_enter", { action: "emit-lf" });
         emit("terminal-input", "\n");
         return false;
       }
@@ -507,7 +507,7 @@ onMounted(() => {
     });
     terminal.onData?.((data: string) => {
       const seq = ++onDataSeq;
-      logInfo("muxt.term.view.on_data", {
+      logInfo("shellman.term.view.on_data", {
         seq,
         text: data,
         textLen: data.length,
@@ -517,17 +517,17 @@ onMounted(() => {
     });
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", scheduleTerminalSizeSync);
-  logInfo("muxt.term.view.resize_listener.added");
+  logInfo("shellman.term.view.resize_listener.added");
   if (typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(() => scheduleTerminalSizeSync());
     resizeObserver.observe(root.value);
-    logInfo("muxt.term.view.resize_observer.added");
+    logInfo("shellman.term.view.resize_observer.added");
   }
   }
 });
 
 onBeforeUnmount(() => {
-  logInfo("muxt.term.view.before_unmount");
+  logInfo("shellman.term.view.before_unmount");
   unbindPasteHandler();
   window.removeEventListener("resize", scheduleTerminalSizeSync);
   if (resizeRAF) {
@@ -545,7 +545,7 @@ onBeforeUnmount(() => {
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
-    logInfo("muxt.term.view.resize_observer.removed");
+    logInfo("shellman.term.view.resize_observer.removed");
   }
 });
 </script>

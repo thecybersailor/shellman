@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-LOG_DIR="/tmp/muxt-smoke"
+LOG_DIR="/tmp/shellman-smoke"
 CLI_PORT="${CLI_PORT:-4621}"
 WEBUI_PORT="${WEBUI_PORT:-5173}"
 API_BASE="http://127.0.0.1:${CLI_PORT}"
@@ -23,7 +23,7 @@ chmod +x "$LOG_DIR/bin/tmux"
 
 CLI_PID=""
 WEBUI_PID=""
-PROJECT_ROOT="${PROJECT_ROOT:-$(mktemp -d /tmp/muxt-project-XXXXXX)}"
+PROJECT_ROOT="${PROJECT_ROOT:-$(mktemp -d /tmp/shellman-project-XXXXXX)}"
 
 cleanup() {
   for pid in "$WEBUI_PID" "$CLI_PID"; do
@@ -50,14 +50,14 @@ wait_http() {
 
 (
   cd "$ROOT_DIR/cli"
-  PATH="$LOG_DIR/bin:$PATH" TERMTEAM_MODE=local TERMTEAM_LOCAL_PORT="$CLI_PORT" go run ./cmd/termteam >"$LOG_DIR/cli.log" 2>&1
+  PATH="$LOG_DIR/bin:$PATH" SHELLMAN_MODE=local SHELLMAN_LOCAL_PORT="$CLI_PORT" go run ./cmd/shellman >"$LOG_DIR/cli.log" 2>&1
 ) &
 CLI_PID=$!
 
 wait_http "$API_BASE/healthz" 80 0.2
 curl -fsS "$API_BASE/api/v1/config" >"$LOG_DIR/config.json"
 
-cat >/tmp/muxt-ws-probe.go <<'GOWS'
+cat >/tmp/shellman-ws-probe.go <<'GOWS'
 package main
 
 import (
@@ -124,7 +124,7 @@ GOWS
 
 (
   cd "$ROOT_DIR/cli"
-  go run /tmp/muxt-ws-probe.go "ws://127.0.0.1:${CLI_PORT}/ws/client/local"
+  go run /tmp/shellman-ws-probe.go "ws://127.0.0.1:${CLI_PORT}/ws/client/local"
 )
 
 (
@@ -156,7 +156,7 @@ const ids=(d.data.nodes||[]).map((n)=>n.task_id);
 if(ids.length<3) process.exit(2);
 ' "$TREE_RESP"
 
-PANES_FILE="$PROJECT_ROOT/.muxt/state/panes.json"
+PANES_FILE="$PROJECT_ROOT/.shellman/state/panes.json"
 if [[ ! -f "$PANES_FILE" ]]; then
   echo "missing panes file: $PANES_FILE" >&2
   exit 1
@@ -165,5 +165,5 @@ fi
 grep -q "$SIB_TASK_ID" "$PANES_FILE"
 grep -q "$CHILD_TASK_ID" "$PANES_FILE"
 
-echo "muxt local web smoke passed"
+echo "shellman local web smoke passed"
 echo "logs: $LOG_DIR"

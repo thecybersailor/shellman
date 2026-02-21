@@ -14,7 +14,7 @@ func TestNoFmtOrStdLogPrintingInRuntimePaths(t *testing.T) {
 	t.Helper()
 
 	banned := regexp.MustCompile(`\bfmt\.(Print|Printf|Println|Fprint|Fprintf|Fprintln)\b|\blog\.(Print|Printf|Println)\b|\bdebugf\s*\(`)
-	roots := []string{"cmd/termteam", "internal/localapi"}
+	roots := []string{"cmd/shellman", "internal/localapi"}
 	violations := make([]string, 0)
 
 	for _, root := range roots {
@@ -54,7 +54,7 @@ func TestNoFmtOrStdLogPrintingInRuntimePaths(t *testing.T) {
 
 func isAllowedNonLoggingPrint(path, line string) bool {
 	trimmed := strings.TrimSpace(line)
-	if strings.HasSuffix(path, "/cmd/termteam/main.go") && strings.Contains(trimmed, "fmt.Fprintf(out,") {
+	if strings.HasSuffix(path, "/cmd/shellman/main.go") && strings.Contains(trimmed, "fmt.Fprintf(out,") {
 		return true
 	}
 	if strings.HasSuffix(path, "/internal/localapi/task_completion.go") && strings.Contains(trimmed, "&b") {

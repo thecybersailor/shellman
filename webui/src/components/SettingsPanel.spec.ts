@@ -27,7 +27,7 @@ describe("SettingsPanel", () => {
           ResponsiveOverlay: {
             props: ["open"],
             emits: ["update:open"],
-            template: "<div data-test-id='muxt-settings-overlay'><slot /></div>"
+            template: "<div data-test-id='shellman-settings-overlay'><slot /></div>"
           },
           Select: { template: "<div><slot /></div>" },
           SelectTrigger: { template: "<div><slot /></div>" },
@@ -69,10 +69,10 @@ describe("SettingsPanel", () => {
   it("emits command mode payload with selected delay preset", async () => {
     const wrapper = render();
     await wrapper.setProps({ defaultLaunchProgram: "codex" });
-    await wrapper.get("[data-test-id='muxt-settings-task-completion-enable']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-settings-task-completion-action-input']").setValue("notify --flag");
-    await wrapper.get("[data-test-id='muxt-settings-task-completion-delay-60']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-settings-save']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-task-completion-enable']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-task-completion-action-input']").setValue("notify --flag");
+    await wrapper.get("[data-test-id='shellman-settings-task-completion-delay-60']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
 
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "codex",
@@ -90,8 +90,8 @@ describe("SettingsPanel", () => {
   it("disables command mode and emits none payload on save", async () => {
     const wrapper = render();
     await wrapper.setProps({ taskCompletionMode: "command" });
-    await wrapper.get("[data-test-id='muxt-settings-task-completion-enable']").trigger("click");
-    await wrapper.get("[data-test-id='muxt-settings-save']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-task-completion-enable']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
 
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "shell",
@@ -108,7 +108,7 @@ describe("SettingsPanel", () => {
 
   it("supports none mode and sends empty command/webhook", async () => {
     const wrapper = render();
-    await wrapper.get("[data-test-id='muxt-settings-save']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "shell",
       defaultHelperProgram: "codex",
@@ -125,8 +125,8 @@ describe("SettingsPanel", () => {
   it("keeps webhook payload empty even when webhook prop is provided", async () => {
     const wrapper = render();
     await wrapper.setProps({ taskCompletionMode: "command", taskCompletionWebhook: "https://example.com/hook" });
-    await wrapper.get("[data-test-id='muxt-settings-task-completion-action-input']").setValue("notify --flag");
-    await wrapper.get("[data-test-id='muxt-settings-save']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-task-completion-action-input']").setValue("notify --flag");
+    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
 
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "shell",
@@ -143,10 +143,10 @@ describe("SettingsPanel", () => {
 
   it("emits helper openai config from settings", async () => {
     const wrapper = render();
-    await wrapper.get("[data-test-id='muxt-settings-helper-openai-endpoint']").setValue("https://api.openai.com");
-    await wrapper.get("[data-test-id='muxt-settings-helper-openai-model']").setValue("gpt-5");
-    await wrapper.get("[data-test-id='muxt-settings-helper-openai-apikey']").setValue("sk-test-123");
-    await wrapper.get("[data-test-id='muxt-settings-save']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-settings-helper-openai-endpoint']").setValue("https://api.openai.com");
+    await wrapper.get("[data-test-id='shellman-settings-helper-openai-model']").setValue("gpt-5");
+    await wrapper.get("[data-test-id='shellman-settings-helper-openai-apikey']").setValue("sk-test-123");
+    await wrapper.get("[data-test-id='shellman-settings-save']").trigger("click");
 
     expect(wrapper.emitted("save")?.[0]?.[0]).toMatchObject({
       helperOpenAIEndpoint: "https://api.openai.com",

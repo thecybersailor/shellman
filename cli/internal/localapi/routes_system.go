@@ -90,7 +90,7 @@ func (s *Server) handleSystemImageUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	tmp, err := os.CreateTemp("", "muxt-img-*"+extensionForContentType(contentType))
+	tmp, err := os.CreateTemp("", "shellman-img-*"+extensionForContentType(contentType))
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "UPLOAD_WRITE_FAILED", err.Error())
 		return

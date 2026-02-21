@@ -8,7 +8,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"termteam/cli/internal/global"
+	"shellman/cli/internal/global"
 )
 
 func (s *Server) registerProjectsRoutes() {

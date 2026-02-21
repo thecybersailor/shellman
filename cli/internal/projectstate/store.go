@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"termteam/cli/internal/db"
+	"shellman/cli/internal/db"
 )
 
 

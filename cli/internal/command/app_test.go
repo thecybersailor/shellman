@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"termteam/cli/internal/config"
+	"shellman/cli/internal/config"
 )
 
 func TestBuildApp_DefaultCommandIsServeLocal(t *testing.T) {
@@ -28,7 +28,7 @@ func TestBuildApp_DefaultCommandIsServeLocal(t *testing.T) {
 			return nil
 		},
 	})
-	if err := app.RunContext(context.Background(), []string{"termteam"}); err != nil {
+	if err := app.RunContext(context.Background(), []string{"shellman"}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 	if localCalled != 1 || turnCalled != 0 || migrateCalled != 0 {
@@ -52,7 +52,7 @@ func TestBuildApp_ServeTurnCommand(t *testing.T) {
 			return nil
 		},
 	})
-	if err := app.RunContext(context.Background(), []string{"termteam", "serve", "turn"}); err != nil {
+	if err := app.RunContext(context.Background(), []string{"shellman", "serve", "turn"}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 	if localCalled != 0 || turnCalled != 1 {
@@ -73,7 +73,7 @@ func TestBuildApp_MigrateUpCommand(t *testing.T) {
 			return nil
 		},
 	})
-	if err := app.RunContext(context.Background(), []string{"termteam", "migrate", "up"}); err != nil {
+	if err := app.RunContext(context.Background(), []string{"shellman", "migrate", "up"}); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
 	if migrateCalled != 1 {

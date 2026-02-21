@@ -7,7 +7,7 @@ import (
 )
 
 func TestOpenSQLiteWithMigrations_CreatesCoreTables(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	sqlDB, err := OpenSQLiteWithMigrations(dbPath)
 	if err != nil {
 		t.Fatalf("OpenSQLiteWithMigrations failed: %v", err)
@@ -39,7 +39,7 @@ func TestOpenSQLiteWithMigrations_CreatesCoreTables(t *testing.T) {
 }
 
 func TestOpenSQLiteWithMigrations_IsIdempotent(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	sqlDB, err := OpenSQLiteWithMigrations(dbPath)
 	if err != nil {
 		t.Fatalf("first open failed: %v", err)
@@ -62,7 +62,7 @@ func TestOpenSQLiteWithMigrations_IsIdempotent(t *testing.T) {
 }
 
 func TestOpenSQLiteWithMigrations_OpensReadableDB(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	sqlDB, err := OpenSQLiteWithMigrations(dbPath)
 	if err != nil {
 		t.Fatalf("open failed: %v", err)

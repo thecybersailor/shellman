@@ -13,9 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/localapi"
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/localapi"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/turn"
 )
 
 type statusPumpTmux struct {

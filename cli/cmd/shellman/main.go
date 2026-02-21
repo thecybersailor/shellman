@@ -17,23 +17,23 @@ import (
 	"syscall"
 	"time"
 
-	"termteam/cli/internal/agentloop"
-	"termteam/cli/internal/appserver"
-	"termteam/cli/internal/bridge"
-	"termteam/cli/internal/command"
-	"termteam/cli/internal/config"
-	"termteam/cli/internal/fsbrowser"
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/helperconfig"
-	"termteam/cli/internal/historydb"
-	"termteam/cli/internal/lifecycle"
-	"termteam/cli/internal/localapi"
-	"termteam/cli/internal/logging"
-	"termteam/cli/internal/projectstate"
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/systempicker"
-	"termteam/cli/internal/tmux"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/agentloop"
+	"shellman/cli/internal/appserver"
+	"shellman/cli/internal/bridge"
+	"shellman/cli/internal/command"
+	"shellman/cli/internal/config"
+	"shellman/cli/internal/fsbrowser"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/helperconfig"
+	"shellman/cli/internal/historydb"
+	"shellman/cli/internal/lifecycle"
+	"shellman/cli/internal/localapi"
+	"shellman/cli/internal/logging"
+	"shellman/cli/internal/projectstate"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/systempicker"
+	"shellman/cli/internal/tmux"
+	"shellman/cli/internal/turn"
 )
 
 const version = "dev"
@@ -121,7 +121,7 @@ func main() {
 	})
 
 	if err := app.RunContext(rootCtx, os.Args); err != nil {
-		logging.NewLogger(logging.Options{Level: "error", Writer: os.Stderr, Component: "termteam"}).Error("termteam failed", "err", err)
+		logging.NewLogger(logging.Options{Level: "error", Writer: os.Stderr, Component: "shellman"}).Error("shellman failed", "err", err)
 		os.Exit(1)
 	}
 }
@@ -138,7 +138,7 @@ func runMigrateUp(_ context.Context, cfg config.Config) error {
 	if err != nil {
 		return err
 	}
-	return projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db"))
+	return projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db"))
 }
 
 func runByMode(ctx context.Context, cfg config.Config, runTurn func(context.Context) error, runLocalMode func(context.Context) error) error {
@@ -156,7 +156,7 @@ func run(
 	dialer wsDialer,
 	tmuxService bridge.TmuxService,
 ) error {
-	fmt.Fprintf(out, "termteam %s\n", version)
+	fmt.Fprintf(out, "shellman %s\n", version)
 	logger := newRuntimeLogger(errOut)
 	logger.Debug("runtime config", "trace_stream", traceStreamEnabled)
 
@@ -179,7 +179,7 @@ func run(
 	if err != nil {
 		return err
 	}
-	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db")); err != nil {
+	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db")); err != nil {
 		return err
 	}
 	gatewayLocalServer := buildGatewayLocalAPIServer(configDir, tmuxService, systempicker.PickDirectory)
@@ -313,7 +313,7 @@ func bindMessageLoop(
 				Headers map[string]string `json:"headers"`
 			}
 			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
-				logger.Debug("incoming ws message", "op", "gateway.http", "method", payload.Method, "path", payload.Path, "active_target", activePaneTarget, "header_active_target", strings.TrimSpace(payload.Headers["X-Muxt-Active-Pane-Target"]))
+				logger.Debug("incoming ws message", "op", "gateway.http", "method", payload.Method, "path", payload.Path, "active_target", activePaneTarget, "header_active_target", strings.TrimSpace(payload.Headers["X-Shellman-Active-Pane-Target"]))
 			}
 		}
 		out := handler.Handle(msg)
@@ -367,8 +367,8 @@ func enrichGatewayHTTPMessage(msg protocol.Message, activePaneTarget string) pro
 	if payload.Headers == nil {
 		payload.Headers = map[string]string{}
 	}
-	if strings.TrimSpace(payload.Headers["X-Muxt-Active-Pane-Target"]) == "" && strings.TrimSpace(activePaneTarget) != "" {
-		payload.Headers["X-Muxt-Active-Pane-Target"] = strings.TrimSpace(activePaneTarget)
+	if strings.TrimSpace(payload.Headers["X-Shellman-Active-Pane-Target"]) == "" && strings.TrimSpace(activePaneTarget) != "" {
+		payload.Headers["X-Shellman-Active-Pane-Target"] = strings.TrimSpace(activePaneTarget)
 	}
 	raw, err := json.Marshal(payload)
 	if err != nil {
@@ -386,14 +386,14 @@ func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
 	cfgStore := global.NewConfigStore(configDir)
 	appProgramsStore := global.NewAppProgramsStore(configDir)
 	projectsStore := global.NewProjectsStore(configDir)
-	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db")); err != nil {
+	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db")); err != nil {
 		return err
 	}
 	globalDB, err := projectstate.GlobalDB()
 	if err != nil {
 		return err
 	}
-	helperCfgStore, err := helperconfig.NewStore(globalDB, filepath.Join(configDir, ".muxt-helper-openai-secret"))
+	helperCfgStore, err := helperconfig.NewStore(globalDB, filepath.Join(configDir, ".shellman-helper-openai-secret"))
 	if err != nil {
 		return err
 	}
@@ -436,7 +436,7 @@ func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
 		server.PublishClientEvent("local", topic, projectID, taskID, payload)
 	})
 	addr := fmt.Sprintf("%s:%d", cfg.LocalHost, cfg.LocalPort)
-	fmt.Fprintf(out, "muxt local web server listening at http://%s\n", addr)
+	fmt.Fprintf(out, "shellman local web server listening at http://%s\n", addr)
 
 	httpServer := &http.Server{
 		Addr:    addr,
@@ -921,19 +921,19 @@ func newRuntimeLogger(writer io.Writer) *slog.Logger {
 	return logging.NewLogger(logging.Options{
 		Level:     level,
 		Writer:    writer,
-		Component: "termteam",
+		Component: "shellman",
 	})
 }
 
 func buildGatewayLocalAPIServer(configDir string, tmuxService bridge.TmuxService, pickDirectory func() (string, error)) *localapi.Server {
-	_ = projectstate.InitGlobalDB(filepath.Join(configDir, "muxt.db"))
+	_ = projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db"))
 	cfgStore := global.NewConfigStore(configDir)
 	appProgramsStore := global.NewAppProgramsStore(configDir)
 	projectsStore := global.NewProjectsStore(configDir)
 	var helperCfgStore localapi.HelperConfigStore
 	var historyStore localapi.DirHistory
 	if db, err := projectstate.GlobalDB(); err == nil {
-		if st, err := helperconfig.NewStore(db, filepath.Join(configDir, ".muxt-helper-openai-secret")); err == nil {
+		if st, err := helperconfig.NewStore(db, filepath.Join(configDir, ".shellman-helper-openai-secret")); err == nil {
 			helperCfgStore = st
 		}
 		if st, err := historydb.NewStore(db); err == nil {
@@ -968,8 +968,8 @@ func newGatewayExecutors(localServer *localapi.Server, source string) (gatewayHT
 		for k, v := range headers {
 			forwardHeaders[k] = v
 		}
-		if strings.TrimSpace(forwardHeaders["X-Muxt-Gateway-Source"]) == "" {
-			forwardHeaders["X-Muxt-Gateway-Source"] = strings.TrimSpace(source)
+		if strings.TrimSpace(forwardHeaders["X-Shellman-Gateway-Source"]) == "" {
+			forwardHeaders["X-Shellman-Gateway-Source"] = strings.TrimSpace(source)
 		}
 		return exec.Execute(method, path, forwardHeaders, body)
 	}

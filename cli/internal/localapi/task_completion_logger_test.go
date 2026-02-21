@@ -17,7 +17,7 @@ func TestTaskCompletionAudit_UsesSlogJSONLine(t *testing.T) {
 
 	lgr.Log("trigger.received", map[string]any{"task_id": "t1"})
 
-	b, err := os.ReadFile(filepath.Join(repo, ".muxt", "logs", "task-completion-automation.log"))
+	b, err := os.ReadFile(filepath.Join(repo, ".shellman", "logs", "task-completion-automation.log"))
 	if err != nil {
 		t.Fatalf("read log failed: %v", err)
 	}

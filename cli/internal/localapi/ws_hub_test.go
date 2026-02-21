@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"nhooyr.io/websocket"
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/protocol"
 )
 
 func TestWSHub(t *testing.T) {

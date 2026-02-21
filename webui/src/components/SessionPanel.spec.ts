@@ -29,8 +29,8 @@ describe("SessionPanel", () => {
     await nextTick();
     await nextTick();
 
-    const userMessage = wrapper.findAll("[data-test-id='muxt-shellman-message-user']");
-    const assistantMessage = wrapper.findAll("[data-test-id='muxt-shellman-message-assistant']");
+    const userMessage = wrapper.findAll("[data-test-id='shellman-shellman-message-user']");
+    const assistantMessage = wrapper.findAll("[data-test-id='shellman-shellman-message-assistant']");
 
     expect(userMessage.length).toBe(1);
     expect(assistantMessage.length).toBe(1);
@@ -65,7 +65,7 @@ describe("SessionPanel", () => {
     await nextTick();
     await nextTick();
 
-    expect(wrapper.findAll("[data-test-id='muxt-shellman-message-runtime']").length).toBe(1);
+    expect(wrapper.findAll("[data-test-id='shellman-shellman-message-runtime']").length).toBe(1);
     expect(wrapper.text()).toContain("runtime");
   });
 
@@ -73,17 +73,17 @@ describe("SessionPanel", () => {
     const wrapper = mount(SessionPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [] }
     });
-    const input = wrapper.get("[data-test-id='muxt-shellman-input']");
-    await input.setValue("Reply exactly: MUXT_E2E_OK");
+    const input = wrapper.get("[data-test-id='shellman-shellman-input']");
+    await input.setValue("Reply exactly: SHELLMAN_E2E_OK");
     await wrapper.get("form").trigger("submit");
-    expect(wrapper.emitted("send-message")?.[0]?.[0]).toEqual({ content: "Reply exactly: MUXT_E2E_OK" });
+    expect(wrapper.emitted("send-message")?.[0]?.[0]).toEqual({ content: "Reply exactly: SHELLMAN_E2E_OK" });
   });
 
   it("emits set-autopilot when switch toggled", async () => {
     const wrapper = mount(SessionPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], autopilot: false }
     });
-    const autopilotSwitch = wrapper.get("[data-test-id='muxt-shellman-autopilot-switch']");
+    const autopilotSwitch = wrapper.get("[data-test-id='shellman-shellman-autopilot-switch']");
     await autopilotSwitch.trigger("click");
     const events = wrapper.emitted("set-autopilot") ?? [];
     expect(events.length).toBeGreaterThan(0);
@@ -123,11 +123,11 @@ describe("SessionPanel", () => {
     await nextTick();
     await nextTick();
 
-    expect(wrapper.find("[data-test-id='muxt-shellman-responding']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-shellman-tool']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-shellman-tool-header']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-shellman-tool-content']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-shellman-tool-input']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-shellman-tool-output']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-responding']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-tool']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-tool-header']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-tool-content']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-tool-input']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-tool-output']").exists()).toBe(true);
   });
 });

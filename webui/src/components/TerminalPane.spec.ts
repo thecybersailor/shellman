@@ -75,7 +75,7 @@ describe("TerminalPane", () => {
       }
     });
 
-    await wrapper.get("[data-test-id='muxt-task-meta-display']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-meta-display']").trigger("click");
     expect(wrapper.emitted("open-session-detail")?.length).toBe(1);
   });
 
@@ -109,7 +109,7 @@ describe("TerminalPane", () => {
         paneUuid: "pane-uuid-1"
       }
     });
-    expect(wrapper.get("[data-test-id='muxt-console-pane-uuid']").text()).toBe("pane-uuid-1");
+    expect(wrapper.get("[data-test-id='shellman-console-pane-uuid']").text()).toBe("pane-uuid-1");
   });
 
   it("shows current command in console header", () => {
@@ -126,7 +126,7 @@ describe("TerminalPane", () => {
         currentCommand: "toolkit"
       }
     });
-    expect(wrapper.get("[data-test-id='muxt-console-pane-current-command']").text()).toBe("toolkit");
+    expect(wrapper.get("[data-test-id='shellman-console-pane-current-command']").text()).toBe("toolkit");
   });
 
   it("shows reopen button and emits reopen-pane with launch options", async () => {
@@ -143,7 +143,7 @@ describe("TerminalPane", () => {
         showReopenButton: true
       }
     });
-    await wrapper.get("[data-test-id='muxt-pane-launch-form']").trigger("submit");
+    await wrapper.get("[data-test-id='shellman-pane-launch-form']").trigger("submit");
     const emitted = wrapper.emitted("reopen-pane") ?? [];
     expect(emitted.length).toBe(1);
     expect((emitted[0] ?? [])[0]).toMatchObject({ program: "shell" });
@@ -168,7 +168,7 @@ describe("TerminalPane", () => {
     expect(root.exists()).toBe(true);
     const container = root.element.parentElement as HTMLElement;
     expect(container.style.display).toBe("none");
-    expect(wrapper.get("[data-test-id='muxt-reopen-pane-button']").text()).toBe("Start");
+    expect(wrapper.get("[data-test-id='shellman-reopen-pane-button']").text()).toBe("Start");
   });
 
   it("enables convertEol so plain \\n output wraps correctly", () => {

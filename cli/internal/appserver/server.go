@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strings"
 
-	"termteam/cli/internal/localapi"
+	"shellman/cli/internal/localapi"
 )
 
 type WebUIConfig struct {
@@ -79,7 +79,7 @@ func handleMCP(w http.ResponseWriter, r *http.Request) {
 		})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "data": map[string]any{"service": "muxt-mcp", "status": "ok"}})
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "data": map[string]any{"service": "shellman-mcp", "status": "ok"}})
 }
 
 func writeJSON(w http.ResponseWriter, status int, payload any) {

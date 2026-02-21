@@ -1,6 +1,6 @@
 package main
 
-import "termteam/cli/internal/protocol"
+import "shellman/cli/internal/protocol"
 
 type connOutboundMessage struct {
 	ConnID  string

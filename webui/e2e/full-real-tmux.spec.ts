@@ -144,11 +144,11 @@ function projectRegion(page: Page, projectID: string) {
 }
 
 function taskRowTitle(page: Page, projectID: string, taskID: string) {
-  return projectRegion(page, projectID).getByTestId(`muxt-task-row-${taskID}`).getByTestId("muxt-task-row-title");
+  return projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).getByTestId("shellman-task-row-title");
 }
 
 async function selectTask(page: Page, projectID: string, taskID: string) {
-  await projectRegion(page, projectID).getByTestId(`muxt-task-row-${taskID}`).first().click();
+  await projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first().click();
 }
 
 function activeTerminal(page: Page) {
@@ -217,10 +217,10 @@ async function requestSelectPaneErrorCode(page: Page, target: string): Promise<s
   );
 }
 
-test.describe("muxt local web full chain (docker)", () => {
+test.describe("shellman local web full chain (docker)", () => {
   test("health + first frame", async ({ page }) => {
     await page.goto(visitURL);
-    await expect(page.locator("header")).toContainText("muxt");
+    await expect(page.locator("header")).toContainText("shellman");
     await expect(activeTerminal(page)).toBeVisible();
     await expect(activeTerminalInput(page)).toBeAttached();
   });
@@ -307,7 +307,7 @@ test.describe("muxt local web full chain (docker)", () => {
 
     await selectTask(page, seeded.projectID, seeded.missingTaskID);
 
-    const reopenButton = page.getByTestId("muxt-reopen-pane-button").first();
+    const reopenButton = page.getByTestId("shellman-reopen-pane-button").first();
     await expect(reopenButton).toBeVisible();
     await expect(reopenButton).toBeEnabled();
 
@@ -329,16 +329,16 @@ test.describe("muxt local web full chain (docker)", () => {
     const seeded = await seedProject(request);
     await page.goto(visitURL);
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
-    await expect(page.getByTestId("muxt-task-title-input")).toHaveValue("root-task");
+    await expect(page.getByTestId("shellman-task-title-input")).toHaveValue("root-task");
     await unwrap(
       await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
-        data: { content: "Reply exactly: MUXT_E2E_OK" }
+        data: { content: "Reply exactly: SHELLMAN_E2E_OK" }
       })
     );
     await page.reload();
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
-    await expect(page.getByTestId("muxt-shellman-message-user").last()).toContainText("MUXT_E2E_OK", { timeout: 15000 });
+    await expect(page.getByTestId("shellman-shellman-message-user").last()).toContainText("SHELLMAN_E2E_OK", { timeout: 15000 });
 
     await expect
       .poll(
@@ -411,12 +411,12 @@ test.describe("muxt local web full chain (docker)", () => {
     await page.goto(visitURL);
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
-    await expect(page.getByTestId("muxt-shellman-tool").first()).toBeVisible();
-    await expect(page.getByTestId("muxt-shellman-tool-header").first()).toContainText("gateway_http");
-    await page.getByTestId("muxt-shellman-tool-header").first().click();
-    await expect(page.getByTestId("muxt-shellman-tool-content").first()).toBeVisible();
-    await expect(page.getByTestId("muxt-shellman-tool-input").first()).toBeVisible();
-    await expect(page.getByTestId("muxt-shellman-tool-output").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-tool").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-tool-header").first()).toContainText("gateway_http");
+    await page.getByTestId("shellman-shellman-tool-header").first().click();
+    await expect(page.getByTestId("shellman-shellman-tool-content").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-tool-input").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-tool-output").first()).toBeVisible();
   });
 
   test("shellman renders responding indicator for running assistant message", async ({ page, request }) => {
@@ -452,8 +452,8 @@ test.describe("muxt local web full chain (docker)", () => {
     await page.goto(visitURL);
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
-    await expect(page.getByTestId("muxt-shellman-message-assistant").first()).toBeVisible();
-    await expect(page.getByTestId("muxt-shellman-responding").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-message-assistant").first()).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-responding").first()).toBeVisible();
   });
 
   test("shellman chat ui updates before /messages response returns", async ({ page, request }) => {
@@ -476,17 +476,17 @@ test.describe("muxt local web full chain (docker)", () => {
       await route.fulfill({ response });
     });
 
-    await page.getByTestId("muxt-shellman-input").fill("Reply exactly: MUXT_E2E_TIMING");
-    await page.getByTestId("muxt-shellman-send").click();
+    await page.getByTestId("shellman-shellman-input").fill("Reply exactly: SHELLMAN_E2E_TIMING");
+    await page.getByTestId("shellman-shellman-send").click();
 
     await expect.poll(() => requestObserved).toBe(true);
-    await expect.poll(() => page.getByTestId("muxt-shellman-message-user").count(), { timeout: 3500 }).toBeGreaterThan(0);
-    await expect.poll(() => page.getByTestId("muxt-shellman-message-assistant").count(), { timeout: 3500 }).toBeGreaterThan(0);
-    await expect(page.getByTestId("muxt-shellman-responding").last()).toBeVisible();
+    await expect.poll(() => page.getByTestId("shellman-shellman-message-user").count(), { timeout: 3500 }).toBeGreaterThan(0);
+    await expect.poll(() => page.getByTestId("shellman-shellman-message-assistant").count(), { timeout: 3500 }).toBeGreaterThan(0);
+    await expect(page.getByTestId("shellman-shellman-responding").last()).toBeVisible();
     expect(responseReturned).toBe(false);
 
     await expect.poll(() => responseReturned, { timeout: 30000 }).toBe(true);
-    await expect(page.getByTestId("muxt-shellman-message-user").last()).toContainText("MUXT_E2E_TIMING", { timeout: 30000 });
-    await expect(page.getByTestId("muxt-shellman-message-assistant").last()).toBeVisible({ timeout: 30000 });
+    await expect(page.getByTestId("shellman-shellman-message-user").last()).toContainText("SHELLMAN_E2E_TIMING", { timeout: 30000 });
+    await expect(page.getByTestId("shellman-shellman-message-assistant").last()).toBeVisible({ timeout: 30000 });
   });
 });

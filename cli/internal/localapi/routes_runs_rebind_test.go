@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestRunBinding_BecomesStaleWhenServerInstanceChanges(t *testing.T) {
@@ -48,9 +48,9 @@ func TestRunBinding_BecomesStaleWhenServerInstanceChanges(t *testing.T) {
 		t.Fatalf("UpsertRunBinding failed: %v", err)
 	}
 
-	old := os.Getenv("MUXT_SERVER_INSTANCE_ID")
-	defer os.Setenv("MUXT_SERVER_INSTANCE_ID", old)
-	if err := os.Setenv("MUXT_SERVER_INSTANCE_ID", "srv_new"); err != nil {
+	old := os.Getenv("SHELLMAN_SERVER_INSTANCE_ID")
+	defer os.Setenv("SHELLMAN_SERVER_INSTANCE_ID", old)
+	if err := os.Setenv("SHELLMAN_SERVER_INSTANCE_ID", "srv_new"); err != nil {
 		t.Fatalf("Setenv failed: %v", err)
 	}
 

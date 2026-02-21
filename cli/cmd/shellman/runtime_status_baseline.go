@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"strings"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
 
 type paneRuntimeBaseline struct {

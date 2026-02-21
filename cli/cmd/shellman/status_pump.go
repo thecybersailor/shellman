@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"termteam/cli/internal/bridge"
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/bridge"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/turn"
 )
 
 const tmuxStatusMaxMessageBytes = 24 * 1024

@@ -26,7 +26,7 @@ func newAuditLogger(repoRoot, fileName, component string) *taskCompletionAuditLo
 	if strings.TrimSpace(repoRoot) == "" {
 		return nil
 	}
-	dir := filepath.Join(repoRoot, ".muxt", "logs")
+	dir := filepath.Join(repoRoot, ".shellman", "logs")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return nil
 	}

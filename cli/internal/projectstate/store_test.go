@@ -11,7 +11,7 @@ import (
 )
 
 func TestStore_ListTasksByProject_FromSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -52,13 +52,13 @@ func TestStore_ListTasksByProject_FromSQLite(t *testing.T) {
 	if byID["t2"].ParentTaskID != "t1" || byID["t2"].Title != "child" || byID["t2"].Status != StatusPending {
 		t.Fatalf("unexpected child row: %#v", byID["t2"])
 	}
-	if _, err := os.Stat(filepath.Join(repo, ".muxt", "state", "task-tree.json")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, ".shellman", "state", "task-tree.json")); !os.IsNotExist(err) {
 		t.Fatalf("legacy task-tree.json should not be created, err=%v", err)
 	}
 }
 
 func TestStore_IsolatesByRepoRoot_InSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -90,7 +90,7 @@ func TestStore_IsolatesByRepoRoot_InSQLite(t *testing.T) {
 }
 
 func TestStore_SaveAndLoadPaneSnapshots_FromSQLite(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -121,7 +121,7 @@ func TestStore_SaveAndLoadPaneSnapshots_FromSQLite(t *testing.T) {
 }
 
 func TestStore_SavePaneSnapshots_DoesNotUpdateTaskLastModified(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -162,7 +162,7 @@ func TestStore_SavePaneSnapshots_DoesNotUpdateTaskLastModified(t *testing.T) {
 }
 
 func TestStore_UpsertTaskMeta_WithFlagFields(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}

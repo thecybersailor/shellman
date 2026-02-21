@@ -70,11 +70,11 @@ function submitLaunch() {
 </script>
 
 <template>
-  <form data-test-id="muxt-pane-launch-form" class="px-2 space-y-2.5" @submit.prevent="submitLaunch">
+  <form data-test-id="shellman-pane-launch-form" class="px-2 space-y-2.5" @submit.prevent="submitLaunch">
     <div class="space-y-1 max-w-sm">
       <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">Program</label>
       <Select v-model="program" class="">
-        <SelectTrigger data-test-id="muxt-pane-launch-program" class="w-full">
+        <SelectTrigger data-test-id="shellman-pane-launch-program" class="w-full">
           <SelectValue placeholder="Select program" />
         </SelectTrigger>
         <SelectContent>
@@ -93,7 +93,7 @@ function submitLaunch() {
       <label class="text-[11px] uppercase tracking-wide text-muted-foreground/70">Initial Prompt</label>
       <Textarea
         v-model="prompt"
-        data-test-id="muxt-pane-launch-prompt"
+        data-test-id="shellman-pane-launch-prompt"
         class="resize-y"
         rows="3"
         placeholder="Input initial prompt..."
@@ -101,7 +101,7 @@ function submitLaunch() {
     </div>
 
     <Button
-      data-test-id="muxt-reopen-pane-button"
+      data-test-id="shellman-reopen-pane-button"
       type="submit"
       class="min-w-32"
       :disabled="!canSubmit"

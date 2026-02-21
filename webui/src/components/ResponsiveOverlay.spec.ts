@@ -21,20 +21,20 @@ describe("ResponsiveOverlay", () => {
         description: "Select a project path"
       },
       slots: {
-        default: "<div data-test-id='muxt-overlay-slot'>content</div>"
+        default: "<div data-test-id='shellman-overlay-slot'>content</div>"
       },
       global: {
         stubs: {
-          Dialog: { template: "<div data-test-id='muxt-overlay-dialog'><slot /></div>" },
+          Dialog: { template: "<div data-test-id='shellman-overlay-dialog'><slot /></div>" },
           DialogContent: {
-            template: "<div data-test-id='muxt-overlay-dialog-content' v-bind='$attrs'><slot /></div>"
+            template: "<div data-test-id='shellman-overlay-dialog-content' v-bind='$attrs'><slot /></div>"
           },
           DialogHeader: { template: "<div><slot /></div>" },
           DialogTitle: { template: "<div><slot /></div>" },
           DialogDescription: { template: "<div><slot /></div>" },
-          Sheet: { template: "<div data-test-id='muxt-overlay-sheet'><slot /></div>" },
+          Sheet: { template: "<div data-test-id='shellman-overlay-sheet'><slot /></div>" },
           SheetContent: {
-            template: "<div data-test-id='muxt-overlay-sheet-content' v-bind='$attrs'><slot /></div>"
+            template: "<div data-test-id='shellman-overlay-sheet-content' v-bind='$attrs'><slot /></div>"
           },
           SheetHeader: { template: "<div><slot /></div>" },
           SheetTitle: { template: "<div><slot /></div>" },
@@ -48,25 +48,25 @@ describe("ResponsiveOverlay", () => {
     mediaQueryMock.mockReturnValue(true);
     const wrapper = render();
 
-    expect(wrapper.find("[data-test-id='muxt-overlay-dialog']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-overlay-sheet']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-overlay-dialog']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-overlay-sheet']").exists()).toBe(false);
   });
 
   it("renders sheet on mobile", () => {
     mediaQueryMock.mockReturnValue(false);
     const wrapper = render();
 
-    expect(wrapper.find("[data-test-id='muxt-overlay-sheet']").exists()).toBe(true);
-    expect(wrapper.find("[data-test-id='muxt-overlay-dialog']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-overlay-sheet']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-overlay-dialog']").exists()).toBe(false);
   });
 
   it("uses elevated z-index classes by default", () => {
     mediaQueryMock.mockReturnValue(true);
     const desktop = render();
-    expect(desktop.get("[data-test-id='muxt-overlay-dialog-content']").classes()).toContain("z-[120]");
+    expect(desktop.get("[data-test-id='shellman-overlay-dialog-content']").classes()).toContain("z-[120]");
 
     mediaQueryMock.mockReturnValue(false);
     const mobile = render();
-    expect(mobile.get("[data-test-id='muxt-overlay-sheet-content']").classes()).toContain("z-[120]");
+    expect(mobile.get("[data-test-id='shellman-overlay-sheet-content']").classes()).toContain("z-[120]");
   });
 });

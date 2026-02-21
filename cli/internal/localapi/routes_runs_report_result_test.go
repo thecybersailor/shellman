@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestRunAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {

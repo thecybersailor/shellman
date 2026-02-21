@@ -6,14 +6,14 @@ import (
 	"strings"
 )
 
-// DefaultConfigDir returns ~/.config/muxt.
+// DefaultConfigDir returns ~/.config/shellman.
 func DefaultConfigDir() (string, error) {
-	if override := strings.TrimSpace(os.Getenv("TERMTEAM_CONFIG_DIR")); override != "" {
+	if override := strings.TrimSpace(os.Getenv("SHELLMAN_CONFIG_DIR")); override != "" {
 		return override, nil
 	}
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(home, ".config", "muxt"), nil
+	return filepath.Join(home, ".config", "shellman"), nil
 }

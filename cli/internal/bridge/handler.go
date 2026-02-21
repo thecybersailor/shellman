@@ -3,7 +3,7 @@ package bridge
 import (
 	"encoding/json"
 
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/protocol"
 )
 
 type TmuxService interface {

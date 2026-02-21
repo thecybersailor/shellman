@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"termteam/cli/internal/global"
+	"shellman/cli/internal/global"
 )
 
 type helperOpenAIResponse struct {

@@ -12,8 +12,8 @@ import (
 	"testing"
 
 	"os"
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 	"time"
 )
 
@@ -155,8 +155,8 @@ func postRunReportResult(t *testing.T, srv *Server, ts *httptest.Server, repo, t
 			"caller_method":         "INTERNAL",
 			"caller_path":           "internal:auto-progress",
 			"caller_user_agent":     strings.TrimSpace(headers["User-Agent"]),
-			"caller_turn_uuid":      strings.TrimSpace(headers["X-Muxt-Turn-UUID"]),
-			"caller_gateway_source": strings.TrimSpace(headers["X-Muxt-Gateway-Source"]),
+			"caller_turn_uuid":      strings.TrimSpace(headers["X-Shellman-Turn-UUID"]),
+			"caller_gateway_source": strings.TrimSpace(headers["X-Shellman-Gateway-Source"]),
 			"caller_active_pane":    paneTarget,
 		},
 		CallerPath:       "internal:auto-progress",
@@ -456,7 +456,7 @@ func TestTaskRoutes(t *testing.T) {
 func TestTaskMessages_ListAndSend(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
-	runner := &fakeTaskMessageRunner{reply: "MUXT_E2E_OK"}
+	runner := &fakeTaskMessageRunner{reply: "SHELLMAN_E2E_OK"}
 	srv := NewServer(Deps{
 		ConfigStore:     &staticConfigStore{},
 		ProjectsStore:   projects,
@@ -482,7 +482,7 @@ func TestTaskMessages_ListAndSend(t *testing.T) {
 	}
 	taskID := createOut.Data.TaskID
 
-	sendResp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages", "application/json", bytes.NewBufferString(`{"content":"Reply exactly: MUXT_E2E_OK"}`))
+	sendResp, err := http.Post(ts.URL+"/api/v1/tasks/"+taskID+"/messages", "application/json", bytes.NewBufferString(`{"content":"Reply exactly: SHELLMAN_E2E_OK"}`))
 	if err != nil {
 		t.Fatalf("POST task messages failed: %v", err)
 	}
@@ -499,7 +499,7 @@ func TestTaskMessages_ListAndSend(t *testing.T) {
 	if len(runner.calls) != 1 {
 		t.Fatalf("unexpected runner calls after wait: %#v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[0], "Reply exactly: MUXT_E2E_OK") {
+	if !strings.Contains(runner.calls[0], "Reply exactly: SHELLMAN_E2E_OK") {
 		t.Fatalf("expected prompt keep user content, got: %q", runner.calls[0])
 	}
 	requiredPromptContext := []string{
@@ -549,10 +549,10 @@ func TestTaskMessages_ListAndSend(t *testing.T) {
 	if len(listOut.Data.Messages) != 2 {
 		t.Fatalf("expected 2 messages, got %d", len(listOut.Data.Messages))
 	}
-	if listOut.Data.Messages[0].Role != "user" || !strings.Contains(listOut.Data.Messages[0].Content, "MUXT_E2E_OK") {
+	if listOut.Data.Messages[0].Role != "user" || !strings.Contains(listOut.Data.Messages[0].Content, "SHELLMAN_E2E_OK") {
 		t.Fatalf("unexpected user message: %#v", listOut.Data.Messages[0])
 	}
-	if listOut.Data.Messages[1].Role != "assistant" || listOut.Data.Messages[1].Content != "MUXT_E2E_OK" || listOut.Data.Messages[1].Status != projectstate.StatusCompleted {
+	if listOut.Data.Messages[1].Role != "assistant" || listOut.Data.Messages[1].Content != "SHELLMAN_E2E_OK" || listOut.Data.Messages[1].Status != projectstate.StatusCompleted {
 		t.Fatalf("unexpected assistant message: %#v", listOut.Data.Messages[1])
 	}
 }
@@ -1464,7 +1464,7 @@ func TestTaskCompletionLogs_RecordTriggerSkippedWhenAgentLoopUnavailable(t *test
 		t.Fatalf("POST report-result expected success, got %v", runErr)
 	}
 
-	logPath := path.Join(repo, ".muxt", "logs", "task-completion-automation.log")
+	logPath := path.Join(repo, ".shellman", "logs", "task-completion-automation.log")
 	deadline := time.Now().Add(2 * time.Second)
 	found := false
 	for time.Now().Before(deadline) {
@@ -1511,15 +1511,15 @@ func TestTaskCompletionLogs_IncludeRequestMetaOnAutoProgress(t *testing.T) {
 	taskID := createOut.Data.TaskID
 
 	_, runErr := postRunReportResult(t, srv, ts, repo, taskID, "done", map[string]string{
-		"User-Agent":            "muxt-e2e-diagnostic/1.0",
-		"X-Muxt-Turn-UUID":      "turn-test-123",
-		"X-Muxt-Gateway-Source": "unit-test-gateway",
+		"User-Agent":            "shellman-e2e-diagnostic/1.0",
+		"X-Shellman-Turn-UUID":      "turn-test-123",
+		"X-Shellman-Gateway-Source": "unit-test-gateway",
 	})
 	if runErr != nil {
 		t.Fatalf("POST report-result expected success, got %v", runErr)
 	}
 
-	logPath := path.Join(repo, ".muxt", "logs", "task-completion-automation.log")
+	logPath := path.Join(repo, ".shellman", "logs", "task-completion-automation.log")
 	deadline := time.Now().Add(3 * time.Second)
 	found := false
 	for time.Now().Before(deadline) {
@@ -1530,7 +1530,7 @@ func TestTaskCompletionLogs_IncludeRequestMetaOnAutoProgress(t *testing.T) {
 				strings.Contains(text, "\"task_id\":\""+taskID+"\"") &&
 				strings.Contains(text, "\"caller_method\":\"INTERNAL\"") &&
 				strings.Contains(text, "\"caller_path\":\"internal:auto-progress\"") &&
-				strings.Contains(text, "\"caller_user_agent\":\"muxt-e2e-diagnostic/1.0\"") &&
+				strings.Contains(text, "\"caller_user_agent\":\"shellman-e2e-diagnostic/1.0\"") &&
 				strings.Contains(text, "\"caller_turn_uuid\":\"turn-test-123\"") &&
 				strings.Contains(text, "\"caller_gateway_source\":\"unit-test-gateway\"") {
 				found = true

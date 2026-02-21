@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-LOG_FILE="${1:-/tmp/termteam_ws.log}"
+LOG_FILE="${1:-/tmp/shellman_ws.log}"
 DURATION_SECONDS="${2:-30}"
 
 if [[ ! -f "$LOG_FILE" ]]; then

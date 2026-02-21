@@ -278,8 +278,8 @@ async function startRuntime(opts: { autoSelect?: boolean } = {}): Promise<Runtim
   const autoSelect = opts.autoSelect ?? true;
   const port = await pickFreePort();
   const apiBase = `http://127.0.0.1:${port}`;
-  const tmuxSocket = `muxt_ws_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-  const repoRoot = await mkdtemp(path.join(os.tmpdir(), "muxt-ws-e2e-"));
+  const tmuxSocket = `shellman_ws_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+  const repoRoot = await mkdtemp(path.join(os.tmpdir(), "shellman-ws-e2e-"));
   const projectID = `e2e_ws_${Date.now()}`;
   const gitInit = spawnSync("git", ["init", "-q", repoRoot], { encoding: "utf8" });
   if (gitInit.status !== 0) {
@@ -296,15 +296,15 @@ async function startRuntime(opts: { autoSelect?: boolean } = {}): Promise<Runtim
   }
 
   const logs: string[] = [];
-  const cliProcess = spawn("go", ["run", "./cmd/termteam"], {
+  const cliProcess = spawn("go", ["run", "./cmd/shellman"], {
     cwd: cliDir,
     env: {
       ...process.env,
-      TERMTEAM_MODE: "local",
-      TERMTEAM_LOCAL_PORT: String(port),
-      TERMTEAM_TMUX_SOCKET: tmuxSocket,
-      TERMTEAM_WEBUI_MODE: "dist",
-      TERMTEAM_STREAM_MODE: "1"
+      SHELLMAN_MODE: "local",
+      SHELLMAN_LOCAL_PORT: String(port),
+      SHELLMAN_TMUX_SOCKET: tmuxSocket,
+      SHELLMAN_WEBUI_MODE: "dist",
+      SHELLMAN_STREAM_MODE: "1"
     },
     stdio: ["ignore", "pipe", "pipe"]
   });

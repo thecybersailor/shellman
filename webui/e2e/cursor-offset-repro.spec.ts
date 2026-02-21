@@ -37,7 +37,7 @@ function projectRegion(page: Page, projectID: string) {
 }
 
 async function selectTask(page: Page, projectID: string, taskID: string) {
-  await projectRegion(page, projectID).getByTestId(`muxt-task-row-${taskID}`).first().click();
+  await projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first().click();
 }
 
 function activeTerminal(page: Page) {
@@ -58,8 +58,8 @@ async function runCommands(page: Page, commands: string[]) {
 
 async function readCursorState(page: Page) {
   return page.evaluate(() => {
-    const g = window as unknown as { __MUXT_TERM_INSTANCES__?: Array<any>; __MUXT_TERM_DEBUG_LOGS__?: Array<any> };
-    const term = Array.isArray(g.__MUXT_TERM_INSTANCES__) ? g.__MUXT_TERM_INSTANCES__[g.__MUXT_TERM_INSTANCES__.length - 1] : null;
+    const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any>; __SHELLMAN_TERM_DEBUG_LOGS__?: Array<any> };
+    const term = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__[g.__SHELLMAN_TERM_INSTANCES__.length - 1] : null;
     const core = term?._core ?? null;
     const active = term?.buffer?.active ?? null;
     if (!active) {
@@ -79,10 +79,10 @@ async function readCursorState(page: Page) {
       lines.push(String(line?.translateToString?.(true) ?? ""));
     }
     const promptLineIndex = lines.reduce(
-      (acc, line, idx) => (line.includes("/workspace/cli#") || line.includes("muxt git:(") || line.includes("➜ ") ? idx : acc),
+      (acc, line, idx) => (line.includes("/workspace/cli#") || line.includes("shellman git:(") || line.includes("➜ ") ? idx : acc),
       -1
     );
-    const debugTail = (g.__MUXT_TERM_DEBUG_LOGS__ ?? []).slice(-30);
+    const debugTail = (g.__SHELLMAN_TERM_DEBUG_LOGS__ ?? []).slice(-30);
     const canvasCursor = (() => {
       const root = Array.from(document.querySelectorAll('[data-test-id="tt-terminal-root"]')).find((el) =>
         (el as HTMLElement).offsetParent !== null
@@ -167,7 +167,7 @@ async function readCursorState(page: Page) {
 test.describe("cursor offset repro in docker", () => {
   test.beforeEach(async ({ page }) => {
     await page.addInitScript(() => {
-      (window as unknown as { __MUXT_TERM_DEBUG__?: boolean }).__MUXT_TERM_DEBUG__ = true;
+      (window as unknown as { __SHELLMAN_TERM_DEBUG__?: boolean }).__SHELLMAN_TERM_DEBUG__ = true;
     });
   });
 

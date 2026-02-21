@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { classifyTermFrame, createMuxtStore } from "./muxt";
+import { classifyTermFrame, createShellmanStore } from "./shellman";
 
 class FakeSocket {
   sent: string[] = [];
@@ -27,7 +27,7 @@ class FakeSocket {
   }
 }
 
-describe("muxt store", () => {
+describe("shellman store", () => {
   it("classifies terminal frames for profiling", () => {
     expect(classifyTermFrame("reset", "snapshot")).toBe("reset");
     expect(classifyTermFrame("append", "")).toBe("append_empty");
@@ -52,7 +52,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: true, data: [] }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     const out = await store.reportRunResult("r1", "done");
     expect(out.runId).toBe("r1");
     expect(out.status).toBe("completed");
@@ -98,7 +98,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
 
     expect(calls.some((c) => c.endsWith("/api/v1/tasks/t1/pane"))).toBe(true);
@@ -138,7 +138,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.markTaskFlagReaded("t1", true);
 
@@ -175,7 +175,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load({ preferredTaskId: "t2", prefetchAllTaskPanes: false });
 
     const paneCalls = calls.filter((c) => c.includes("/api/v1/tasks/") && c.endsWith("/pane"));
@@ -208,7 +208,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: true, data: [] }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.loadTaskMessages("t1");
     await store.sendTaskMessage("t1", "hello");
     expect(store.state.taskMessagesByTaskId.t1[0]?.role).toBe("user");
@@ -236,7 +236,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.selectTask("t1");
     await store.selectTask("t1");
@@ -278,7 +278,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load({ preferredTaskId: "t1", prefetchAllTaskPanes: false });
     await store.selectTask("t1");
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
@@ -294,7 +294,7 @@ describe("muxt store", () => {
   it("connects /ws/client/local and requests tmux.list", () => {
     const sock = new FakeSocket();
     let usedURL = "";
-    const store = createMuxtStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, (url: string) => {
+    const store = createShellmanStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, (url: string) => {
       usedURL = url;
       return sock as unknown as WebSocket;
     });
@@ -326,7 +326,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -383,7 +383,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -441,7 +441,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     await store.selectTask("t1");
     expect(store.state.terminalOutput).toBe("");
@@ -495,7 +495,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.selectTask("t1");
     expect(store.state.terminalOutput).toBe("");
@@ -538,7 +538,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -562,7 +562,7 @@ describe("muxt store", () => {
 
   it("keeps cursor for append prompt frame with trailing spaces after enter", () => {
     const sock = new FakeSocket();
-    const store = createMuxtStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
     store.state.selectedPaneTarget = "e2e:0.0";
@@ -602,7 +602,7 @@ describe("muxt store", () => {
 
   it("keeps previous cursor when append frame has no cursor payload", () => {
     const sock = new FakeSocket();
-    const store = createMuxtStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
     store.state.selectedPaneTarget = "e2e:0.0";
@@ -657,7 +657,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.addActiveProject("p2", "/tmp/p2");
 
@@ -695,7 +695,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.removeActiveProject("p1");
 
@@ -720,7 +720,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
 
     await expect(store.removeActiveProject("p1")).rejects.toThrow("PROJECT_REMOVE_FAILED");
@@ -765,7 +765,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.archiveDoneTasksByProject("p1");
 
@@ -784,7 +784,7 @@ describe("muxt store", () => {
         })
       } as Response;
     };
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
       baseOrigin: "http://127.0.0.1:8787",
       turnUUID: "u1"
     });
@@ -803,7 +803,7 @@ describe("muxt store", () => {
       });
       return { json: async () => ({ ok: true, data: { path: "/tmp/demo" } }) } as Response;
     };
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
       baseOrigin: "http://127.0.0.1:8787",
       turnUUID: "u1"
     });
@@ -823,14 +823,14 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: true, data: { repo_root: "/tmp/demo" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket, {
       baseOrigin: "http://127.0.0.1:8787",
       turnUUID: "u1"
     });
 
     await expect(store.selectDirectory()).resolves.toBe("/tmp/demo");
     expect(calls[0].url).toBe("http://127.0.0.1:8787/api/v1/system/select-directory");
-    expect(calls[0].headers["X-Muxt-Turn-UUID"]).toBe("u1");
+    expect(calls[0].headers["X-Shellman-Turn-UUID"]).toBe("u1");
   });
 
   it("uploads image then sends terminal temp path with trailing space", async () => {
@@ -857,12 +857,12 @@ describe("muxt store", () => {
         return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
       }
       if (url.endsWith("/api/v1/system/uploads/image") && method === "POST") {
-        return { json: async () => ({ ok: true, data: { path: "/tmp/muxt-img-upload.png", size: 123, mime: "image/png" } }) } as Response;
+        return { json: async () => ({ ok: true, data: { path: "/tmp/shellman-img-upload.png", size: 123, mime: "image/png" } }) } as Response;
       }
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -873,7 +873,7 @@ describe("muxt store", () => {
 
     const msg = JSON.parse(sock.sent.at(-1) ?? "{}");
     expect(msg.op).toBe("term.input");
-    expect(msg.payload.text).toBe("/tmp/muxt-img-upload.png ");
+    expect(msg.payload.text).toBe("/tmp/shellman-img-upload.png ");
     expect(calls.some((c) => c.url.endsWith("/api/v1/system/uploads/image") && c.method === "POST")).toBe(true);
     const uploadCall = calls.find((c) => c.url.endsWith("/api/v1/system/uploads/image"));
     expect(uploadCall?.bodyType).toBe("FormData");
@@ -897,7 +897,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: true, data: {} }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     const textFile = new File([new Uint8Array([1, 2, 3])], "x.txt", { type: "text/plain" });
 
     await expect(store.sendImagePasteToTerminal(textFile)).rejects.toThrow("INVALID_PASTE_IMAGE");
@@ -922,7 +922,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     const file = new File([], "x.png", { type: "image/png" });
 
@@ -951,7 +951,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -974,13 +974,13 @@ describe("muxt store", () => {
       }
       if (url.endsWith("/api/v1/system/uploads/image")) {
         return {
-          json: async () => ({ ok: true, data: { path: "/tmp/muxt-img-upload.png", size: 123, mime: "image/png" } })
+          json: async () => ({ ok: true, data: { path: "/tmp/shellman-img-upload.png", size: 123, mime: "image/png" } })
         } as Response;
       }
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, (url: string) => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1011,7 +1011,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND", message: `${method} ${url}` } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1050,7 +1050,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1092,7 +1092,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1105,7 +1105,7 @@ describe("muxt store", () => {
   it("logs ws response errors to browser console", () => {
     const sock = new FakeSocket();
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const store = createMuxtStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
 
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1139,7 +1139,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1187,7 +1187,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1257,7 +1257,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1305,7 +1305,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1366,7 +1366,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1414,7 +1414,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1452,7 +1452,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.selectTask("t_missing");
     await store.selectTask("t_missing");
@@ -1480,7 +1480,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1525,7 +1525,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1583,7 +1583,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1641,7 +1641,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1694,7 +1694,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1747,7 +1747,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
     await store.load();
     store.connectWS("ws://127.0.0.1:4621/ws/client/local");
     sock.emitOpen();
@@ -1833,7 +1833,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     expect(store.state.selectedTaskId).toBe("t_current");
 
@@ -1873,7 +1873,7 @@ describe("muxt store", () => {
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
     };
 
-    const store = createMuxtStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
     await store.load();
     await store.setTaskChecked("t1", true);
 

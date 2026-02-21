@@ -14,8 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/helperconfig"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/helperconfig"
 )
 
 func mustRunGit(t *testing.T, repo string, args ...string) {
@@ -30,8 +30,8 @@ func mustRunGit(t *testing.T, repo string, args ...string) {
 func TestAddonRoutes_DiffFilesAndContent(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -177,8 +177,8 @@ func TestAddonRoutes_DiffFilesAndContent(t *testing.T) {
 func TestAddonRoutes_CommitMessageGenerate_UsesDefaultHelperProgram(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -272,8 +272,8 @@ func TestAddonRoutes_CommitMessageGenerate_UsesDefaultHelperProgram(t *testing.T
 func TestAddonRoutes_CommitMessageGenerate_UsesConfiguredHelperCommandArgs(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -348,8 +348,8 @@ func TestAddonRoutes_CommitMessageGenerate_UsesConfiguredHelperCommandArgs(t *te
 func TestAddonRoutes_CommitMessageGenerate_PrefersCommitMessageCommand(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -428,8 +428,8 @@ func TestAddonRoutes_CommitMessageGenerate_PrefersCommitMessageCommand(t *testin
 func TestAddonRoutes_CommitMessageGenerate_ReturnsErrorWhenHelperFails(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -518,8 +518,8 @@ func TestAddonRoutes_CommitMessageGenerate_ReturnsErrorWhenHelperFails(t *testin
 func TestAddonRoutes_CommitMessageGenerate_UsesOpenAIConfig(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)
@@ -652,8 +652,8 @@ func TestAddonRoutes_CommitMessageGenerate_UsesOpenAIConfig(t *testing.T) {
 func TestAddonRoutes_CommitMessageGenerate_FallsBackToCLIWhenOpenAIConfigMissing(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
-	mustRunGit(t, repo, "config", "user.email", "muxt@example.com")
-	mustRunGit(t, repo, "config", "user.name", "Muxt Test")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
 
 	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("hello\n"), 0o644); err != nil {
 		t.Fatalf("write a.txt failed: %v", err)

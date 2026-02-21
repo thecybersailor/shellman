@@ -29,11 +29,11 @@ describe("ActiveProjectEntry", () => {
         stubs: {
           ResponsiveOverlay: {
             template:
-              "<div data-test-id='muxt-responsive-overlay'><slot /></div>"
+              "<div data-test-id='shellman-responsive-overlay'><slot /></div>"
           },
           ProjectDirectoryPicker: {
             template:
-              "<div data-test-id='muxt-project-directory-picker'><button data-test-id='muxt-picker-select' @click=\"$emit('select-directory','/tmp/demo')\" /></div>"
+              "<div data-test-id='shellman-project-directory-picker'><button data-test-id='shellman-picker-select' @click=\"$emit('select-directory','/tmp/demo')\" /></div>"
           }
         }
       }
@@ -42,12 +42,12 @@ describe("ActiveProjectEntry", () => {
 
   it("uses responsive overlay wrapper", () => {
     const wrapper = render();
-    expect(wrapper.find("[data-test-id='muxt-responsive-overlay']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-responsive-overlay']").exists()).toBe(true);
   });
 
   it("emits select-directory when picker selects path", async () => {
     const wrapper = render();
-    await wrapper.get("[data-test-id='muxt-picker-select']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-picker-select']").trigger("click");
 
     expect(wrapper.emitted("select-directory")?.[0]).toEqual(["/tmp/demo"]);
     expect(wrapper.emitted("update:show")?.at(-1)).toEqual([false]);
@@ -55,6 +55,6 @@ describe("ActiveProjectEntry", () => {
 
   it("does not render manual repo-root input in picker mode", () => {
     const wrapper = render();
-    expect(wrapper.find("[data-test-id='muxt-project-root-input']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-project-root-input']").exists()).toBe(false);
   });
 });

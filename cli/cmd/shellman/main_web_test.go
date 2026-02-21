@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"termteam/cli/internal/config"
+	"shellman/cli/internal/config"
 )
 
 func TestRunMode_DefaultLocal(t *testing.T) {

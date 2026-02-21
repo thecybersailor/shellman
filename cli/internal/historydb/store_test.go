@@ -4,12 +4,12 @@ import (
 	"path/filepath"
 	"testing"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestStore_UpsertAndListRecent(t *testing.T) {
 	dir := t.TempDir()
-	dbPath := filepath.Join(dir, "muxt.db")
+	dbPath := filepath.Join(dir, "shellman.db")
 	if err := projectstate.InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strings"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 type AutoCompleteByPaneInput struct {

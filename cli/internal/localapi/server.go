@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"termteam/cli/internal/fsbrowser"
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/helperconfig"
-	"termteam/cli/internal/historydb"
+	"shellman/cli/internal/fsbrowser"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/helperconfig"
+	"shellman/cli/internal/historydb"
 )
 
 type ConfigStore interface {

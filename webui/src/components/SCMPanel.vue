@@ -356,21 +356,21 @@ watch(
 </script>
 
 <template>
-  <div class="h-full min-h-0 flex flex-col gap-2" data-test-id="muxt-addon-panel">
+  <div class="h-full min-h-0 flex flex-col gap-2" data-test-id="shellman-addon-panel">
     <section class="flex flex-col gap-2">
       <InputGroup class="h-auto min-h-[120px] flex-col items-stretch">
         <InputGroupTextarea
           v-model="commitMessage"
           class="min-h-[32px] font-mono text-xs!"
           placeholder="Type commit message..."
-          data-test-id="muxt-scm-commit-message"
+          data-test-id="shellman-scm-commit-message"
         />
         <InputGroupAddon align="block-end" class="w-full justify-end gap-2 p-2">
           <Button
             type="button"
             variant="outline"
             size="sm"
-            data-test-id="muxt-scm-ai-button"
+            data-test-id="shellman-scm-ai-button"
             :disabled="props.aiLoading || aiInternalLoading || loading"
             @click="handleGenerateCommitMessage"
           >
@@ -381,7 +381,7 @@ watch(
             type="button"
             size="sm"
             class="min-w-30"
-            data-test-id="muxt-scm-submit-button"
+            data-test-id="shellman-scm-submit-button"
             :disabled="props.submitLoading || submitInternalLoading || loading || !commitMessage.trim()"
             @click="handleSubmitCommitMessage"
           >
@@ -394,8 +394,8 @@ watch(
 
     <section class="flex flex-col gap-2 min-h-0">
       <ScrollArea class="h-40 border rounded-md">
-        <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="muxt-addon-files-loading">loading...</div>
-        <div v-else class="p-2 space-y-1" data-test-id="muxt-addon-file-list">
+        <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-addon-files-loading">loading...</div>
+        <div v-else class="p-2 space-y-1" data-test-id="shellman-addon-file-list">
           <Button
             v-for="file in files"
             :key="file.path"
@@ -416,21 +416,21 @@ watch(
 
     <section class="flex flex-col gap-2 flex-1 min-h-0">
       <ScrollArea class="flex-1 min-h-0 border rounded-md bg-muted/20" :horizontal="true">
-        <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="muxt-addon-diff-loading">loading...</div>
-        <div v-else-if="diffRows.length === 0" class="text-xs text-muted-foreground p-3" data-test-id="muxt-addon-file-content">
+        <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-addon-diff-loading">loading...</div>
+        <div v-else-if="diffRows.length === 0" class="text-xs text-muted-foreground p-3" data-test-id="shellman-addon-file-content">
           No changes.
         </div>
-        <div v-else class="muxt-diff" data-test-id="muxt-addon-file-content">
+        <div v-else class="shellman-diff" data-test-id="shellman-addon-file-content">
           <div
             v-for="row in diffRows"
             :key="row.id"
-            class="muxt-diff-row"
-            :class="`muxt-diff-row--${row.type}`"
+            class="shellman-diff-row"
+            :class="`shellman-diff-row--${row.type}`"
           >
-            <span class="muxt-diff-sign">{{ row.marker }}</span>
-            <span class="muxt-diff-ln">{{ formatLineNo(row.oldLine) }}</span>
-            <span class="muxt-diff-ln">{{ formatLineNo(row.newLine) }}</span>
-            <span class="muxt-diff-code">{{ row.text }}</span>
+            <span class="shellman-diff-sign">{{ row.marker }}</span>
+            <span class="shellman-diff-ln">{{ formatLineNo(row.oldLine) }}</span>
+            <span class="shellman-diff-ln">{{ formatLineNo(row.newLine) }}</span>
+            <span class="shellman-diff-code">{{ row.text }}</span>
           </div>
         </div>
       </ScrollArea>
@@ -439,7 +439,7 @@ watch(
 </template>
 
 <style scoped>
-.muxt-diff {
+.shellman-diff {
   padding: 8px 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 12px;
@@ -449,32 +449,32 @@ watch(
 
 }
 
-.muxt-diff-row {
+.shellman-diff-row {
   display: grid;
   grid-template-columns: 18px 52px 52px 1fr;
   align-items: center;
   min-height: 20px;
 }
 
-.muxt-diff-row--context {
+.shellman-diff-row--context {
   background: hsl(200 28% 16% / 0.72);
 }
 
-.muxt-diff-row--add {
+.shellman-diff-row--add {
   background: hsl(155 44% 22% / 0.8);
 }
 
-.muxt-diff-row--remove {
+.shellman-diff-row--remove {
   background: hsl(5 45% 22% / 0.82);
 }
 
-.muxt-diff-row--meta {
+.shellman-diff-row--meta {
   background: hsl(210 18% 24% / 0.7);
   color: hsl(var(--muted-foreground));
 }
 
-.muxt-diff-sign,
-.muxt-diff-ln {
+.shellman-diff-sign,
+.shellman-diff-ln {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -482,34 +482,34 @@ watch(
   color: hsl(var(--muted-foreground));
 }
 
-.muxt-diff-sign {
+.shellman-diff-sign {
   font-weight: 700;
 }
 
-.muxt-diff-code {
+.shellman-diff-code {
   white-space: pre;
   word-break: normal;
   overflow-wrap: normal;
   padding: 2px 8px;
 }
 
-.muxt-diff-row--add .muxt-diff-sign,
-.muxt-diff-row--add .muxt-diff-ln {
+.shellman-diff-row--add .shellman-diff-sign,
+.shellman-diff-row--add .shellman-diff-ln {
   color: hsl(145 64% 74%);
 }
 
-.muxt-diff-row--remove .muxt-diff-sign,
-.muxt-diff-row--remove .muxt-diff-ln {
+.shellman-diff-row--remove .shellman-diff-sign,
+.shellman-diff-row--remove .shellman-diff-ln {
   color: hsl(2 68% 76%);
 }
 
-.muxt-diff-row--context .muxt-diff-sign,
-.muxt-diff-row--context .muxt-diff-ln {
+.shellman-diff-row--context .shellman-diff-sign,
+.shellman-diff-row--context .shellman-diff-ln {
   color: hsl(190 22% 72% / 0.9);
 }
 
-.muxt-diff-row--meta .muxt-diff-sign,
-.muxt-diff-row--meta .muxt-diff-ln {
+.shellman-diff-row--meta .shellman-diff-sign,
+.shellman-diff-row--meta .shellman-diff-ln {
   color: hsl(var(--muted-foreground));
 }
 </style>

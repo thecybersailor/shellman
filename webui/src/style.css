@@ -119,7 +119,7 @@
   }
 }
 
-.muxt-shell {
+.shellman-shell {
   display: grid;
   grid-template-columns: minmax(240px, 320px) minmax(0, 1fr) minmax(260px, 360px);
   gap: 12px;
@@ -128,7 +128,7 @@
   background: linear-gradient(145deg, #f6fbff 0%, #eff4ff 45%, #f8f9fb 100%);
 }
 
-.muxt-panel {
+.shellman-panel {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: color-mix(in oklab, var(--card) 94%, #dde8ff 6%);
@@ -136,20 +136,20 @@
   padding: 12px;
 }
 
-.muxt-title {
+.shellman-title {
   font-size: 1.125rem;
   font-weight: 700;
   margin-bottom: 10px;
 }
 
-.muxt-project-entry {
+.shellman-project-entry {
   display: grid;
   grid-template-columns: 1fr;
   gap: 6px;
   margin-bottom: 10px;
 }
 
-.muxt-project-entry-input {
+.shellman-project-entry-input {
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 6px 8px;
@@ -157,7 +157,7 @@
   background: color-mix(in oklab, var(--card) 94%, #ffffff 6%);
 }
 
-.muxt-project-entry-submit {
+.shellman-project-entry-submit {
   border: 1px solid #3378ff;
   border-radius: 8px;
   background: #edf4ff;
@@ -168,24 +168,24 @@
   text-align: center;
 }
 
-.muxt-project-entry-submit:disabled {
+.shellman-project-entry-submit:disabled {
   opacity: 0.6;
   cursor: not-allowed;
 }
 
-.muxt-tree {
+.shellman-tree {
   display: flex;
   flex-direction: column;
   gap: 10px;
 }
 
-.muxt-project-title {
+.shellman-project-title {
   font-size: 0.9rem;
   font-weight: 700;
   margin-bottom: 6px;
 }
 
-.muxt-task-item {
+.shellman-task-item {
   width: 100%;
   display: flex;
   align-items: center;
@@ -197,38 +197,38 @@
   text-align: left;
 }
 
-.muxt-task-item.is-active {
+.shellman-task-item.is-active {
   border-color: #3378ff;
   background: #edf4ff;
 }
 
-.muxt-task-status {
+.shellman-task-status {
   font-size: 0.75rem;
   text-transform: uppercase;
 }
 
-.muxt-addon-header {
+.shellman-addon-header {
   display: flex;
   gap: 8px;
 }
 
-.muxt-addon-tab {
+.shellman-addon-tab {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 4px 10px;
 }
 
-.muxt-addon-tab[data-active='true'] {
+.shellman-addon-tab[data-active='true'] {
   border-color: #3378ff;
   background: #edf4ff;
 }
 
-.muxt-addon-body {
+.shellman-addon-body {
   margin-top: 12px;
 }
 
 @media (max-width: 980px) {
-  .muxt-shell {
+  .shellman-shell {
     grid-template-columns: 1fr;
   }
 }

@@ -6,7 +6,7 @@ WORKER_PORT="${WORKER_PORT:-8787}"
 WEBUI_PORT="${WEBUI_PORT:-5173}"
 WORKER_BASE_URL="http://127.0.0.1:${WORKER_PORT}"
 TMUX_SOCKET="${TMUX_SOCKET:-tt_e2e}"
-LOG_DIR="${LOG_DIR:-/tmp/termteam-e2e}"
+LOG_DIR="${LOG_DIR:-/tmp/shellman-e2e}"
 
 WORKER_PID=""
 WEBUI_PID=""
@@ -79,7 +79,7 @@ tmux -L "$TMUX_SOCKET" -f /dev/null new-session -d -s e2e "bash --noprofile --no
 
 (
   cd "$ROOT_DIR/cli"
-  TERMTEAM_MODE=turn TERMTEAM_WORKER_BASE_URL="$WORKER_BASE_URL" TERMTEAM_TMUX_SOCKET="$TMUX_SOCKET" go run ./cmd/termteam >"$LOG_DIR/cli.log" 2>&1
+  SHELLMAN_MODE=turn SHELLMAN_WORKER_BASE_URL="$WORKER_BASE_URL" SHELLMAN_TMUX_SOCKET="$TMUX_SOCKET" go run ./cmd/shellman >"$LOG_DIR/cli.log" 2>&1
 ) &
 CLI_PID=$!
 

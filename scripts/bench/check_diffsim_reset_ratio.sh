@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-out="$(cd cli && go run ./cmd/termteam-diffsim fullscreen_redraw)"
+out="$(cd cli && go run ./cmd/shellman-diffsim fullscreen_redraw)"
 resets="$(echo "$out" | sed -n 's/.*resets=\([0-9][0-9]*\).*/\1/p')"
 
 if [[ -z "$resets" ]]; then

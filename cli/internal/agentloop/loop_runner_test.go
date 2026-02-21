@@ -63,7 +63,7 @@ func TestLoopRunner_UsesResponsesAPIAndToolRoundtrip(t *testing.T) {
 				{
 					"type": "message",
 					"content": []map[string]any{
-						{"type": "output_text", "text": "MUXT_E2E_OK"},
+						{"type": "output_text", "text": "SHELLMAN_E2E_OK"},
 					},
 				},
 			},
@@ -80,11 +80,11 @@ func TestLoopRunner_UsesResponsesAPIAndToolRoundtrip(t *testing.T) {
 	registerTestSetFlagTool(t, registry)
 	runner := NewLoopRunner(client, registry, LoopRunnerOptions{MaxIterations: 4})
 
-	out, err := runner.Run(context.Background(), "Reply exactly: MUXT_E2E_OK")
+	out, err := runner.Run(context.Background(), "Reply exactly: SHELLMAN_E2E_OK")
 	if err != nil {
 		t.Fatalf("Run failed: %v", err)
 	}
-	if strings.TrimSpace(out) != "MUXT_E2E_OK" {
+	if strings.TrimSpace(out) != "SHELLMAN_E2E_OK" {
 		t.Fatalf("unexpected final output: %q", out)
 	}
 	if callCount != 2 {
@@ -133,7 +133,7 @@ func TestLoopRunner_RunStream_EmitsTextDeltas(t *testing.T) {
 			t.Fatalf("expected stream=true")
 		}
 		w.Header().Set("Content-Type", "text/event-stream")
-		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"MUXT \"}\n\n")
+		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"SHELLMAN \"}\n\n")
 		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"STREAM\"}\n\n")
 		_, _ = fmt.Fprint(w, "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_stream\"}}\n\n")
 		_, _ = fmt.Fprint(w, "data: [DONE]\n\n")
@@ -148,16 +148,16 @@ func TestLoopRunner_RunStream_EmitsTextDeltas(t *testing.T) {
 	runner := NewLoopRunner(client, nil, LoopRunnerOptions{MaxIterations: 2})
 
 	var chunks []string
-	out, err := runner.RunStream(context.Background(), "Reply exactly: MUXT STREAM", func(delta string) {
+	out, err := runner.RunStream(context.Background(), "Reply exactly: SHELLMAN STREAM", func(delta string) {
 		chunks = append(chunks, delta)
 	})
 	if err != nil {
 		t.Fatalf("RunStream failed: %v", err)
 	}
-	if strings.TrimSpace(out) != "MUXT STREAM" {
+	if strings.TrimSpace(out) != "SHELLMAN STREAM" {
 		t.Fatalf("unexpected stream output: %q", out)
 	}
-	if got := strings.Join(chunks, ""); got != "MUXT STREAM" {
+	if got := strings.Join(chunks, ""); got != "SHELLMAN STREAM" {
 		t.Fatalf("unexpected streamed chunks: %q", got)
 	}
 }

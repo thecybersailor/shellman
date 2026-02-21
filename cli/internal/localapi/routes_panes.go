@@ -10,13 +10,13 @@ import (
 
 	"github.com/google/uuid"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 func (s *Server) registerPaneRoutes() {}
 
 func detectServerInstanceID() string {
-	if got := strings.TrimSpace(os.Getenv("MUXT_SERVER_INSTANCE_ID")); got != "" {
+	if got := strings.TrimSpace(os.Getenv("SHELLMAN_SERVER_INSTANCE_ID")); got != "" {
 		return got
 	}
 	return "srv_local"
@@ -422,7 +422,7 @@ func (s *Server) rollbackTaskCreation(projectID, taskID string) error {
 			}
 		}
 	}
-	err = os.Remove(filepath.Join(repoRoot, ".muxt", "tasks", taskID+".md"))
+	err = os.Remove(filepath.Join(repoRoot, ".shellman", "tasks", taskID+".md"))
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}

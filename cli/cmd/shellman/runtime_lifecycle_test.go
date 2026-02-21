@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/turn"
 )
 
 type closedSocket struct{}

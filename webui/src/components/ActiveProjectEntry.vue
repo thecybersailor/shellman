@@ -2,7 +2,7 @@
 import { ref, watch } from "vue";
 import ProjectDirectoryPicker from "./ProjectDirectoryPicker.vue";
 import ResponsiveOverlay from "./ResponsiveOverlay.vue";
-import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/muxt";
+import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/shellman";
 
 const props = defineProps<{
   show: boolean;

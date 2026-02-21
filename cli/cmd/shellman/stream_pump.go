@@ -10,10 +10,10 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"termteam/cli/internal/bridge"
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/streamdiff"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/bridge"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/streamdiff"
+	"shellman/cli/internal/turn"
 )
 
 const maxTermFrameDataBytes = 24 * 1024

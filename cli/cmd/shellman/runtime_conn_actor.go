@@ -5,7 +5,7 @@ import (
 	"strings"
 	"sync"
 
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/protocol"
 )
 
 type ConnActor struct {

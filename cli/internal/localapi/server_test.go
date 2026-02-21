@@ -16,9 +16,9 @@ import (
 	"strings"
 	"testing"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/helperconfig"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/helperconfig"
+	"shellman/cli/internal/projectstate"
 )
 
 type fakeConfigStore struct {
@@ -87,12 +87,12 @@ func uniqueTaskID(t *testing.T, base string) string {
 }
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "muxt_localapi_test_")
+	dir, err := os.MkdirTemp("", "shellman_localapi_test_")
 	if err != nil {
 		panic(err)
 	}
 	defer os.RemoveAll(dir)
-	if err := projectstate.InitGlobalDB(filepath.Join(dir, "muxt.db")); err != nil {
+	if err := projectstate.InitGlobalDB(filepath.Join(dir, "shellman.db")); err != nil {
 		panic(err)
 	}
 	os.Exit(m.Run())
@@ -321,7 +321,7 @@ func TestServer_AddActiveProject_RejectsMissingRepoRoot(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	body := bytes.NewBufferString(`{"project_id":"p_missing","repo_root":"/tmp/not-exists-muxt"}`)
+	body := bytes.NewBufferString(`{"project_id":"p_missing","repo_root":"/tmp/not-exists-shellman"}`)
 	resp, err := http.Post(ts.URL+"/api/v1/projects/active", "application/json", body)
 	if err != nil {
 		t.Fatalf("POST projects failed: %v", err)

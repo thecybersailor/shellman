@@ -65,32 +65,32 @@ func GetConfig() *Config {
 }
 
 func loadFromEnv() Config {
-	base := os.Getenv("TERMTEAM_WORKER_BASE_URL")
+	base := os.Getenv("SHELLMAN_WORKER_BASE_URL")
 	if base == "" {
 		base = "http://127.0.0.1:8787"
 	}
 
-	level := os.Getenv("TERMTEAM_LOG_LEVEL")
+	level := os.Getenv("SHELLMAN_LOG_LEVEL")
 	if level == "" {
 		level = "info"
 	}
 
-	socket := os.Getenv("TERMTEAM_TMUX_SOCKET")
-	traceStream := os.Getenv("TERMTEAM_TRACE_STREAM") == "1"
-	historyLines := atoiOrDefault(os.Getenv("TERMTEAM_HISTORY_LINES"), 2000)
+	socket := os.Getenv("SHELLMAN_TMUX_SOCKET")
+	traceStream := os.Getenv("SHELLMAN_TRACE_STREAM") == "1"
+	historyLines := atoiOrDefault(os.Getenv("SHELLMAN_HISTORY_LINES"), 2000)
 	if historyLines < 1 {
 		historyLines = 2000
 	}
-	mode := os.Getenv("TERMTEAM_MODE")
+	mode := os.Getenv("SHELLMAN_MODE")
 	if mode == "" {
 		mode = "local"
 	}
-	localHost := os.Getenv("TERMTEAM_LOCAL_HOST")
+	localHost := os.Getenv("SHELLMAN_LOCAL_HOST")
 	if localHost == "" {
 		localHost = "127.0.0.1"
 	}
 	localPort := 4621
-	if p := os.Getenv("TERMTEAM_LOCAL_PORT"); p != "" {
+	if p := os.Getenv("SHELLMAN_LOCAL_PORT"); p != "" {
 		if p == "0" {
 			localPort = 4621
 		} else {
@@ -100,15 +100,15 @@ func loadFromEnv() Config {
 			}
 		}
 	}
-	webUIMode := os.Getenv("TERMTEAM_WEBUI_MODE")
+	webUIMode := os.Getenv("SHELLMAN_WEBUI_MODE")
 	if webUIMode == "" {
 		webUIMode = "dev"
 	}
-	webUIDevProxyURL := os.Getenv("TERMTEAM_WEBUI_DEV_PROXY_URL")
+	webUIDevProxyURL := os.Getenv("SHELLMAN_WEBUI_DEV_PROXY_URL")
 	if webUIDevProxyURL == "" {
 		webUIDevProxyURL = "http://127.0.0.1:15173"
 	}
-	webUIDistDir := os.Getenv("TERMTEAM_WEBUI_DIST_DIR")
+	webUIDistDir := os.Getenv("SHELLMAN_WEBUI_DIST_DIR")
 	if webUIDistDir == "" {
 		webUIDistDir = "../webui/dist"
 	}

@@ -6,7 +6,7 @@ import (
 )
 
 func TestTryMarkTaskAutoProgressObserved_DedupByObservedTimestamp(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestTryMarkTaskAutoProgressObserved_DedupByObservedTimestamp(t *testing.T) 
 }
 
 func TestTryMarkTaskAutoProgressObserved_InsertsWhenTaskRowMissing(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestTryMarkTaskAutoProgressObserved_InsertsWhenTaskRowMissing(t *testing.T)
 }
 
 func TestInsertAndListTaskNotes(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestInsertAndListTaskNotes(t *testing.T) {
 }
 
 func TestInsertAndListTaskMessages(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}

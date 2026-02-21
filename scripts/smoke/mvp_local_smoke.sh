@@ -42,8 +42,8 @@ if [[ "${1:-}" == "--dry-run" ]]; then
   exit 0
 fi
 
-if [[ "${1:-}" == "--muxt" ]]; then
-  exec bash "$ROOT_DIR/scripts/smoke/muxt_local_web_smoke.sh"
+if [[ "${1:-}" == "--shellman" ]]; then
+  exec bash "$ROOT_DIR/scripts/smoke/shellman_local_web_smoke.sh"
 fi
 
 command -v npm >/dev/null
@@ -53,7 +53,7 @@ command -v node >/dev/null
 
 (
   cd "$ROOT_DIR/edge/cloudflare"
-  npm run dev > /tmp/termteam-worker-smoke.log 2>&1
+  npm run dev > /tmp/shellman-worker-smoke.log 2>&1
 ) &
 WORKER_PID=$!
 
@@ -64,7 +64,7 @@ for _ in $(seq 1 80); do
   sleep 0.25
 done
 if ! curl -fsS -X POST "$WORKER_BASE_URL/api/register" >/dev/null 2>/dev/null; then
-  echo "worker not ready; see /tmp/termteam-worker-smoke.log" >&2
+  echo "worker not ready; see /tmp/shellman-worker-smoke.log" >&2
   exit 1
 fi
 
@@ -72,12 +72,12 @@ echo "worker ok"
 
 (
   cd "$ROOT_DIR/webui"
-  npm run dev -- --host 127.0.0.1 --port "$WEBUI_PORT" > /tmp/termteam-webui-smoke.log 2>&1
+  npm run dev -- --host 127.0.0.1 --port "$WEBUI_PORT" > /tmp/shellman-webui-smoke.log 2>&1
 ) &
 WEBUI_PID=$!
 
 if ! wait_http "$WEBUI_URL" 80 0.25; then
-  echo "webui not ready; see /tmp/termteam-webui-smoke.log" >&2
+  echo "webui not ready; see /tmp/shellman-webui-smoke.log" >&2
   exit 1
 fi
 
@@ -85,29 +85,29 @@ echo "webui ok"
 
 (
   cd "$ROOT_DIR/cli"
-  TERMTEAM_WORKER_BASE_URL="$WORKER_BASE_URL" go run ./cmd/termteam > /tmp/termteam-cli-smoke.log 2>&1
+  SHELLMAN_WORKER_BASE_URL="$WORKER_BASE_URL" go run ./cmd/shellman > /tmp/shellman-cli-smoke.log 2>&1
 ) &
 CLI_PID=$!
 
 for _ in $(seq 1 60); do
-  if grep -q "visit_url=" /tmp/termteam-cli-smoke.log 2>/dev/null && grep -q "agent_ws_url=" /tmp/termteam-cli-smoke.log 2>/dev/null; then
+  if grep -q "visit_url=" /tmp/shellman-cli-smoke.log 2>/dev/null && grep -q "agent_ws_url=" /tmp/shellman-cli-smoke.log 2>/dev/null; then
     break
   fi
   sleep 0.2
 done
-if ! grep -q "visit_url=" /tmp/termteam-cli-smoke.log 2>/dev/null; then
-  echo "cli did not print visit_url; see /tmp/termteam-cli-smoke.log" >&2
+if ! grep -q "visit_url=" /tmp/shellman-cli-smoke.log 2>/dev/null; then
+  echo "cli did not print visit_url; see /tmp/shellman-cli-smoke.log" >&2
   exit 1
 fi
-if ! grep -q "agent_ws_url=" /tmp/termteam-cli-smoke.log 2>/dev/null; then
-  echo "cli did not print agent_ws_url; see /tmp/termteam-cli-smoke.log" >&2
+if ! grep -q "agent_ws_url=" /tmp/shellman-cli-smoke.log 2>/dev/null; then
+  echo "cli did not print agent_ws_url; see /tmp/shellman-cli-smoke.log" >&2
   exit 1
 fi
 
 echo "cli ok"
 
-visit_url="$(sed -n 's/^visit_url=//p' /tmp/termteam-cli-smoke.log | tail -n1)"
-agent_ws_url="$(sed -n 's/^agent_ws_url=//p' /tmp/termteam-cli-smoke.log | tail -n1)"
+visit_url="$(sed -n 's/^visit_url=//p' /tmp/shellman-cli-smoke.log | tail -n1)"
+agent_ws_url="$(sed -n 's/^agent_ws_url=//p' /tmp/shellman-cli-smoke.log | tail -n1)"
 if [[ -z "$visit_url" || -z "$agent_ws_url" ]]; then
   echo "missing URLs from cli output" >&2
   exit 1
@@ -121,7 +121,7 @@ turn_uuid="${agent_ws_url##*/}"
 bridge_ws_url="ws://127.0.0.1:${WORKER_PORT}/ws/client/${turn_uuid}"
 (
   cd "$ROOT_DIR/cli"
-  cat >/tmp/termteam-ws-probe.go <<'GOWS'
+  cat >/tmp/shellman-ws-probe.go <<'GOWS'
 package main
 
 import (
@@ -180,7 +180,7 @@ func main() {
 	}
 }
 GOWS
-  go run /tmp/termteam-ws-probe.go "$bridge_ws_url"
+  go run /tmp/shellman-ws-probe.go "$bridge_ws_url"
 )
 
 echo "bridge ok"

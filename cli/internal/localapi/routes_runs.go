@@ -9,7 +9,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 func (s *Server) registerRunRoutes() {
@@ -120,7 +120,7 @@ func (s *Server) handleRunBindPane(w http.ResponseWriter, r *http.Request, runID
 		paneTarget = strings.TrimSpace(req.PaneID)
 	}
 	if paneTarget == "" {
-		paneTarget = strings.TrimSpace(r.Header.Get("X-Muxt-Active-Pane-Target"))
+		paneTarget = strings.TrimSpace(r.Header.Get("X-Shellman-Active-Pane-Target"))
 	}
 	if paneTarget == "" {
 		panes, loadErr := store.LoadPanes()

@@ -19,9 +19,9 @@ describe("ProjectDirectoryPicker", () => {
     });
     await flushPromises();
 
-    await wrapper.get("[data-test-id='muxt-dir-item-/tmp/repo']").trigger("dblclick");
+    await wrapper.get("[data-test-id='shellman-dir-item-/tmp/repo']").trigger("dblclick");
     await flushPromises();
-    await wrapper.get("[data-test-id='muxt-dir-select-current']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-dir-select-current']").trigger("click");
 
     expect(wrapper.emitted("select-directory")?.[0]).toEqual(["/tmp/repo"]);
   });

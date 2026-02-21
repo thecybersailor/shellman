@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/turn"
 )
 
 type streamPumpTmux struct {

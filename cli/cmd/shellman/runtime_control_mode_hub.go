@@ -11,7 +11,7 @@ import (
 	"sync"
 	"unicode/utf8"
 
-	tmuxpkg "termteam/cli/internal/tmux"
+	tmuxpkg "shellman/cli/internal/tmux"
 )
 
 type paneOutputRealtimeSource interface {

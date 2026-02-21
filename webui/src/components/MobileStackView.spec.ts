@@ -13,7 +13,7 @@ describe("MobileStackView", () => {
       }
     });
 
-    expect(wrapper.text()).toContain("muxt");
+    expect(wrapper.text()).toContain("shellman");
     expect(wrapper.text()).not.toContain("Session");
   });
 
@@ -84,7 +84,7 @@ describe("MobileStackView", () => {
     const TerminalPaneStub = defineComponent({
       name: "TerminalPane",
       emits: ["open-session-detail"],
-      template: "<button data-test-id='muxt-task-meta-display' @click=\"$emit('open-session-detail')\">open</button>"
+      template: "<button data-test-id='shellman-task-meta-display' @click=\"$emit('open-session-detail')\">open</button>"
     });
 
     const ProjectInfoPanelStub = defineComponent({
@@ -112,7 +112,7 @@ describe("MobileStackView", () => {
 
     expect(wrapper.findComponent(ProjectInfoPanelStub).exists()).toBe(false);
 
-    await wrapper.get("[data-test-id='muxt-task-meta-display']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-meta-display']").trigger("click");
 
     const panel = wrapper.getComponent(ProjectInfoPanelStub);
     expect(panel.props("activeTab")).toBe("session");

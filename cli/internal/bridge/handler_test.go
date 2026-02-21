@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/protocol"
 )
 
 func TestHandle_TmuxList(t *testing.T) {

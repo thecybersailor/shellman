@@ -155,7 +155,7 @@ func TestTaskStateStore_ListTasksByProject_IncludesFlagReaded(t *testing.T) {
 func newTaskStateStore(t *testing.T) *Store {
 	t.Helper()
 
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}

@@ -11,8 +11,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
 
 type fakePaneService struct {

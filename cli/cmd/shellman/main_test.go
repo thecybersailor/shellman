@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/bridge"
-	"termteam/cli/internal/protocol"
-	"termteam/cli/internal/turn"
+	"shellman/cli/internal/bridge"
+	"shellman/cli/internal/protocol"
+	"shellman/cli/internal/turn"
 )
 
 type fakeRegisterClient struct {
@@ -203,7 +203,7 @@ func TestEnrichGatewayHTTPMessage_AddsActivePaneHeader(t *testing.T) {
 	if err := json.Unmarshal(got.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal payload failed: %v", err)
 	}
-	if payload.Headers["X-Muxt-Active-Pane-Target"] != "botworks:3.0" {
+	if payload.Headers["X-Shellman-Active-Pane-Target"] != "botworks:3.0" {
 		t.Fatalf("expected active pane header, got %#v", payload.Headers)
 	}
 }
@@ -217,7 +217,7 @@ func TestEnrichGatewayHTTPMessage_RespectsExistingActivePaneHeader(t *testing.T)
 			"method": "POST",
 			"path":   "/api/v1/runs/r_1/report-result",
 			"headers": map[string]string{
-				"X-Muxt-Active-Pane-Target": "botworks:1.0",
+				"X-Shellman-Active-Pane-Target": "botworks:1.0",
 			},
 			"body": `{"summary":"done"}`,
 		}),
@@ -229,7 +229,7 @@ func TestEnrichGatewayHTTPMessage_RespectsExistingActivePaneHeader(t *testing.T)
 	if err := json.Unmarshal(got.Payload, &payload); err != nil {
 		t.Fatalf("unmarshal payload failed: %v", err)
 	}
-	if payload.Headers["X-Muxt-Active-Pane-Target"] != "botworks:1.0" {
+	if payload.Headers["X-Shellman-Active-Pane-Target"] != "botworks:1.0" {
 		t.Fatalf("expected existing header preserved, got %#v", payload.Headers)
 	}
 }

@@ -6,7 +6,7 @@ import (
 )
 
 func TestRunStore_CreateBindMarkStaleFlow(t *testing.T) {
-	dbPath := filepath.Join(t.TempDir(), "muxt.db")
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}

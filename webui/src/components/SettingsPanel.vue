@@ -65,7 +65,7 @@ const localHelperOpenAIEndpoint = ref(props.helperOpenAIEndpoint);
 const localHelperOpenAIModel = ref(props.helperOpenAIModel);
 const localHelperOpenAIApiKey = ref(props.helperOpenAIApiKey);
 
-const actionInputPlaceholder = computed(() => "例如: /Users/wanglei/.codex/notify.sh --task-id=$MUXT_TASK_ID");
+const actionInputPlaceholder = computed(() => "例如: /Users/wanglei/.codex/notify.sh --task-id=$SHELLMAN_TASK_ID");
 const sessionProgramOptions = computed(() => {
   const options: Array<{ id: LaunchProgram; label: string }> = [{ id: "shell", label: "shell" }];
   const seen = new Set<string>(["shell"]);
@@ -203,7 +203,7 @@ function saveSettings() {
       <div class="space-y-1.5">
         <label class="text-xs font-medium text-muted-foreground">Default Program For New Session</label>
         <Select v-model="localDefaultProgram" class="w-full">
-          <SelectTrigger data-test-id="muxt-settings-default-program" class="w-full">
+          <SelectTrigger data-test-id="shellman-settings-default-program" class="w-full">
             <SelectValue placeholder="Select default program" />
           </SelectTrigger>
           <SelectContent class="z-[130] w-full">
@@ -221,17 +221,17 @@ function saveSettings() {
         <label class="text-xs font-medium text-muted-foreground">Helper OpenAI API</label>
         <Input
           v-model="localHelperOpenAIEndpoint"
-          data-test-id="muxt-settings-helper-openai-endpoint"
+          data-test-id="shellman-settings-helper-openai-endpoint"
           placeholder="https://api.openai.com/v1"
         />
         <Input
           v-model="localHelperOpenAIModel"
-          data-test-id="muxt-settings-helper-openai-model"
+          data-test-id="shellman-settings-helper-openai-model"
           placeholder="gpt-5"
         />
         <Input
           v-model="localHelperOpenAIApiKey"
-          data-test-id="muxt-settings-helper-openai-apikey"
+          data-test-id="shellman-settings-helper-openai-apikey"
           type="password"
           placeholder="sk-..."
           autocomplete="off"
@@ -243,7 +243,7 @@ function saveSettings() {
         <label class="flex items-center gap-2 text-sm text-foreground">
           <Checkbox
             :model-value="enableTaskCompletionCommand"
-            data-test-id="muxt-settings-task-completion-enable"
+            data-test-id="shellman-settings-task-completion-enable"
             @update:model-value="setTaskCompletionEnabled"
           />
           任务完成后执行命令
@@ -251,28 +251,28 @@ function saveSettings() {
 
           <Select v-model="selectedDelayPreset">
             <SelectTrigger
-              data-test-id="muxt-settings-task-completion-delay"
+              data-test-id="shellman-settings-task-completion-delay"
             >
               <SelectValue placeholder="延迟选择器" />
             </SelectTrigger>
             <SelectContent class="z-[130]">
               <SelectItem
                 value="0"
-                data-test-id="muxt-settings-task-completion-delay-0"
+                data-test-id="shellman-settings-task-completion-delay-0"
                 @click="setDelayPreset('0')"
               >
                 立即发送
               </SelectItem>
               <SelectItem
                 value="60"
-                data-test-id="muxt-settings-task-completion-delay-60"
+                data-test-id="shellman-settings-task-completion-delay-60"
                 @click="setDelayPreset('60')"
               >
                 空闲60s
               </SelectItem>
               <SelectItem
                 value="300"
-                data-test-id="muxt-settings-task-completion-delay-300"
+                data-test-id="shellman-settings-task-completion-delay-300"
                 @click="setDelayPreset('300')"
               >
                 空闲300s
@@ -285,7 +285,7 @@ function saveSettings() {
           <InputGroup class="h-auto min-h-[124px] flex-col items-stretch px-2 py-2">
             <InputGroupTextarea
               v-model="localTaskCompletionCommand"
-              data-test-id="muxt-settings-task-completion-action-input"
+              data-test-id="shellman-settings-task-completion-action-input"
               :placeholder="actionInputPlaceholder"
               class="min-h-[56px] rounded-none border-0 px-2 py-1.5 text-sm"
           /></InputGroup>
@@ -294,7 +294,7 @@ function saveSettings() {
 
       <div class="flex items-center justify-end gap-2 pt-2">
         <Button variant="ghost" :disabled="props.saving" @click="closePanel">Cancel</Button>
-        <Button data-test-id="muxt-settings-save" :disabled="props.saving" @click="saveSettings">
+        <Button data-test-id="shellman-settings-save" :disabled="props.saving" @click="saveSettings">
           {{ props.saving ? "Saving..." : "Save" }}
         </Button>
       </div>

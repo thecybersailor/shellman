@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"nhooyr.io/websocket"
-	"termteam/cli/internal/global"
-	"termteam/cli/internal/localapi"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/global"
+	"shellman/cli/internal/localapi"
+	"shellman/cli/internal/protocol"
 )
 
 type fakeConfigStore struct{}

@@ -116,14 +116,14 @@ func TestAdapter_StartPipePane(t *testing.T) {
 func TestAdapter_GetPaneOption(t *testing.T) {
 	f := &FakeExec{OutputText: "42\n"}
 	a := NewAdapter(f)
-	got, err := a.GetPaneOption("e2e:0.0", "@muxt_cmd_seq")
+	got, err := a.GetPaneOption("e2e:0.0", "@shellman_cmd_seq")
 	if err != nil {
 		t.Fatalf("get pane option failed: %v", err)
 	}
 	if got != "42" {
 		t.Fatalf("unexpected pane option value: %q", got)
 	}
-	if f.LastArgs != "tmux show-options -p -v -t e2e:0.0 @muxt_cmd_seq" {
+	if f.LastArgs != "tmux show-options -p -v -t e2e:0.0 @shellman_cmd_seq" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }
@@ -131,10 +131,10 @@ func TestAdapter_GetPaneOption(t *testing.T) {
 func TestAdapter_SetPaneOption(t *testing.T) {
 	f := &FakeExec{}
 	a := NewAdapter(f)
-	if err := a.SetPaneOption("e2e:0.0", "@muxt_cmd_state", "running"); err != nil {
+	if err := a.SetPaneOption("e2e:0.0", "@shellman_cmd_state", "running"); err != nil {
 		t.Fatalf("set pane option failed: %v", err)
 	}
-	if f.LastArgs != "tmux set-option -p -t e2e:0.0 @muxt_cmd_state running" {
+	if f.LastArgs != "tmux set-option -p -t e2e:0.0 @shellman_cmd_state running" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }

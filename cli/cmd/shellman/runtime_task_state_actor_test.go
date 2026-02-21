@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"termteam/cli/internal/projectstate"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/projectstate"
+	"shellman/cli/internal/protocol"
 )
 
 type fakeTaskStateStore struct {

@@ -16,7 +16,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
-import type { TaskMessage } from "@/stores/muxt";
+import type { TaskMessage } from "@/stores/shellman";
 
 const props = defineProps<{
   taskId?: string;
@@ -164,12 +164,12 @@ function messageFrom(m: TaskMessage): "user" | "assistant" {
 function messageTestId(m: TaskMessage): string {
   const displayType = messageParsedContent(m).meta?.displayType;
   if (displayType === "runtime") {
-    return "muxt-shellman-message-runtime";
+    return "shellman-shellman-message-runtime";
   }
   if (displayType === "system") {
-    return "muxt-shellman-message-system";
+    return "shellman-shellman-message-system";
   }
-  return m.role === "user" ? "muxt-shellman-message-user" : "muxt-shellman-message-assistant";
+  return m.role === "user" ? "shellman-shellman-message-user" : "shellman-shellman-message-assistant";
 }
 
 function messageDisplayTypeLabel(m: TaskMessage): string {
@@ -185,11 +185,11 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
 </script>
 
 <template>
-  <div data-test-id="muxt-task-meta-form" class="h-full min-h-0 flex flex-col gap-1">
+  <div data-test-id="shellman-task-meta-form" class="h-full min-h-0 flex flex-col gap-1">
     <div>
       <Input
         v-model="draftTitle"
-        data-test-id="muxt-task-title-input"
+        data-test-id="shellman-task-title-input"
         placeholder="Task title"
         class="border-0 bg-transparent dark:bg-transparent focus-visible:border focus-visible:border-ring px-2 py-0.5 h-7"
       />
@@ -198,7 +198,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
     <div class="flex-1 min-h-0 flex flex-col">
       <Textarea
         v-model="draftDescription"
-        data-test-id="muxt-task-description-input"
+        data-test-id="shellman-task-description-input"
         placeholder="Task description"
         class="border-0 bg-transparent dark:bg-transparent focus-visible:border focus-visible:border-ring px-2 py-1 min-h-12"
       />
@@ -226,20 +226,20 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
                   </Reasoning>
                 </template>
                 <template v-for="(tool, idx) in messageParsedContent(m).toolCalls || []" :key="`${m.id}-tool-${idx}`">
-                  <Tool data-test-id="muxt-shellman-tool" :default-open="tool.state === 'input-streaming'">
+                  <Tool data-test-id="shellman-shellman-tool" :default-open="tool.state === 'input-streaming'">
                     <ToolHeader
-                      data-test-id="muxt-shellman-tool-header"
+                      data-test-id="shellman-shellman-tool-header"
                       :type="tool.type as any"
                       :state="tool.state as any"
                       :tool-name="tool.toolName || 'tool'"
                     />
-                    <ToolContent data-test-id="muxt-shellman-tool-content">
-                      <ToolInput data-test-id="muxt-shellman-tool-input" :input="tool.input as any" />
-                      <ToolOutput data-test-id="muxt-shellman-tool-output" :output="tool.output as any" :error-text="tool.errorText as any" />
+                    <ToolContent data-test-id="shellman-shellman-tool-content">
+                      <ToolInput data-test-id="shellman-shellman-tool-input" :input="tool.input as any" />
+                      <ToolOutput data-test-id="shellman-shellman-tool-output" :output="tool.output as any" :error-text="tool.errorText as any" />
                     </ToolContent>
                   </Tool>
                 </template>
-                <Loader v-if="m.role === 'assistant' && m.status === 'running' && !messageParsedContent(m).text" data-test-id="muxt-shellman-responding" />
+                <Loader v-if="m.role === 'assistant' && m.status === 'running' && !messageParsedContent(m).text" data-test-id="shellman-shellman-responding" />
                 <MessageResponse
                   v-if="messageParsedContent(m).text || m.status !== 'running'"
                   :content="messageParsedContent(m).text || m.error_text || ''"
@@ -252,11 +252,11 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
         </Conversation>
         <PromptInput class="mt-2" @submit="onPromptSubmit">
           <PromptInputBody>
-            <PromptInputTextarea data-test-id="muxt-shellman-input" placeholder="Talk to ShellMan..." />
+            <PromptInputTextarea data-test-id="shellman-shellman-input" placeholder="Talk to ShellMan..." />
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools />
-            <PromptInputSubmit data-test-id="muxt-shellman-send" />
+            <PromptInputSubmit data-test-id="shellman-shellman-send" />
           </PromptInputFooter>
         </PromptInput>
       </div>
@@ -266,7 +266,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
       <div class="flex items-center gap-2">
         <Switch
           :model-value="autopilotEnabled"
-          data-test-id="muxt-shellman-autopilot-switch"
+          data-test-id="shellman-shellman-autopilot-switch"
           @update:model-value="onAutopilotUpdate"
         />
         <label class="text-[11px] text-muted-foreground/80">Autopilot</label>

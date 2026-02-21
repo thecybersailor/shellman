@@ -78,7 +78,7 @@ function onTabChange(next: string) {
       <TabsContent value="session" class="flex-1 min-h-0 mt-2">
         <div
           :key="`task:${props.taskId || ''}`"
-          data-test-id="muxt-project-tab-session-body"
+          data-test-id="shellman-project-tab-session-body"
           :data-scope-key="`task:${props.taskId || ''}`"
           class="h-full min-h-0"
         >
@@ -98,7 +98,7 @@ function onTabChange(next: string) {
       </TabsContent>
       <TabsContent value="diff" class="flex-1 min-h-0 mt-2">
         <div
-          data-test-id="muxt-project-tab-diff-body"
+          data-test-id="shellman-project-tab-diff-body"
           :data-scope-key="`project:${props.projectId || ''}`"
           class="h-full min-h-0"
         >
@@ -113,7 +113,7 @@ function onTabChange(next: string) {
       </TabsContent>
       <TabsContent value="file" class="flex-1 min-h-0 mt-2">
         <div
-          data-test-id="muxt-project-tab-file-body"
+          data-test-id="shellman-project-tab-file-body"
           :data-scope-key="`project:${props.projectId || ''}`"
           class="h-full min-h-0"
         >

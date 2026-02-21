@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"termteam/cli/internal/projectstate"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/projectstate"
+	"shellman/cli/internal/protocol"
 )
 
 type PaneStateReport struct {

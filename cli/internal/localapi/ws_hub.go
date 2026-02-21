@@ -10,7 +10,7 @@ import (
 	"time"
 
 	"nhooyr.io/websocket"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/protocol"
 )
 
 type WSHub struct {

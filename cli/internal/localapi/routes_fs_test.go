@@ -10,9 +10,9 @@ import (
 	"path/filepath"
 	"testing"
 
-	"termteam/cli/internal/fsbrowser"
-	"termteam/cli/internal/historydb"
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/fsbrowser"
+	"shellman/cli/internal/historydb"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestFSRoutes_ListAndResolve(t *testing.T) {

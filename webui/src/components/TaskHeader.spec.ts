@@ -15,7 +15,7 @@ describe("TaskHeader", () => {
       }
     });
 
-    await wrapper.get("[data-test-id='muxt-task-meta-display']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-task-meta-display']").trigger("click");
     expect(wrapper.emitted("open-session-detail")?.length).toBe(1);
   });
 
@@ -27,7 +27,7 @@ describe("TaskHeader", () => {
     });
 
     const titleRow = wrapper
-      .get("[data-test-id='muxt-task-title-display']")
+      .get("[data-test-id='shellman-task-title-display']")
       .element.parentElement;
 
     expect(titleRow).not.toBeNull();

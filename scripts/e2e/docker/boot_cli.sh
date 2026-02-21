@@ -10,20 +10,20 @@ if [[ -z "${OPENAI_ENDPOINT:-}" || -z "${OPENAI_MODEL:-}" || -z "${OPENAI_API_KE
 fi
 
 # Isolate e2e sqlite and rebuild on every container start.
-export TERMTEAM_CONFIG_DIR="/tmp/muxt-e2e-config"
-rm -rf "${TERMTEAM_CONFIG_DIR}"
-mkdir -p "${TERMTEAM_CONFIG_DIR}"
+export SHELLMAN_CONFIG_DIR="/tmp/shellman-e2e-config"
+rm -rf "${SHELLMAN_CONFIG_DIR}"
+mkdir -p "${SHELLMAN_CONFIG_DIR}"
 
 tmux -L tt_e2e kill-server >/dev/null 2>&1 || true
 tmux -L tt_e2e -f /dev/null new-session -d -s e2e 'bash --noprofile --norc'
 
 cd /workspace/cli
-TERMTEAM_MODE=local \
-TERMTEAM_LOCAL_HOST=0.0.0.0 \
-TERMTEAM_LOCAL_PORT=4621 \
-TERMTEAM_WEBUI_MODE=dev \
-TERMTEAM_WEBUI_DEV_PROXY_URL="http://webui:15173" \
-TERMTEAM_WEBUI_DIST_DIR="../webui/dist" \
-TERMTEAM_TMUX_SOCKET="tt_e2e" \
-TERMTEAM_TRACE_STREAM=1 \
-go run ./cmd/termteam 2>&1 | tee /workspace/logs/cli.log
+SHELLMAN_MODE=local \
+SHELLMAN_LOCAL_HOST=0.0.0.0 \
+SHELLMAN_LOCAL_PORT=4621 \
+SHELLMAN_WEBUI_MODE=dev \
+SHELLMAN_WEBUI_DEV_PROXY_URL="http://webui:15173" \
+SHELLMAN_WEBUI_DIST_DIR="../webui/dist" \
+SHELLMAN_TMUX_SOCKET="tt_e2e" \
+SHELLMAN_TRACE_STREAM=1 \
+go run ./cmd/shellman 2>&1 | tee /workspace/logs/cli.log

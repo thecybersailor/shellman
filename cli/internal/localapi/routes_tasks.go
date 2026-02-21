@@ -13,7 +13,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 var validTaskStatus = map[string]struct{}{
@@ -828,9 +828,9 @@ func buildTaskCompletionRequestMeta(r *http.Request) map[string]any {
 		"caller_method":         strings.TrimSpace(r.Method),
 		"caller_path":           strings.TrimSpace(r.URL.Path),
 		"caller_user_agent":     strings.TrimSpace(r.UserAgent()),
-		"caller_turn_uuid":      strings.TrimSpace(r.Header.Get("X-Muxt-Turn-UUID")),
-		"caller_gateway_source": strings.TrimSpace(r.Header.Get("X-Muxt-Gateway-Source")),
-		"caller_active_pane":    strings.TrimSpace(r.Header.Get("X-Muxt-Active-Pane-Target")),
+		"caller_turn_uuid":      strings.TrimSpace(r.Header.Get("X-Shellman-Turn-UUID")),
+		"caller_gateway_source": strings.TrimSpace(r.Header.Get("X-Shellman-Gateway-Source")),
+		"caller_active_pane":    strings.TrimSpace(r.Header.Get("X-Shellman-Active-Pane-Target")),
 	}
 }
 
@@ -921,7 +921,7 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 }
 
 func (s *Server) writeTaskMarkdown(repoRoot, taskID, title string) error {
-	tasksDir := filepath.Join(repoRoot, ".muxt", "tasks")
+	tasksDir := filepath.Join(repoRoot, ".shellman", "tasks")
 	if err := os.MkdirAll(tasksDir, 0o755); err != nil {
 		return err
 	}

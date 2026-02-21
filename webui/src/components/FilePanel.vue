@@ -282,7 +282,7 @@ watch(
     <section class="flex flex-col gap-2">
       <Input
         v-model="searchQuery"
-        data-test-id="muxt-file-search-input"
+        data-test-id="shellman-file-search-input"
         placeholder="按文件名搜索..."
       />
     </section>
@@ -295,8 +295,8 @@ watch(
               {{ props.repoRoot || "Repository" }}
             </div>
             <ScrollArea class="flex-1 min-h-0 border rounded-md">
-              <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="muxt-file-tree-loading">loading...</div>
-              <div v-else class="p-1.5 space-y-1" data-test-id="muxt-file-tree-list">
+              <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-file-tree-loading">loading...</div>
+              <div v-else class="p-1.5 space-y-1" data-test-id="shellman-file-tree-list">
                 <div v-if="searching" class="text-xs text-muted-foreground px-2 py-1">searching...</div>
                 <Button
                   v-for="node in displayNodes"
@@ -307,7 +307,7 @@ watch(
                   class="w-full justify-start h-7 px-1 text-xs font-normal"
                   :class="{ 'opacity-45': node.entry.ignored }"
                   :style="indentStyle(node.depth)"
-                  :data-test-id="`muxt-file-item-${node.entry.path}`"
+                  :data-test-id="`shellman-file-item-${node.entry.path}`"
                   :data-ignored="node.entry.ignored ? 'true' : 'false'"
                   @click="onClickEntry(node.entry)"
                 >
@@ -336,7 +336,7 @@ watch(
                   size="icon"
                   class="h-6 w-6"
                   :disabled="!selectedFilePath"
-                  data-test-id="muxt-file-preview-copy"
+                  data-test-id="shellman-file-preview-copy"
                   @click="copyPath"
                 >
                   <Copy class="h-3.5 w-3.5" />
@@ -347,7 +347,7 @@ watch(
                   size="icon"
                   class="h-6 w-6"
                   :disabled="!selectedFilePath"
-                  data-test-id="muxt-file-preview-edit"
+                  data-test-id="shellman-file-preview-edit"
                   @click="emitEdit"
                 >
                   <FilePenLine class="h-3.5 w-3.5" />

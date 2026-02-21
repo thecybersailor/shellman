@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"nhooyr.io/websocket"
-	"termteam/cli/internal/protocol"
+	"shellman/cli/internal/protocol"
 )
 
 const edgeWSReadLimitBytes int64 = 1 << 20 // 1 MiB

@@ -2,7 +2,7 @@
 import { ref, watch } from "vue";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/muxt";
+import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/shellman";
 
 const props = defineProps<{
   show: boolean;
@@ -125,24 +125,24 @@ async function onSelectCurrent() {
   <div v-if="show" class="space-y-3">
     <Input
       v-model="pathInput"
-      data-test-id="muxt-dir-path-input"
+      data-test-id="shellman-dir-path-input"
       placeholder="/path/to/project"
       @keydown.enter.prevent="onPathEnter"
     />
 
     <Input
       v-model="searchQ"
-      data-test-id="muxt-dir-search-input"
+      data-test-id="shellman-dir-search-input"
       placeholder="Search sub-directories"
     />
 
     <div class="space-y-2">
-      <div data-test-id="muxt-dir-list" class="max-h-40 overflow-auto rounded border border-border p-2">
+      <div data-test-id="shellman-dir-list" class="max-h-40 overflow-auto rounded border border-border p-2">
         <button
           v-for="item in items"
           :key="item.path"
           type="button"
-          :data-test-id="`muxt-dir-item-${item.path}`"
+          :data-test-id="`shellman-dir-item-${item.path}`"
           class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
           @dblclick="onOpenItem(item)"
         >
@@ -155,7 +155,7 @@ async function onSelectCurrent() {
           v-for="item in searchItems"
           :key="`search-${item.path}`"
           type="button"
-          :data-test-id="`muxt-dir-search-item-${item.path}`"
+          :data-test-id="`shellman-dir-search-item-${item.path}`"
           class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
           @click="onOpenSearch(item)"
         >
@@ -163,12 +163,12 @@ async function onSelectCurrent() {
         </button>
       </div>
 
-      <div data-test-id="muxt-dir-history" class="max-h-28 overflow-auto rounded border border-border p-2">
+      <div data-test-id="shellman-dir-history" class="max-h-28 overflow-auto rounded border border-border p-2">
         <button
           v-for="item in history"
           :key="`history-${item.path}`"
           type="button"
-          :data-test-id="`muxt-dir-history-item-${item.path}`"
+          :data-test-id="`shellman-dir-history-item-${item.path}`"
           class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
           @click="onOpenHistory(item.path)"
         >
@@ -181,7 +181,7 @@ async function onSelectCurrent() {
       <span class="truncate text-xs text-muted-foreground">{{ currentPath }}</span>
       <Button
         type="button"
-        data-test-id="muxt-dir-select-current"
+        data-test-id="shellman-dir-select-current"
         :disabled="!currentPath || loading"
         @click="onSelectCurrent"
       >

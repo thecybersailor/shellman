@@ -10,9 +10,9 @@ import (
 	"strings"
 	"testing"
 
-	"termteam/cli/internal/agentloop"
-	"termteam/cli/internal/config"
-	"termteam/cli/internal/helperconfig"
+	"shellman/cli/internal/agentloop"
+	"shellman/cli/internal/config"
+	"shellman/cli/internal/helperconfig"
 )
 
 type fakeAgentHelperConfigStore struct {

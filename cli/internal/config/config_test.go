@@ -6,10 +6,10 @@ import (
 )
 
 func TestLoadConfig_Defaults(t *testing.T) {
-	t.Setenv("TERMTEAM_WORKER_BASE_URL", "")
-	t.Setenv("TERMTEAM_LOG_LEVEL", "")
-	t.Setenv("TERMTEAM_TRACE_STREAM", "")
-	t.Setenv("TERMTEAM_LOCAL_HOST", "")
+	t.Setenv("SHELLMAN_WORKER_BASE_URL", "")
+	t.Setenv("SHELLMAN_LOG_LEVEL", "")
+	t.Setenv("SHELLMAN_TRACE_STREAM", "")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "")
 
 	cfg := LoadConfig()
 	if cfg.WorkerBaseURL != "http://127.0.0.1:8787" {
@@ -45,20 +45,20 @@ func TestLoadConfig_Defaults(t *testing.T) {
 }
 
 func TestLoadConfig_TraceStreamEnabled(t *testing.T) {
-	t.Setenv("TERMTEAM_TRACE_STREAM", "1")
+	t.Setenv("SHELLMAN_TRACE_STREAM", "1")
 	cfg := LoadConfig()
 	if !cfg.TraceStream {
-		t.Fatal("trace stream should be enabled when TERMTEAM_TRACE_STREAM=1")
+		t.Fatal("trace stream should be enabled when SHELLMAN_TRACE_STREAM=1")
 	}
 }
 
 func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
-	t.Setenv("TERMTEAM_MODE", "turn")
-	t.Setenv("TERMTEAM_LOCAL_PORT", "4700")
-	t.Setenv("TERMTEAM_LOCAL_HOST", "0.0.0.0")
-	t.Setenv("TERMTEAM_WEBUI_MODE", "prod")
-	t.Setenv("TERMTEAM_WEBUI_DEV_PROXY_URL", "http://127.0.0.1:25173")
-	t.Setenv("TERMTEAM_WEBUI_DIST_DIR", "/tmp/webui-dist")
+	t.Setenv("SHELLMAN_MODE", "turn")
+	t.Setenv("SHELLMAN_LOCAL_PORT", "4700")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "0.0.0.0")
+	t.Setenv("SHELLMAN_WEBUI_MODE", "prod")
+	t.Setenv("SHELLMAN_WEBUI_DEV_PROXY_URL", "http://127.0.0.1:25173")
+	t.Setenv("SHELLMAN_WEBUI_DIST_DIR", "/tmp/webui-dist")
 	t.Setenv("OPENAI_ENDPOINT", "https://api.example.com/v1")
 	t.Setenv("OPENAI_MODEL", "gpt-5-mini")
 	t.Setenv("OPENAI_API_KEY", "sk-test")
@@ -93,7 +93,7 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 }
 
 func TestLoadConfig_HistoryLines(t *testing.T) {
-	t.Setenv("TERMTEAM_HISTORY_LINES", "8000")
+	t.Setenv("SHELLMAN_HISTORY_LINES", "8000")
 	cfg := LoadConfig()
 	if cfg.HistoryLines != 8000 {
 		t.Fatalf("unexpected history lines: %d", cfg.HistoryLines)
@@ -102,10 +102,10 @@ func TestLoadConfig_HistoryLines(t *testing.T) {
 
 func TestGetConfig_UsesCacheWithinTTL(t *testing.T) {
 	resetConfigCacheForTest()
-	t.Setenv("TERMTEAM_LOCAL_HOST", "127.0.0.1")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "127.0.0.1")
 	_ = LoadConfig()
 
-	t.Setenv("TERMTEAM_LOCAL_HOST", "0.0.0.0")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "0.0.0.0")
 	got := GetConfig()
 	if got == nil {
 		t.Fatal("GetConfig should not return nil")
@@ -130,11 +130,11 @@ func TestGetConfig_RefreshesAfterTTL(t *testing.T) {
 	nowFunc = func() time.Time { return base }
 	cacheTTL = 10 * time.Second
 
-	t.Setenv("TERMTEAM_LOCAL_HOST", "127.0.0.1")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "127.0.0.1")
 	_ = LoadConfig()
 
 	base = base.Add(11 * time.Second)
-	t.Setenv("TERMTEAM_LOCAL_HOST", "0.0.0.0")
+	t.Setenv("SHELLMAN_LOCAL_HOST", "0.0.0.0")
 
 	got := GetConfig()
 	if got == nil {

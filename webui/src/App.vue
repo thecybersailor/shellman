@@ -7,8 +7,8 @@ import ProjectTaskTree, { type ProjectSection } from "./components/ProjectTaskTr
 import MobileStackView from "./components/MobileStackView.vue";
 import ActiveProjectEntry from "./components/ActiveProjectEntry.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
-import { createMuxtStore } from "./stores/muxt";
-import type { TerminalFrame } from "./stores/muxt";
+import { createShellmanStore } from "./stores/shellman";
+import type { TerminalFrame } from "./stores/shellman";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -34,7 +34,7 @@ type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 const route = useRoute();
 const router = useRouter();
 
-const store = createMuxtStore();
+const store = createShellmanStore();
 const mode = useColorMode();
 
 const showAddProjectDialog = ref(false);
@@ -258,7 +258,7 @@ async function onDirectorySelected(path: string) {
 }
 
 function onOpenAddProject(source: "desktop" | "mobile") {
-  logInfo("muxt.add_project.open.request", { source, selectedTaskId: store.state.selectedTaskId });
+  logInfo("shellman.add_project.open.request", { source, selectedTaskId: store.state.selectedTaskId });
   showAddProjectDialog.value = true;
 }
 
@@ -299,16 +299,16 @@ async function onConfirmRemoveProject() {
 }
 
 watch(showAddProjectDialog, (open) => {
-  logInfo("muxt.add_project.open.state", { open });
+  logInfo("shellman.add_project.open.state", { open });
 });
 
 function onOpenSettings(source: "desktop" | "mobile") {
-  logInfo("muxt.settings.open.request", { source });
+  logInfo("shellman.settings.open.request", { source });
   showSettingsPanel.value = true;
 }
 
 watch(showSettingsPanel, (open) => {
-  logInfo("muxt.settings.open.state", { open });
+  logInfo("shellman.settings.open.state", { open });
 });
 
 async function onSaveSettings(payload: {
@@ -438,7 +438,7 @@ async function onSCMAI(payload: { taskId: string; diff: string; files: string[];
   }
   try {
     scmAiLoading.value = true;
-    logInfo("muxt.scm.ai.request", {
+    logInfo("shellman.scm.ai.request", {
       taskId: payload.taskId,
       files: payload.files.length,
       selectedFilePath: payload.selectedFilePath
@@ -455,7 +455,7 @@ async function onSCMSubmit(payload: { taskId: string; message: string }) {
   try {
     scmSubmitLoading.value = true;
     taskActionError.value = "";
-    logInfo("muxt.scm.submit.request", {
+    logInfo("shellman.scm.submit.request", {
       taskId: payload.taskId,
       messageLength: payload.message.length
     });
@@ -496,7 +496,7 @@ async function onFileOpen(path: string) {
 }
 
 onMounted(async () => {
-  logInfo("muxt.app.mounted.start");
+  logInfo("shellman.app.mounted.start");
   const routeSessionId = Array.isArray(route.params.sessionId) ? route.params.sessionId[0] : route.params.sessionId;
   try {
     await store.load({
@@ -506,26 +506,26 @@ onMounted(async () => {
   } catch (err) {
     notifyError(err instanceof Error ? err.message : "APP_LOAD_FAILED");
   }
-  logInfo("muxt.app.load.done", { selectedTaskId: store.state.selectedTaskId });
+  logInfo("shellman.app.load.done", { selectedTaskId: store.state.selectedTaskId });
   try {
     await store.loadAppPrograms();
-    logInfo("muxt.app.app_programs.load.done", { count: store.state.appPrograms.length });
+    logInfo("shellman.app.app_programs.load.done", { count: store.state.appPrograms.length });
   } catch (err) {
     notifyError(err instanceof Error ? err.message : "APP_PROGRAMS_LOAD_FAILED");
-    logInfo("muxt.app.app_programs.load.failed");
+    logInfo("shellman.app.app_programs.load.failed");
   }
   try {
     await store.loadConfig();
-    logInfo("muxt.app.config.load.done", {
+    logInfo("shellman.app.config.load.done", {
       defaultLaunchProgram: store.state.defaultLaunchProgram,
       defaultHelperProgram: store.state.defaultHelperProgram
     });
   } catch (err) {
     notifyError(err instanceof Error ? err.message : "CONFIG_LOAD_FAILED");
-    logInfo("muxt.app.config.load.failed");
+    logInfo("shellman.app.config.load.failed");
   }
   store.connectWS();
-  logInfo("muxt.app.ws.connect.called");
+  logInfo("shellman.app.ws.connect.called");
 
   const initialTaskId = routeSessionId || store.state.selectedTaskId;
   if (initialTaskId) {
@@ -538,18 +538,18 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  logInfo("muxt.app.before_unmount");
+  logInfo("shellman.app.before_unmount");
   store.disconnectWS();
 });
 </script>
 
 <template>
-  <div class="muxt-desktop h-screen w-full bg-background text-foreground">
+  <div class="shellman-desktop h-screen w-full bg-background text-foreground">
     <ResizablePanelGroup direction="horizontal" class="h-full items-stretch">
       <!-- Left Panel -->
       <ResizablePanel :default-size="20" :min-size="15" :max-size="30" class="min-w-[340px]">
         <aside class="h-full flex flex-col bg-sidebar">
-          <!-- Top Global Actions (Theme Toggle for Muxt) -->
+          <!-- Top Global Actions (Theme Toggle for Shellman) -->
           <div class="flex items-center justify-between px-4 py-2 opacity-50 hover:opacity-100 transition-opacity">
             <span class="flex items-center gap-1">
               <img :src="shellmanIcon" alt="" class="h-4 max-h-full dark:invert" />
@@ -648,7 +648,7 @@ onBeforeUnmount(() => {
     </ResizablePanelGroup>
   </div>
 
-  <main class="muxt-mobile-only">
+  <main class="shellman-mobile-only">
     <MobileStackView 
       :projects="projects" 
       :selected-task-id="selectedTaskId" 
@@ -698,7 +698,7 @@ onBeforeUnmount(() => {
       </SheetHeader>
       <Textarea
         v-model="fileViewerContent"
-        data-test-id="muxt-file-viewer-textarea"
+        data-test-id="shellman-file-viewer-textarea"
         class="flex-1 min-h-[70vh] resize-none font-mono text-xs"
         :placeholder="fileViewerLoading ? 'loading...' : 'No content'"
       />
@@ -731,7 +731,7 @@ onBeforeUnmount(() => {
   />
 
   <AlertDialog v-model:open="showRemoveProjectDialog">
-    <AlertDialogContent data-test-id="muxt-remove-project-confirm">
+    <AlertDialogContent data-test-id="shellman-remove-project-confirm">
       <AlertDialogHeader>
         <AlertDialogTitle>Remove project?</AlertDialogTitle>
         <AlertDialogDescription>
@@ -751,16 +751,16 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.muxt-mobile-only {
+.shellman-mobile-only {
   display: none;
 }
 
 @media (max-width: 980px) {
-  .muxt-desktop {
+  .shellman-desktop {
     display: none;
   }
 
-  .muxt-mobile-only {
+  .shellman-mobile-only {
     display: block;
   }
 }

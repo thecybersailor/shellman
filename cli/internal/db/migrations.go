@@ -3,7 +3,7 @@ package db
 import (
 	"errors"
 
-	"termteam/cli/internal/db/migration"
+	"shellman/cli/internal/db/migration"
 
 	"gorm.io/gorm"
 )

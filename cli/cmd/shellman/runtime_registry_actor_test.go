@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"termteam/cli/internal/localapi"
+	"shellman/cli/internal/localapi"
 )
 
 type changingRegistryTmux struct {

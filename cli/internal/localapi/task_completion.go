@@ -13,7 +13,7 @@ import (
 	"strings"
 	"time"
 
-	"termteam/cli/internal/projectstate"
+	"shellman/cli/internal/projectstate"
 )
 
 var numberRegexp = regexp.MustCompile(`\d+`)
@@ -92,7 +92,7 @@ func (s *Server) writeTaskReturnSummary(projectID, taskID, summary string) error
 	if err != nil {
 		return err
 	}
-	returnsDir := filepath.Join(repoRoot, ".muxt", "returns")
+	returnsDir := filepath.Join(repoRoot, ".shellman", "returns")
 	if err := os.MkdirAll(returnsDir, 0o755); err != nil {
 		return err
 	}
@@ -347,11 +347,11 @@ func runTaskCompletionCommand(taskID, command string, payload map[string]string)
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, shell, shellArg, command)
-	cmd.Env = append(os.Environ(), "MUXT_TASK_ID="+taskID)
-	cmd.Env = append(cmd.Env, "MUXT_TASK_COMPLETED_AT="+payload["finished_at"])
-	cmd.Env = append(cmd.Env, "MUXT_TASK_SUMMARY="+payload["summary"])
-	cmd.Env = append(cmd.Env, "MUXT_TASK_PROJECT_ID="+payload["project_id"])
-	cmd.Env = append(cmd.Env, "MUXT_TASK_COMPLETION_IDLE_SECONDS="+payload["idle_seconds"])
+	cmd.Env = append(os.Environ(), "SHELLMAN_TASK_ID="+taskID)
+	cmd.Env = append(cmd.Env, "SHELLMAN_TASK_COMPLETED_AT="+payload["finished_at"])
+	cmd.Env = append(cmd.Env, "SHELLMAN_TASK_SUMMARY="+payload["summary"])
+	cmd.Env = append(cmd.Env, "SHELLMAN_TASK_PROJECT_ID="+payload["project_id"])
+	cmd.Env = append(cmd.Env, "SHELLMAN_TASK_COMPLETION_IDLE_SECONDS="+payload["idle_seconds"])
 	_, err = cmd.CombinedOutput()
 	return err
 }
@@ -494,7 +494,7 @@ func (s *Server) detectPaneCurrentCommand(paneTarget string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 	args := []string{}
-	if socket := strings.TrimSpace(os.Getenv("TERMTEAM_TMUX_SOCKET")); socket != "" {
+	if socket := strings.TrimSpace(os.Getenv("SHELLMAN_TMUX_SOCKET")); socket != "" {
 		args = append(args, "-L", socket)
 	}
 	args = append(args, "display-message", "-p", "-t", target, "#{pane_current_command}")
@@ -519,7 +519,7 @@ func (s *Server) detectPaneCurrentPath(paneTarget string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
 	args := []string{}
-	if socket := strings.TrimSpace(os.Getenv("TERMTEAM_TMUX_SOCKET")); socket != "" {
+	if socket := strings.TrimSpace(os.Getenv("SHELLMAN_TMUX_SOCKET")); socket != "" {
 		args = append(args, "-L", socket)
 	}
 	args = append(args, "display-message", "-p", "-t", target, "#{pane_current_path}")
