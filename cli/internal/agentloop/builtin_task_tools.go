@@ -3,7 +3,6 @@ package agentloop
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"regexp"
 	"strings"
 )
@@ -24,7 +23,7 @@ func TaskActionToolContractNames() []string {
 }
 
 type WriteStdinTool struct {
-	Exec func(ctx context.Context, taskID, input string, timeoutMs int) (string, error)
+	Exec func(ctx context.Context, taskID, input string, timeoutMs int) (string, *ToolError)
 }
 
 func (t *WriteStdinTool) Name() string { return "write_stdin" }
@@ -49,10 +48,10 @@ func (t *WriteStdinTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("WRITE_STDIN_EXEC_UNAVAILABLE")
+		return "", NewToolError("WRITE_STDIN_EXEC_UNAVAILABLE", "确认 write_stdin 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -63,26 +62,26 @@ func (t *WriteStdinTool) Execute(ctx context.Context, input json.RawMessage, cal
 		TimeoutMs int    `json:"timeout_ms"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 write_stdin 参数 JSON: 需要 input 字符串，可选 timeout_ms")
 	}
 	if req.Input == "" {
-		return "", errors.New("INVALID_INPUT")
+		return "", NewToolError("INVALID_INPUT", "提供非空 input 字符串")
 	}
 	if shouldRejectShellCommandWithoutSubmit(ctx, req.Input) {
-		return "", errors.New("SHELL_WRITE_STDIN_COMMAND_MISSING_SUBMIT: input looks like a complete shell command; append \"\\r\" to execute, or use exec_command")
+		return "", NewToolError("SHELL_WRITE_STDIN_COMMAND_MISSING_SUBMIT", "input 看起来是完整 shell 命令，请追加 \\r 提交，或改用 exec_command")
 	}
 	timeoutMs := req.TimeoutMs
 	if timeoutMs <= 0 {
 		timeoutMs = 1800
 	}
 	if timeoutMs < 100 || timeoutMs > 15000 {
-		return "", errors.New("INVALID_TIMEOUT_MS")
+		return "", NewToolError("INVALID_TIMEOUT_MS", "timeout_ms 取值必须在 100~15000")
 	}
 	return t.Exec(ctx, taskID, req.Input, timeoutMs)
 }
 
 type ExecCommandTool struct {
-	Exec func(ctx context.Context, taskID, command string, maxOutputTokens int) (string, error)
+	Exec func(ctx context.Context, taskID, command string, maxOutputTokens int) (string, *ToolError)
 }
 
 func (t *ExecCommandTool) Name() string { return "exec_command" }
@@ -107,10 +106,10 @@ func (t *ExecCommandTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *ExecCommandTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *ExecCommandTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("EXEC_COMMAND_EXEC_UNAVAILABLE")
+		return "", NewToolError("EXEC_COMMAND_EXEC_UNAVAILABLE", "确认 exec_command 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -121,24 +120,24 @@ func (t *ExecCommandTool) Execute(ctx context.Context, input json.RawMessage, ca
 		MaxOutputTokens int    `json:"max_output_tokens"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 exec_command 参数 JSON: 需要 command，可选 max_output_tokens")
 	}
 	command := strings.TrimSpace(req.Command)
 	if command == "" {
-		return "", errors.New("INVALID_COMMAND")
+		return "", NewToolError("INVALID_COMMAND", "提供非空 command")
 	}
 	maxOutputTokens := req.MaxOutputTokens
 	if maxOutputTokens <= 0 {
 		maxOutputTokens = 1200
 	}
 	if maxOutputTokens < 128 || maxOutputTokens > 8000 {
-		return "", errors.New("INVALID_MAX_OUTPUT_TOKENS")
+		return "", NewToolError("INVALID_MAX_OUTPUT_TOKENS", "max_output_tokens 取值必须在 128~8000")
 	}
 	return t.Exec(ctx, taskID, command, maxOutputTokens)
 }
 
 type ReadFileTool struct {
-	Exec func(ctx context.Context, taskID, path string, maxChars int) (string, error)
+	Exec func(ctx context.Context, taskID, path string, maxChars int) (string, *ToolError)
 }
 
 func (t *ReadFileTool) Name() string { return "readfile" }
@@ -163,10 +162,10 @@ func (t *ReadFileTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *ReadFileTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *ReadFileTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("READFILE_EXEC_UNAVAILABLE")
+		return "", NewToolError("READFILE_EXEC_UNAVAILABLE", "确认 readfile 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -177,24 +176,24 @@ func (t *ReadFileTool) Execute(ctx context.Context, input json.RawMessage, callI
 		MaxChars int    `json:"max_chars"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 readfile 参数 JSON: 需要 path，可选 max_chars")
 	}
 	path := strings.TrimSpace(req.Path)
 	if path == "" {
-		return "", errors.New("INVALID_PATH")
+		return "", NewToolError("INVALID_PATH", "提供非空 path")
 	}
 	maxChars := req.MaxChars
 	if maxChars <= 0 {
 		maxChars = 24000
 	}
 	if maxChars < 128 || maxChars > 200000 {
-		return "", errors.New("INVALID_MAX_CHARS")
+		return "", NewToolError("INVALID_MAX_CHARS", "max_chars 取值必须在 128~200000")
 	}
 	return t.Exec(ctx, taskID, path, maxChars)
 }
 
 type TaskInputPromptTool struct {
-	Exec func(ctx context.Context, taskID, prompt string) (string, error)
+	Exec func(ctx context.Context, taskID, prompt string) (string, *ToolError)
 }
 
 func (t *TaskInputPromptTool) Name() string { return "task.input_prompt" }
@@ -214,10 +213,10 @@ func (t *TaskInputPromptTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskInputPromptTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskInputPromptTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_INPUT_PROMPT_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_INPUT_PROMPT_EXEC_UNAVAILABLE", "确认 task.input_prompt 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -227,11 +226,11 @@ func (t *TaskInputPromptTool) Execute(ctx context.Context, input json.RawMessage
 		Prompt string `json:"prompt"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.input_prompt 参数 JSON: 需要 prompt")
 	}
 	prompt := strings.Trim(req.Prompt, " \t")
 	if strings.TrimSpace(prompt) == "" {
-		return "", errors.New("INVALID_PROMPT")
+		return "", NewToolError("INVALID_PROMPT", "提供非空 prompt")
 	}
 	if !strings.HasSuffix(prompt, "\r") && !strings.HasSuffix(prompt, "\n") {
 		prompt += "\r"
@@ -240,7 +239,7 @@ func (t *TaskInputPromptTool) Execute(ctx context.Context, input json.RawMessage
 }
 
 type TaskChildGetContextTool struct {
-	Exec func(ctx context.Context, taskID, childTaskID string) (string, error)
+	Exec func(ctx context.Context, taskID, childTaskID string) (string, *ToolError)
 }
 
 func (t *TaskChildGetContextTool) Name() string { return "task.child.get_context" }
@@ -260,10 +259,10 @@ func (t *TaskChildGetContextTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskChildGetContextTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskChildGetContextTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_CHILD_GET_CONTEXT_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_CHILD_GET_CONTEXT_EXEC_UNAVAILABLE", "确认 task.child.get_context 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -273,17 +272,17 @@ func (t *TaskChildGetContextTool) Execute(ctx context.Context, input json.RawMes
 		TaskID string `json:"task_id"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.child.get_context 参数 JSON: 需要 task_id")
 	}
 	childTaskID := strings.TrimSpace(req.TaskID)
 	if childTaskID == "" {
-		return "", errors.New("INVALID_TASK_ID")
+		return "", NewToolError("INVALID_TASK_ID", "提供非空 task_id")
 	}
 	return t.Exec(ctx, taskID, childTaskID)
 }
 
 type TaskChildGetTTYOutputTool struct {
-	Exec func(ctx context.Context, taskID, childTaskID string, offset int) (string, error)
+	Exec func(ctx context.Context, taskID, childTaskID string, offset int) (string, *ToolError)
 }
 
 func (t *TaskChildGetTTYOutputTool) Name() string { return "task.child.get_tty_output" }
@@ -304,10 +303,10 @@ func (t *TaskChildGetTTYOutputTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskChildGetTTYOutputTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskChildGetTTYOutputTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_CHILD_GET_TTY_OUTPUT_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_CHILD_GET_TTY_OUTPUT_EXEC_UNAVAILABLE", "确认 task.child.get_tty_output 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -318,20 +317,20 @@ func (t *TaskChildGetTTYOutputTool) Execute(ctx context.Context, input json.RawM
 		Offset int    `json:"offset"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.child.get_tty_output 参数 JSON: 需要 task_id 与 offset")
 	}
 	childTaskID := strings.TrimSpace(req.TaskID)
 	if childTaskID == "" {
-		return "", errors.New("INVALID_TASK_ID")
+		return "", NewToolError("INVALID_TASK_ID", "提供非空 task_id")
 	}
 	if req.Offset < 0 {
-		return "", errors.New("INVALID_OFFSET")
+		return "", NewToolError("INVALID_OFFSET", "offset 必须大于等于 0")
 	}
 	return t.Exec(ctx, taskID, childTaskID, req.Offset)
 }
 
 type TaskChildSpawnTool struct {
-	Exec func(ctx context.Context, taskID, command, title, description, prompt string) (string, error)
+	Exec func(ctx context.Context, taskID, command, title, description, prompt string) (string, *ToolError)
 }
 
 func (t *TaskChildSpawnTool) Name() string { return "task.child.spawn" }
@@ -354,10 +353,10 @@ func (t *TaskChildSpawnTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskChildSpawnTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskChildSpawnTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_CHILD_SPAWN_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_CHILD_SPAWN_EXEC_UNAVAILABLE", "确认 task.child.spawn 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -370,19 +369,19 @@ func (t *TaskChildSpawnTool) Execute(ctx context.Context, input json.RawMessage,
 		Prompt      string `json:"prompt"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.child.spawn 参数 JSON: 需要 command/title/description/prompt")
 	}
 	if strings.TrimSpace(req.Command) == "" ||
 		strings.TrimSpace(req.Title) == "" ||
 		strings.TrimSpace(req.Description) == "" ||
 		strings.TrimSpace(req.Prompt) == "" {
-		return "", errors.New("INVALID_SPAWN_INPUT")
+		return "", NewToolError("INVALID_SPAWN_INPUT", "command、title、description、prompt 都必须非空")
 	}
 	return t.Exec(ctx, taskID, req.Command, req.Title, req.Description, req.Prompt)
 }
 
 type TaskChildSendMessageTool struct {
-	Exec func(ctx context.Context, taskID, childTaskID, message string) (string, error)
+	Exec func(ctx context.Context, taskID, childTaskID, message string) (string, *ToolError)
 }
 
 func (t *TaskChildSendMessageTool) Name() string { return "task.child.send_message" }
@@ -403,10 +402,10 @@ func (t *TaskChildSendMessageTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskChildSendMessageTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskChildSendMessageTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_CHILD_SEND_MESSAGE_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_CHILD_SEND_MESSAGE_EXEC_UNAVAILABLE", "确认 task.child.send_message 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -417,21 +416,21 @@ func (t *TaskChildSendMessageTool) Execute(ctx context.Context, input json.RawMe
 		Message string `json:"message"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.child.send_message 参数 JSON: 需要 task_id 与 message")
 	}
 	childTaskID := strings.TrimSpace(req.TaskID)
 	if childTaskID == "" {
-		return "", errors.New("INVALID_TASK_ID")
+		return "", NewToolError("INVALID_TASK_ID", "提供非空 task_id")
 	}
 	message := strings.TrimSpace(req.Message)
 	if message == "" {
-		return "", errors.New("INVALID_MESSAGE")
+		return "", NewToolError("INVALID_MESSAGE", "提供非空 message")
 	}
 	return t.Exec(ctx, taskID, childTaskID, message)
 }
 
 type TaskParentReportTool struct {
-	Exec func(ctx context.Context, taskID, summary string) (string, error)
+	Exec func(ctx context.Context, taskID, summary string) (string, *ToolError)
 }
 
 func (t *TaskParentReportTool) Name() string { return "task.parent.report" }
@@ -451,10 +450,10 @@ func (t *TaskParentReportTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (t *TaskParentReportTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (t *TaskParentReportTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", errors.New("TASK_PARENT_REPORT_EXEC_UNAVAILABLE")
+		return "", NewToolError("TASK_PARENT_REPORT_EXEC_UNAVAILABLE", "确认 task.parent.report 工具已注入可执行回调")
 	}
 	taskID, err := currentTaskIDFromContext(ctx)
 	if err != nil {
@@ -464,19 +463,19 @@ func (t *TaskParentReportTool) Execute(ctx context.Context, input json.RawMessag
 		Summary string `json:"summary"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
-		return "", err
+		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.parent.report 参数 JSON: 需要 summary")
 	}
 	summary := strings.TrimSpace(req.Summary)
 	if summary == "" {
-		return "", errors.New("INVALID_SUMMARY")
+		return "", NewToolError("INVALID_SUMMARY", "提供非空 summary")
 	}
 	return t.Exec(ctx, taskID, summary)
 }
 
-func currentTaskIDFromContext(ctx context.Context) (string, error) {
+func currentTaskIDFromContext(ctx context.Context) (string, *ToolError) {
 	scope, ok := TaskScopeFromContext(ctx)
 	if !ok || strings.TrimSpace(scope.TaskID) == "" {
-		return "", errors.New("TASK_CONTEXT_MISSING")
+		return "", NewToolError("TASK_CONTEXT_MISSING", "确认当前调用已绑定 task scope")
 	}
 	return strings.TrimSpace(scope.TaskID), nil
 }

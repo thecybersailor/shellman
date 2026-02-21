@@ -214,6 +214,21 @@ func TestAutoCompleteByPane_TriggersWhenTaskAlreadyCompleted(t *testing.T) {
 		t.Fatalf("SavePanes failed: %v", err)
 	}
 
+	modePatchReq, _ := http.NewRequest(
+		http.MethodPatch,
+		ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/sidecar-mode",
+		bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`),
+	)
+	modePatchReq.Header.Set("Content-Type", "application/json")
+	modePatchResp, err := http.DefaultClient.Do(modePatchReq)
+	if err != nil {
+		t.Fatalf("PATCH sidecar-mode failed: %v", err)
+	}
+	_ = modePatchResp.Body.Close()
+	if modePatchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from PATCH sidecar-mode, got %d", modePatchResp.StatusCode)
+	}
+
 	patchReq, _ := http.NewRequest(
 		http.MethodPatch,
 		ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/status",
@@ -245,5 +260,93 @@ func TestAutoCompleteByPane_TriggersWhenTaskAlreadyCompleted(t *testing.T) {
 	}
 	if out.TaskID != createOut.Data.TaskID {
 		t.Fatalf("expected task_id=%q, got %q", createOut.Data.TaskID, out.TaskID)
+	}
+}
+
+func TestAutoCompleteByPane_PaneActorSkipsWhenTaskAlreadyCompleted(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	if createOut.Data.TaskID == "" {
+		t.Fatal("expected task_id")
+	}
+
+	store := projectstate.NewStore(repo)
+	panes, err := store.LoadPanes()
+	if err != nil {
+		t.Fatalf("LoadPanes failed: %v", err)
+	}
+	panes[createOut.Data.TaskID] = projectstate.PaneBinding{
+		TaskID:     createOut.Data.TaskID,
+		PaneUUID:   "pane-uuid-done-actor",
+		PaneID:     "e2e:2.2",
+		PaneTarget: "e2e:2.2",
+	}
+	if err := store.SavePanes(panes); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	modePatchReq, _ := http.NewRequest(
+		http.MethodPatch,
+		ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/sidecar-mode",
+		bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`),
+	)
+	modePatchReq.Header.Set("Content-Type", "application/json")
+	modePatchResp, err := http.DefaultClient.Do(modePatchReq)
+	if err != nil {
+		t.Fatalf("PATCH sidecar-mode failed: %v", err)
+	}
+	_ = modePatchResp.Body.Close()
+	if modePatchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from PATCH sidecar-mode, got %d", modePatchResp.StatusCode)
+	}
+
+	patchReq, _ := http.NewRequest(
+		http.MethodPatch,
+		ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/status",
+		bytes.NewBufferString(`{"status":"completed"}`),
+	)
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("PATCH status failed: %v", err)
+	}
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from PATCH status, got %d", patchResp.StatusCode)
+	}
+
+	time.Sleep(20 * time.Millisecond)
+	out, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget:    "e2e:2.2",
+		Summary:       "done",
+		TriggerSource: "pane-actor",
+	})
+	if runErr != nil {
+		t.Fatalf("AutoCompleteByPane failed: %v", runErr)
+	}
+	if out.Triggered {
+		t.Fatalf("expected triggered=false for pane-actor on terminal task, got true (status=%q reason=%q)", out.Status, out.Reason)
+	}
+	if out.Reason != "task-already-terminal" {
+		t.Fatalf("expected reason task-already-terminal, got %q", out.Reason)
+	}
+	if out.Status != projectstate.StatusCompleted {
+		t.Fatalf("expected status completed, got %q", out.Status)
 	}
 }

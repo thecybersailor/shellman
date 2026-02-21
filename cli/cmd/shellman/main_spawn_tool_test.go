@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"testing"
 	"time"
+
+	"shellman/cli/internal/agentloop"
 )
 
 type spawnCall struct {
@@ -32,7 +34,7 @@ func TestEnsureCommandEndsWithEnter(t *testing.T) {
 
 func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T) {
 	calls := make([]spawnCall, 0, 8)
-	callTaskTool := func(method, path string, payload any) (string, error) {
+	callTaskTool := func(method, path string, payload any) (string, *agentloop.ToolError) {
 		body := ""
 		if payload != nil {
 			raw, _ := json.Marshal(payload)

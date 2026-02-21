@@ -219,7 +219,9 @@ func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testi
 	}
 
 	paneGetCount := 0
+	requestLog := make([]string, 0, 8)
 	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		requestLog = append(requestLog, method+" "+path+" body="+body)
 		switch {
 		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
 			paneGetCount++
@@ -233,6 +235,7 @@ func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testi
 		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
 			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
 		default:
+			t.Logf("unexpected gateway call: %s %s body=%s", method, path, body)
 			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
 		}
 	}
@@ -249,7 +252,11 @@ func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testi
 		t.Fatalf("expected at least 2 requests, got %d", len(requestBodies))
 	}
 	gotOut := extractLastFunctionCallOutput(t, requestBodies[1])
-	screen, ok := gotOut["data"].(map[string]any)["post_terminal_screen_state"].(map[string]any)
+	data, ok := gotOut["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v calls=%#v", gotOut, requestLog)
+	}
+	screen, ok := data["post_terminal_screen_state"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected post_terminal_screen_state in tool output, got %#v", gotOut)
 	}
@@ -307,7 +314,9 @@ func TestBuildAgentLoopRunner_TaskInputPromptIncludesPostTerminalScreenState(t *
 	}
 
 	paneGetCount := 0
+	requestLog := make([]string, 0, 12)
 	httpExec := func(method, path string, headers map[string]string, body string) (int, map[string]string, string, error) {
+		requestLog = append(requestLog, method+" "+path+" body="+body)
 		switch {
 		case method == http.MethodGet && path == "/api/v1/tasks/t1/pane":
 			paneGetCount++
@@ -319,6 +328,7 @@ func TestBuildAgentLoopRunner_TaskInputPromptIncludesPostTerminalScreenState(t *
 		case method == http.MethodPost && path == "/api/v1/tasks/t1/messages":
 			return 200, map[string]string{"Content-Type": "application/json"}, `{"ok":true,"data":{"task_id":"t1","delivery_status":"sent"}}`, nil
 		default:
+			t.Logf("unexpected gateway call: %s %s body=%s", method, path, body)
 			return 404, map[string]string{"Content-Type": "application/json"}, `{"ok":false}`, nil
 		}
 	}
@@ -335,7 +345,11 @@ func TestBuildAgentLoopRunner_TaskInputPromptIncludesPostTerminalScreenState(t *
 		t.Fatalf("expected at least 2 requests, got %d", len(requestBodies))
 	}
 	gotOut := extractLastFunctionCallOutput(t, requestBodies[1])
-	screen, ok := gotOut["data"].(map[string]any)["post_terminal_screen_state"].(map[string]any)
+	data, ok := gotOut["data"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected data object, got %#v calls=%#v", gotOut, requestLog)
+	}
+	screen, ok := data["post_terminal_screen_state"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected post_terminal_screen_state in tool output, got %#v", gotOut)
 	}

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -344,6 +345,200 @@ func TestPaneCreate_CreatesRunAndLiveBinding(t *testing.T) {
 	if binding.PaneID == "" || binding.PaneTarget == "" || binding.ServerInstanceID == "" {
 		t.Fatalf("unexpected binding: %#v", binding)
 	}
+}
+
+func TestPaneCreate_ChildSpawnFallbackCompletesAutopilotReadyChild(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	prevDelay := childSpawnAutoProgressFallbackDelay
+	childSpawnAutoProgressFallbackDelay = 30 * time.Millisecond
+	t.Cleanup(func() { childSpawnAutoProgressFallbackDelay = prevDelay })
+
+	createTaskResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+	var created struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createTaskResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create task failed: %v", err)
+	}
+
+	patchReq, _ := http.NewRequest(
+		http.MethodPatch,
+		ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode",
+		bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`),
+	)
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("patch sidecar mode failed: %v", err)
+	}
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected sidecar patch 200, got %d", patchResp.StatusCode)
+	}
+
+	store := projectstate.NewStore(repo)
+	if err := store.BatchUpsertRuntime(projectstate.RuntimeBatchUpdate{
+		Panes: []projectstate.PaneRuntimeRecord{{
+			PaneID:         "pane_child_1",
+			PaneTarget:     "pane_child_1",
+			RuntimeStatus:  "ready",
+			Snapshot:       "",
+			SnapshotHash:   "h-ready",
+			CurrentCommand: "zsh",
+			UpdatedAt:      time.Now().UTC().Unix(),
+		}},
+	}); err != nil {
+		t.Fatalf("seed pane runtime failed: %v", err)
+	}
+
+	childResp, err := http.Post(ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/panes/child", "application/json", bytes.NewBufferString(`{"title":"child"}`))
+	if err != nil {
+		t.Fatalf("POST child failed: %v", err)
+	}
+	if childResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST child expected 200, got %d", childResp.StatusCode)
+	}
+	var childOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(childResp.Body).Decode(&childOut); err != nil {
+		t.Fatalf("decode child response failed: %v", err)
+	}
+	if childOut.Data.TaskID == "" || childOut.Data.RunID == "" {
+		t.Fatalf("expected child task_id and run_id, got %#v", childOut.Data)
+	}
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		rows, err := store.ListTasksByProject("p1")
+		if err != nil {
+			t.Fatalf("ListTasksByProject failed: %v", err)
+		}
+		completed := false
+		for _, row := range rows {
+			if row.TaskID == childOut.Data.TaskID && row.Status == projectstate.StatusCompleted {
+				completed = true
+				break
+			}
+		}
+		if completed {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("child task %s was not completed by spawn fallback", childOut.Data.TaskID)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	run, err := store.GetRun(childOut.Data.RunID)
+	if err != nil {
+		t.Fatalf("GetRun failed: %v", err)
+	}
+	if run.RunStatus != projectstate.RunStatusCompleted {
+		t.Fatalf("expected child run completed, got %q", run.RunStatus)
+	}
+}
+
+func TestPaneCreate_ChildSpawnFallbackSkipsWhenRuntimeNotReady(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	prevDelay := childSpawnAutoProgressFallbackDelay
+	childSpawnAutoProgressFallbackDelay = 30 * time.Millisecond
+	t.Cleanup(func() { childSpawnAutoProgressFallbackDelay = prevDelay })
+
+	createTaskResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+	var created struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createTaskResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create task failed: %v", err)
+	}
+
+	patchReq, _ := http.NewRequest(
+		http.MethodPatch,
+		ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode",
+		bytes.NewBufferString(`{"sidecar_mode":"autopilot"}`),
+	)
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("patch sidecar mode failed: %v", err)
+	}
+	_ = patchResp.Body.Close()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected sidecar patch 200, got %d", patchResp.StatusCode)
+	}
+
+	store := projectstate.NewStore(repo)
+	if err := store.BatchUpsertRuntime(projectstate.RuntimeBatchUpdate{
+		Panes: []projectstate.PaneRuntimeRecord{{
+			PaneID:         "pane_child_1",
+			PaneTarget:     "pane_child_1",
+			RuntimeStatus:  "running",
+			Snapshot:       "",
+			SnapshotHash:   "h-running",
+			CurrentCommand: "zsh",
+			UpdatedAt:      time.Now().UTC().Unix(),
+		}},
+	}); err != nil {
+		t.Fatalf("seed pane runtime failed: %v", err)
+	}
+
+	childResp, err := http.Post(ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/panes/child", "application/json", bytes.NewBufferString(`{"title":"child"}`))
+	if err != nil {
+		t.Fatalf("POST child failed: %v", err)
+	}
+	if childResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST child expected 200, got %d", childResp.StatusCode)
+	}
+	var childOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(childResp.Body).Decode(&childOut); err != nil {
+		t.Fatalf("decode child response failed: %v", err)
+	}
+
+	time.Sleep(220 * time.Millisecond)
+	rows, err := store.ListTasksByProject("p1")
+	if err != nil {
+		t.Fatalf("ListTasksByProject failed: %v", err)
+	}
+	for _, row := range rows {
+		if row.TaskID == childOut.Data.TaskID {
+			if row.Status != projectstate.StatusRunning {
+				t.Fatalf("expected child status running when runtime not ready, got %q", row.Status)
+			}
+			return
+		}
+	}
+	t.Fatalf("child task not found: %s", childOut.Data.TaskID)
 }
 
 func TestTaskPaneEndpoint_BackfillsPaneUUID(t *testing.T) {

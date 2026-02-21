@@ -15,5 +15,5 @@ type ResponseToolSpec struct {
 type Tool interface {
 	Name() string
 	Spec() ResponseToolSpec
-	Execute(ctx context.Context, input json.RawMessage, callID string) (string, error)
+	Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError)
 }

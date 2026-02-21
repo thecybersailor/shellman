@@ -5,11 +5,14 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
 	"shellman/cli/internal/projectstate"
 )
+
+var childSpawnAutoProgressFallbackDelay = 6 * time.Second
 
 func (s *Server) registerPaneRoutes() {}
 
@@ -228,6 +231,7 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 		"pane_target": paneID,
 	})
 	s.publishEvent("task.tree.updated", projectID, newTaskID, map[string]any{})
+	s.scheduleChildSpawnAutoProgressFallback(projectID, entry.SidecarMode, newTaskID, paneID, relation)
 	respondOK(w, map[string]any{
 		"task_id":     newTaskID,
 		"run_id":      runID,
@@ -236,6 +240,110 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 		"pane_target": paneID,
 		"relation":    relation,
 	})
+}
+
+func (s *Server) scheduleChildSpawnAutoProgressFallback(projectID, sidecarMode, childTaskID, paneTarget, relation string) {
+	if s == nil || !strings.EqualFold(strings.TrimSpace(relation), "child") {
+		return
+	}
+	if normalizeSidecarMode(sidecarMode) != projectstate.SidecarModeAutopilot {
+		return
+	}
+	projectID = strings.TrimSpace(projectID)
+	childTaskID = strings.TrimSpace(childTaskID)
+	paneTarget = strings.TrimSpace(paneTarget)
+	if projectID == "" || childTaskID == "" || paneTarget == "" {
+		return
+	}
+	delay := childSpawnAutoProgressFallbackDelay
+	if delay <= 0 {
+		delay = 1500 * time.Millisecond
+	}
+	time.AfterFunc(delay, func() {
+		s.runChildSpawnAutoProgressFallback(projectID, childTaskID, paneTarget)
+	})
+}
+
+func (s *Server) runChildSpawnAutoProgressFallback(projectID, childTaskID, paneTarget string) {
+	if s == nil {
+		return
+	}
+	projectID = strings.TrimSpace(projectID)
+	childTaskID = strings.TrimSpace(childTaskID)
+	paneTarget = strings.TrimSpace(paneTarget)
+	if projectID == "" || childTaskID == "" || paneTarget == "" {
+		return
+	}
+
+	resolvedProjectID, store, entry, err := s.findTask(childTaskID)
+	if err != nil {
+		return
+	}
+	if projectID == "" {
+		projectID = strings.TrimSpace(resolvedProjectID)
+	}
+	if normalizeSidecarMode(entry.SidecarMode) != projectstate.SidecarModeAutopilot {
+		return
+	}
+	if isTaskTerminalStatus(entry.Status) || !strings.EqualFold(strings.TrimSpace(entry.Status), projectstate.StatusRunning) {
+		return
+	}
+
+	panes, err := store.LoadPanes()
+	if err != nil {
+		return
+	}
+	binding, ok := panes[childTaskID]
+	if !ok {
+		return
+	}
+	resolvedPaneTarget := strings.TrimSpace(binding.PaneTarget)
+	if resolvedPaneTarget == "" {
+		resolvedPaneTarget = strings.TrimSpace(binding.PaneID)
+	}
+	if resolvedPaneTarget == "" || resolvedPaneTarget != paneTarget {
+		return
+	}
+
+	runtime, foundRuntime, err := store.GetPaneRuntimeByPaneID(strings.TrimSpace(binding.PaneID))
+	if err != nil || !foundRuntime {
+		return
+	}
+	if !strings.EqualFold(strings.TrimSpace(runtime.RuntimeStatus), "ready") {
+		return
+	}
+
+	reqMeta := map[string]any{
+		"caller_method":         "INTERNAL",
+		"caller_path":           "internal:child-spawn-fallback",
+		"caller_user_agent":     "",
+		"caller_turn_uuid":      "",
+		"caller_gateway_source": "local-agent-gateway-http",
+		"caller_active_pane":    resolvedPaneTarget,
+	}
+	out, runErr := s.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget:           resolvedPaneTarget,
+		Summary:              "auto-complete: child spawn fallback and pane stable",
+		TriggerSource:        "spawn-fallback",
+		ObservedLastActiveAt: runtime.UpdatedAt,
+		RequestMeta:          reqMeta,
+		CallerPath:           "internal:child-spawn-fallback",
+		CallerActivePane:     resolvedPaneTarget,
+	})
+	if runErr != nil {
+		return
+	}
+	stage := "spawn_fallback.skipped"
+	if out.Triggered {
+		stage = "spawn_fallback.triggered"
+	}
+	s.writeTaskCompletionAuditLog(projectID, childTaskID, stage, taskCompletionAuditFields(map[string]any{
+		"source":      "spawn-fallback",
+		"pane_target": resolvedPaneTarget,
+		"status":      out.Status,
+		"reason":      out.Reason,
+		"run_id":      out.RunID,
+	}, reqMeta))
 }
 
 func (s *Server) handleGetTaskPane(w http.ResponseWriter, _ *http.Request, taskID string) {

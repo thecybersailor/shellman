@@ -9,7 +9,7 @@ import (
 func TestTaskChildSpawnTool_RequiresPromptAndPassesToExec(t *testing.T) {
 	var gotTaskID, gotCommand, gotTitle, gotDesc, gotPrompt string
 	tool := &TaskChildSpawnTool{
-		Exec: func(ctx context.Context, taskID, command, title, description, prompt string) (string, error) {
+		Exec: func(ctx context.Context, taskID, command, title, description, prompt string) (string, *ToolError) {
 			gotTaskID, gotCommand, gotTitle, gotDesc, gotPrompt = taskID, command, title, description, prompt
 			return `{"ok":true}`, nil
 		},
@@ -28,7 +28,7 @@ func TestTaskChildSpawnTool_RequiresPromptAndPassesToExec(t *testing.T) {
 }
 
 func TestTaskChildSpawnTool_InvalidSpawnInputWhenPromptMissing(t *testing.T) {
-	tool := &TaskChildSpawnTool{Exec: func(context.Context, string, string, string, string, string) (string, error) {
+	tool := &TaskChildSpawnTool{Exec: func(context.Context, string, string, string, string, string) (string, *ToolError) {
 		return `{"ok":true}`, nil
 	}}
 	ctx := WithTaskScope(context.Background(), TaskScope{TaskID: "t_parent"})

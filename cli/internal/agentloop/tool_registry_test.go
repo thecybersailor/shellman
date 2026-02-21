@@ -19,7 +19,7 @@ func (f fakeTool) Spec() ResponseToolSpec {
 	}
 }
 
-func (f fakeTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, error) {
+func (f fakeTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
 	return "ok", nil
 }
 
@@ -61,5 +61,19 @@ func TestRegistry_SpecsByNames(t *testing.T) {
 	}
 	if specs[0].Name != "a_tool" || specs[1].Name != "b_tool" {
 		t.Fatalf("unexpected order/spec names: %#v", specs)
+	}
+}
+
+func TestToolRegistry_ExecuteMissingToolReturnsToolError(t *testing.T) {
+	r := NewToolRegistry()
+	_, err := r.Execute(context.Background(), "missing", []byte(`{}`), "call_1")
+	if err == nil {
+		t.Fatal("expected tool error")
+	}
+	if err.Message != "TOOL_NOT_FOUND" {
+		t.Fatalf("unexpected error: %#v", err)
+	}
+	if err.Suggest == "" {
+		t.Fatalf("suggest must not be empty: %#v", err)
 	}
 }

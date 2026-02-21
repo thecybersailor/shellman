@@ -273,12 +273,16 @@ func (r *LoopRunner) run(
 			}
 			var out string
 			if r.tools == nil {
-				out = `{"error":"tool registry unavailable"}`
+				toolErr := NewToolError("TOOL_REGISTRY_UNAVAILABLE", "确认工具注册表已初始化并注入到 LoopRunner")
+				out = mustMarshalToolError(toolErr)
 			} else {
 				if allowlistConfigured {
 					if _, ok := allowedTools[strings.TrimSpace(call.Name)]; !ok {
-						toolErr := fmt.Errorf("tool %q is not enabled in current mode", strings.TrimSpace(call.Name))
-						errOut := fmt.Sprintf(`{"error":%q}`, toolErr.Error())
+						toolErr := NewToolError(
+							"TOOL_NOT_ENABLED_IN_MODE",
+							fmt.Sprintf("工具 %q 不在当前 allowed_tools 中；切换模式或调整 allowlist 后重试", strings.TrimSpace(call.Name)),
+						)
+						errOut := mustMarshalToolError(toolErr)
 						if onToolEvent != nil {
 							onToolEvent(map[string]any{
 								"type":        "dynamic-tool",
@@ -286,7 +290,7 @@ func (r *LoopRunner) run(
 								"response_id": strings.TrimSpace(res.ID),
 								"tool_name":   strings.TrimSpace(call.Name),
 								"state":       "output-error",
-								"error_text":  toolErr.Error(),
+								"error_text":  toolErr.Message,
 								"output_len":  len(strings.TrimSpace(errOut)),
 								"output":      stringToMaybeJSONAny(errOut),
 							})
@@ -296,7 +300,7 @@ func (r *LoopRunner) run(
 					} else {
 						toolOut, err := r.tools.Execute(ctx, call.Name, call.Arguments, call.CallID)
 						if err != nil {
-							errOut := fmt.Sprintf(`{"error":%q}`, err.Error())
+							errOut := mustMarshalToolError(err)
 							if onToolEvent != nil {
 								onToolEvent(map[string]any{
 									"type":        "dynamic-tool",
@@ -304,7 +308,7 @@ func (r *LoopRunner) run(
 									"response_id": strings.TrimSpace(res.ID),
 									"tool_name":   strings.TrimSpace(call.Name),
 									"state":       "output-error",
-									"error_text":  err.Error(),
+									"error_text":  err.Message,
 									"output_len":  len(strings.TrimSpace(errOut)),
 									"output":      stringToMaybeJSONAny(errOut),
 								})
@@ -328,7 +332,7 @@ func (r *LoopRunner) run(
 				} else {
 					toolOut, err := r.tools.Execute(ctx, call.Name, call.Arguments, call.CallID)
 					if err != nil {
-						errOut := fmt.Sprintf(`{"error":%q}`, err.Error())
+						errOut := mustMarshalToolError(err)
 						if onToolEvent != nil {
 							onToolEvent(map[string]any{
 								"type":        "dynamic-tool",
@@ -336,7 +340,7 @@ func (r *LoopRunner) run(
 								"response_id": strings.TrimSpace(res.ID),
 								"tool_name":   strings.TrimSpace(call.Name),
 								"state":       "output-error",
-								"error_text":  err.Error(),
+								"error_text":  err.Message,
 								"output_len":  len(strings.TrimSpace(errOut)),
 								"output":      stringToMaybeJSONAny(errOut),
 							})

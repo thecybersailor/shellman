@@ -100,10 +100,14 @@ func (r *ToolRegistry) SpecsByNames(names []string) []ResponseToolSpec {
 	return out
 }
 
-func (r *ToolRegistry) Execute(ctx context.Context, name string, input json.RawMessage, callID string) (string, error) {
+func (r *ToolRegistry) Execute(ctx context.Context, name string, input json.RawMessage, callID string) (string, *ToolError) {
 	tool, ok := r.Get(name)
 	if !ok {
-		return "", fmt.Errorf("tool %q not found", name)
+		return "", NewToolError("TOOL_NOT_FOUND", "确认工具名已注册并处于当前 allowed_tools 内")
 	}
-	return tool.Execute(ctx, input, callID)
+	out, err := tool.Execute(ctx, input, callID)
+	if err != nil {
+		return "", err
+	}
+	return out, nil
 }

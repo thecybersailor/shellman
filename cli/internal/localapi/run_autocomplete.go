@@ -169,6 +169,16 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 			}
 		}
 	}
+	if strings.EqualFold(triggerSource, "pane-actor") && isTaskTerminalStatus(taskEntry.Status) {
+		return AutoCompleteByPaneResult{
+			Triggered:  false,
+			PaneTarget: paneTarget,
+			Reason:     "task-already-terminal",
+			RunID:      "",
+			TaskID:     taskID,
+			Status:     strings.TrimSpace(taskEntry.Status),
+		}, nil
+	}
 	run, foundRun, runDiag, err := s.findLiveRunningRunByPaneTargetForTask(store, paneTarget, taskID)
 	if err != nil {
 		slog.Error(

@@ -18,7 +18,7 @@ func (f fakeNamedTool) Name() string { return f.name }
 func (f fakeNamedTool) Spec() ResponseToolSpec {
 	return ResponseToolSpec{Type: "function", Name: f.name}
 }
-func (f fakeNamedTool) Execute(context.Context, json.RawMessage, string) (string, error) {
+func (f fakeNamedTool) Execute(context.Context, json.RawMessage, string) (string, *ToolError) {
 	return `{"ok":true}`, nil
 }
 
@@ -738,8 +738,15 @@ func TestLoopRunner_ExplicitEmptyAllowlist_DisablesAllTools(t *testing.T) {
 		t.Fatalf("expected last input item map, got %#v", secondInput[len(secondInput)-1])
 	}
 	rawOutput := strings.TrimSpace(anyToString(lastItem["output"]))
-	if !strings.Contains(rawOutput, "not enabled in current mode") {
-		t.Fatalf("expected tool denial output, got %q", rawOutput)
+	var outputJSON map[string]any
+	if err := json.Unmarshal([]byte(rawOutput), &outputJSON); err != nil {
+		t.Fatalf("expected json output, got %q err=%v", rawOutput, err)
+	}
+	if strings.TrimSpace(anyToString(outputJSON["error"])) == "" {
+		t.Fatalf("missing error field in output: %q", rawOutput)
+	}
+	if strings.TrimSpace(anyToString(outputJSON["suggest"])) == "" {
+		t.Fatalf("missing suggest field in output: %q", rawOutput)
 	}
 }
 
