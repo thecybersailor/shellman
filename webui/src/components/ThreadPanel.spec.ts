@@ -178,4 +178,37 @@ describe("ThreadPanel", () => {
     expect(wrapper.find("[data-test-id='shellman-shellman-tool-input']").exists()).toBe(true);
     expect(wrapper.find("[data-test-id='shellman-shellman-tool-output']").exists()).toBe(true);
   });
+
+  it("shows explicit sidecar chat action buttons and emits events", async () => {
+    const wrapper = mount(ThreadPanel, {
+      props: {
+        taskId: "t1",
+        taskTitle: "Task",
+        taskDescription: "",
+        sidecarMode: "autopilot",
+        taskMessages: [
+          { id: 1, task_id: "t1", role: "assistant", content: "", status: "running", created_at: 1, updated_at: 1 }
+        ]
+      }
+    });
+    await nextTick();
+
+    await wrapper.get("[data-test-id='shellman-sidecar-stop-chat']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-sidecar-restart-context-child']").trigger("click");
+    await wrapper.get("[data-test-id='shellman-sidecar-restart-context-root']").trigger("click");
+
+    expect(wrapper.emitted("stop-sidecar-chat")?.length).toBe(1);
+    expect(wrapper.emitted("restart-sidecar-context")?.[0]?.[0]).toEqual({ strategy: "child" });
+    expect(wrapper.emitted("restart-sidecar-context")?.[1]?.[0]).toEqual({ strategy: "root" });
+  });
+
+  it("uses explicit observer wording to avoid stop confusion", async () => {
+    const wrapper = mount(ThreadPanel, {
+      props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], sidecarMode: "advisor" }
+    });
+    await nextTick();
+
+    expect(wrapper.text()).toContain("Observer");
+    expect(wrapper.text()).toContain("no auto-continue");
+  });
 });

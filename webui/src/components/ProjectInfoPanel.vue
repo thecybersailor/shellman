@@ -58,6 +58,8 @@ const emit = defineEmits<{
   (e: "save-task-meta", payload: { title: string; description: string }): void;
   (e: "send-message", payload: { content: string }): void;
   (e: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
+  (e: "stop-sidecar-chat"): void;
+  (e: "restart-sidecar-context", payload: { strategy: "child" | "root" }): void;
   (e: "ai", payload: SCMAIPayload): void;
   (e: "submit", payload: SCMSubmitPayload): void;
   (e: "file-open", path: string): void;
@@ -97,6 +99,8 @@ function onTabChange(next: string | number) {
             @save-task-meta="(payload) => emit('save-task-meta', payload)"
             @send-message="(payload) => emit('send-message', { content: payload.content })"
             @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
+            @stop-sidecar-chat="() => emit('stop-sidecar-chat')"
+            @restart-sidecar-context="(payload) => emit('restart-sidecar-context', payload)"
           />
         </div>
       </TabsContent>

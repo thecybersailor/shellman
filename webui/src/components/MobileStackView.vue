@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
-import type { TerminalFrame } from "@/stores/shellman";
+import type { TaskMessage, TerminalFrame } from "@/stores/shellman";
 import ProjectInfoPanel from "./ProjectInfoPanel.vue";
 import ProjectTaskTree from "./ProjectTaskTree.vue";
 import TerminalPane from "./TerminalPane.vue";
@@ -25,6 +25,7 @@ const props = defineProps<{
   selectedPaneUuid?: string;
   selectedTaskTitle?: string;
   selectedTaskDescription?: string;
+  selectedTaskMessages?: TaskMessage[];
   selectedTaskNotes?: Array<{ task_id: string; created_at: number; flag?: "success" | "notify" | "error"; notes: string }>;
   selectedCurrentCommand?: string;
   selectedTaskSidecarMode?: "advisor" | "observer" | "autopilot";
@@ -50,7 +51,10 @@ const emit = defineEmits<{
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "save-task-meta", payload: { title: string; description: string }): void;
+  (event: "send-message", payload: { content: string }): void;
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
+  (event: "stop-sidecar-chat"): void;
+  (event: "restart-sidecar-context", payload: { strategy: "child" | "root" }): void;
   (event: "add-project"): void;
   (event: "open-settings"): void;
   (event: "create-root-pane", projectId: string): void;
@@ -198,7 +202,7 @@ function onProjectPanelActiveTabChange(next: string) {
                :active-tab="projectPanelActiveTab"
                :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
                :task-description="props.selectedTaskDescription ?? ''"
-               :task-notes="props.selectedTaskNotes ?? []"
+               :task-messages="props.selectedTaskMessages ?? []"
                :sidecar-mode="props.selectedTaskSidecarMode ?? 'advisor'"
                :pane-uuid="props.selectedPaneUuid ?? ''"
                :current-command="props.selectedCurrentCommand ?? ''"
@@ -206,7 +210,10 @@ function onProjectPanelActiveTabChange(next: string) {
                :submit-loading="Boolean(props.scmSubmitLoading)"
                @update:active-tab="onProjectPanelActiveTabChange"
                @save-task-meta="(payload) => emit('save-task-meta', payload)"
+               @send-message="(payload) => emit('send-message', payload)"
                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
+               @stop-sidecar-chat="() => emit('stop-sidecar-chat')"
+               @restart-sidecar-context="(payload) => emit('restart-sidecar-context', payload)"
                @ai="(payload) => emit('scm-ai', payload)"
                @submit="(payload) => emit('scm-submit', payload)"
                @file-open="(path) => emit('file-open', path)"

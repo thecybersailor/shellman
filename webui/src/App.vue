@@ -443,6 +443,38 @@ async function onSetTaskSidecarMode(payload: { mode: "advisor" | "observer" | "a
   }
 }
 
+async function onStopSidecarChat() {
+  const taskId = String(store.state.selectedTaskId ?? "").trim();
+  if (!taskId) {
+    return;
+  }
+  try {
+    await store.setTaskSidecarMode(taskId, "observer");
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "TASK_SIDECAR_MODE_UPDATE_FAILED");
+  }
+}
+
+async function onRestartSidecarContext(payload: { strategy: "child" | "root" }) {
+  const taskId = String(store.state.selectedTaskId ?? "").trim();
+  if (!taskId) {
+    return;
+  }
+  try {
+    if (payload.strategy === "child") {
+      await store.createChildTask(taskId, t("app.childOfTask", { taskId }));
+      return;
+    }
+    const projectId = String(findProjectIdByTask(taskId) ?? "").trim();
+    if (!projectId) {
+      return;
+    }
+    await store.createRootTask(projectId, "");
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "TASK_CONTEXT_RESTART_FAILED");
+  }
+}
+
 async function onSCMAI(payload: { taskId: string; diff: string; files: string[]; selectedFilePath: string }) {
   if (scmAiLoading.value) {
     return;
@@ -650,6 +682,8 @@ onBeforeUnmount(() => {
             @save-task-meta="onSaveTaskMeta"
             @send-message="onSendTaskMessage"
             @set-sidecar-mode="onSetTaskSidecarMode"
+            @stop-sidecar-chat="onStopSidecarChat"
+            @restart-sidecar-context="onRestartSidecarContext"
             @ai="onSCMAI"
             @submit="onSCMSubmit"
             @file-open="onFileOpen"
@@ -666,6 +700,7 @@ onBeforeUnmount(() => {
       :selected-pane-uuid="selectedPaneUuid"
       :selected-task-title="selectedTaskTitle"
       :selected-task-description="selectedTaskDescription"
+      :selected-task-messages="selectedTaskMessages"
       :selected-task-notes="selectedTaskNotes"
       :selected-current-command="selectedCurrentCommand"
       :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
@@ -688,7 +723,10 @@ onBeforeUnmount(() => {
       @terminal-resize="onTerminalResize"
       @reopen-pane="onReopenPane"
       @save-task-meta="onSaveTaskMeta"
+      @send-message="onSendTaskMessage"
       @set-sidecar-mode="onSetTaskSidecarMode"
+      @stop-sidecar-chat="onStopSidecarChat"
+      @restart-sidecar-context="onRestartSidecarContext"
       @add-project="onOpenAddProject('mobile')"
       @open-settings="onOpenSettings('mobile')"
       @create-root-pane="onCreateRoot"

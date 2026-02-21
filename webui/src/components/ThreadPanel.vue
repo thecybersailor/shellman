@@ -34,6 +34,8 @@ const emit = defineEmits<{
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
+  (event: "stop-sidecar-chat"): void;
+  (event: "restart-sidecar-context", payload: { strategy: "child" | "root" }): void;
 }>();
 
 const draftTitle = ref(String(props.taskTitle ?? ""));
@@ -352,7 +354,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
     </div>
 
     <div class="px-2 text-[11px] text-muted-foreground/80 font-mono mt-0.5 flex items-center justify-between gap-2">
-      <div class="flex items-center gap-2">
+      <div class="flex items-center gap-2 flex-wrap">
         <Select :model-value="sidecarMode" @update:model-value="onSidecarModeUpdate">
           <SelectTrigger data-test-id="shellman-shellman-sidecar-mode-trigger" class="h-7 min-w-[132px] text-[11px]">
             <SelectValue :placeholder="t('thread.sidecarMode')" />
@@ -364,6 +366,36 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
           </SelectContent>
         </Select>
         <label class="text-[11px] text-muted-foreground/80">{{ t("thread.sidecarMode") }}</label>
+        <span
+          data-test-id="shellman-sidecar-mode-observer-hint"
+          class="text-[11px] text-muted-foreground/70"
+        >
+          {{ t("thread.sidecarModeObserverHint") }}
+        </span>
+        <button
+          type="button"
+          data-test-id="shellman-sidecar-stop-chat"
+          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
+          @click="emit('stop-sidecar-chat')"
+        >
+          {{ t("thread.stopSidecarChat") }}
+        </button>
+        <button
+          type="button"
+          data-test-id="shellman-sidecar-restart-context-child"
+          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
+          @click="emit('restart-sidecar-context', { strategy: 'child' })"
+        >
+          {{ t("thread.restartContextChild") }}
+        </button>
+        <button
+          type="button"
+          data-test-id="shellman-sidecar-restart-context-root"
+          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
+          @click="emit('restart-sidecar-context', { strategy: 'root' })"
+        >
+          {{ t("thread.restartContextRoot") }}
+        </button>
       </div>
       <div>Pane: {{ props.paneUuid || "-" }}</div>
     </div>

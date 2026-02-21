@@ -39,8 +39,12 @@
     "talkPlaceholder": "Talk to ShellMan...",
     "sidecarMode": "Sidecar Mode",
     "sidecarModeAdvisor": "Advisor",
-    "sidecarModeObserver": "Observer",
-    "sidecarModeAutopilot": "Autopilot"
+    "sidecarModeObserver": "Observer (no auto-continue)",
+    "sidecarModeAutopilot": "Autopilot",
+    "sidecarModeObserverHint": "Observer = no auto-continue",
+    "stopSidecarChat": "Stop Sidecar Chat",
+    "restartContextChild": "Restart Context (Child)",
+    "restartContextRoot": "Restart Context (Root)"
   },
   "projectTaskTree": {
     "projects": "Projects",
