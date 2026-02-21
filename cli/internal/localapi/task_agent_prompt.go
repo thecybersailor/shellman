@@ -34,6 +34,7 @@ type TaskAgentAutoProgressPromptInput struct {
 	Name              string
 	Description       string
 	Summary           string
+	HistoryBlock      string
 	PrevFlag          string
 	PrevStatusMessage string
 	TTY               TaskAgentTTYContext
@@ -72,6 +73,13 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	b.WriteString("summary: ")
 	b.WriteString(input.Summary)
 	b.WriteString("\n\n")
+	b.WriteString("conversation_history:\n")
+	if strings.TrimSpace(input.HistoryBlock) == "" {
+		b.WriteString("(none)\n\n")
+	} else {
+		b.WriteString(strings.TrimSpace(input.HistoryBlock))
+		b.WriteString("\n\n")
+	}
 	b.WriteString("context_json:\n")
 	b.WriteString(mustBuildTaskContextJSON(input.PrevFlag, input.PrevStatusMessage, input.TTY, input.ParentTask, input.ChildTasks))
 	b.WriteString("\n\n")
@@ -81,13 +89,20 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	return strings.TrimSpace(b.String())
 }
 
-func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessage string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext) string {
+func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessage string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext, historyBlock string) string {
 	userInput = strings.TrimSpace(userInput)
 	var b strings.Builder
 	b.WriteString("USER_INPUT_EVENT\n")
 	b.WriteString("user_input:\n")
 	b.WriteString(userInput)
 	b.WriteString("\n\n")
+	b.WriteString("conversation_history:\n")
+	if strings.TrimSpace(historyBlock) == "" {
+		b.WriteString("(none)\n\n")
+	} else {
+		b.WriteString(strings.TrimSpace(historyBlock))
+		b.WriteString("\n\n")
+	}
 	b.WriteString("context_json:\n")
 	b.WriteString(mustBuildTaskContextJSON(prevFlag, prevStatusMessage, tty, parent, children))
 	b.WriteString("\n")

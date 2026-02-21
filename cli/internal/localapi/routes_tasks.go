@@ -508,7 +508,7 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 			respondError(w, http.StatusBadRequest, "NO_PARENT_TASK", "task has no parent")
 			return
 		}
-		parentPrompt := s.buildUserPrompt(parentTaskID, content)
+		parentPrompt, parentPromptMeta := s.buildUserPromptWithMeta(parentTaskID, content)
 		if err := s.sendTaskAgentLoop(r.Context(), TaskAgentLoopEvent{
 			TaskID:         parentTaskID,
 			ProjectID:      projectID,
@@ -516,9 +516,13 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 			DisplayContent: displayContent,
 			AgentPrompt:    parentPrompt,
 			TriggerMeta: map[string]any{
-				"op":             "task.messages.send",
-				"reported_by":    taskID,
-				"reported_child": taskID,
+				"op":               "task.messages.send",
+				"reported_by":      taskID,
+				"reported_child":   taskID,
+				"history_total":    parentPromptMeta.TotalMessages,
+				"history_included": parentPromptMeta.Included,
+				"history_dropped":  parentPromptMeta.Dropped,
+				"history_chars":    parentPromptMeta.OutputChars,
 			},
 		}); err != nil {
 			if errors.Is(err, ErrTaskAgentLoopUnavailable) {
@@ -538,7 +542,7 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	agentPrompt := s.buildUserPrompt(taskID, content)
+	agentPrompt, promptMeta := s.buildUserPromptWithMeta(taskID, content)
 	if err := s.sendTaskAgentLoop(r.Context(), TaskAgentLoopEvent{
 		TaskID:         taskID,
 		ProjectID:      projectID,
@@ -546,7 +550,11 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 		DisplayContent: displayContent,
 		AgentPrompt:    agentPrompt,
 		TriggerMeta: map[string]any{
-			"op": "task.messages.send",
+			"op":               "task.messages.send",
+			"history_total":    promptMeta.TotalMessages,
+			"history_included": promptMeta.Included,
+			"history_dropped":  promptMeta.Dropped,
+			"history_chars":    promptMeta.OutputChars,
 		},
 	}); err != nil {
 		if errors.Is(err, ErrTaskAgentLoopUnavailable) {

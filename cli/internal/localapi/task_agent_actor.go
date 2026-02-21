@@ -286,7 +286,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 	if err != nil {
 		return err
 	}
-	logger.Log("task.message.send.started", map[string]any{
+	startedFields := map[string]any{
 		"task_id":               taskID,
 		"source":                strings.TrimSpace(evt.Source),
 		"user_message_id":       userMessageID,
@@ -294,7 +294,11 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		"user_content_preview":  clipTaskAuditText(displayContent, 400),
 		"agent_prompt_preview":  clipTaskAuditText(agentPrompt, 200),
 		"agent_loop_configured": s.deps.AgentLoopRunner != nil,
-	})
+	}
+	for k, v := range evt.TriggerMeta {
+		startedFields[k] = v
+	}
+	logger.Log("task.message.send.started", startedFields)
 	s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
 
 	if s.deps.AgentLoopRunner == nil {
@@ -326,7 +330,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 	responsesStore := evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore
 	disableStoreContext := evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext
 	if streamRunner, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithToolsRunner); ok {
-		logger.Log("task.message.send.agentloop.invoke", map[string]any{
+		invokeFields := map[string]any{
 			"task_id":               taskID,
 			"source":                strings.TrimSpace(evt.Source),
 			"user_message_id":       userMessageID,
@@ -337,7 +341,11 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			"allowed_tools":         allowedToolNames,
 			"responses_store":       responsesStore,
 			"disable_store_context": disableStoreContext,
-		})
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
 		var (
 			streamState   = assistantStructuredContent{Text: "", Tools: []map[string]any{}}
 			lastPublishAt time.Time
@@ -474,7 +482,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		streamState.Text = strings.TrimSpace(reply)
 		reply = marshalAssistantStructuredContent(streamState)
 	} else if streamRunner, ok := s.deps.AgentLoopRunner.(agentLoopStreamingRunner); ok {
-		logger.Log("task.message.send.agentloop.invoke", map[string]any{
+		invokeFields := map[string]any{
 			"task_id":               taskID,
 			"source":                strings.TrimSpace(evt.Source),
 			"user_message_id":       userMessageID,
@@ -485,7 +493,11 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			"allowed_tools":         allowedToolNames,
 			"responses_store":       responsesStore,
 			"disable_store_context": disableStoreContext,
-		})
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
 		var (
 			streamText    strings.Builder
 			lastPublishAt time.Time
@@ -530,7 +542,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			Text: strings.TrimSpace(reply),
 		})
 	} else {
-		logger.Log("task.message.send.agentloop.invoke", map[string]any{
+		invokeFields := map[string]any{
 			"task_id":               taskID,
 			"source":                strings.TrimSpace(evt.Source),
 			"user_message_id":       userMessageID,
@@ -541,7 +553,11 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			"allowed_tools":         allowedToolNames,
 			"responses_store":       responsesStore,
 			"disable_store_context": disableStoreContext,
-		})
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
 		reply, runErr = s.deps.AgentLoopRunner.Run(scopeCtx, agentPrompt)
 	}
 	if runErr != nil {

@@ -621,6 +621,82 @@ func TestTaskMessages_ListAndSend(t *testing.T) {
 	}
 }
 
+func TestTaskMessages_SecondTurnPromptContainsFirstTurnHistory(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	runner := &fakeTaskMessageRunner{reply: "assistant-one"}
+	srv := NewServer(Deps{
+		ConfigStore:     &staticConfigStore{},
+		ProjectsStore:   projects,
+		AgentLoopRunner: runner,
+	})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+	_ = createResp.Body.Close()
+	taskID := createOut.Data.TaskID
+
+	firstMarker := "FIRST_MARKER_123"
+	if _, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+taskID+"/messages",
+		"application/json",
+		bytes.NewBufferString(`{"content":"`+firstMarker+`"}`),
+	); err != nil {
+		t.Fatalf("first send failed: %v", err)
+	}
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(runner.calls) >= 1 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(runner.calls) < 1 {
+		t.Fatalf("expected first call, got %d", len(runner.calls))
+	}
+
+	if _, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+taskID+"/messages",
+		"application/json",
+		bytes.NewBufferString(`{"content":"what happened before?"}`),
+	); err != nil {
+		t.Fatalf("second send failed: %v", err)
+	}
+	deadline = time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(runner.calls) >= 2 {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if len(runner.calls) < 2 {
+		t.Fatalf("expected second call, got %d", len(runner.calls))
+	}
+
+	secondPrompt := runner.calls[1]
+	if !strings.Contains(secondPrompt, "conversation_history:") {
+		t.Fatalf("expected second prompt contains conversation_history, got %q", secondPrompt)
+	}
+	if !strings.Contains(secondPrompt, firstMarker) {
+		t.Fatalf("expected second prompt contains first user marker, got %q", secondPrompt)
+	}
+	if !strings.Contains(secondPrompt, "assistant-one") {
+		t.Fatalf("expected second prompt contains first assistant output, got %q", secondPrompt)
+	}
+}
+
 func TestTaskMessages_SendEnqueuesActorAndPersistsTimeline(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}

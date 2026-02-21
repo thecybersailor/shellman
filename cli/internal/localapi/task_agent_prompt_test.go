@@ -39,6 +39,7 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 		Name:              "task name",
 		Description:       "task desc",
 		Summary:           "done",
+		HistoryBlock:      "[assistant#2] done",
 		PrevFlag:          "notify",
 		PrevStatusMessage: "need check",
 		TTY: TaskAgentTTYContext{
@@ -63,6 +64,8 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 	})
 	required := []string{
 		"TTY_OUTPUT_EVENT",
+		"conversation_history:",
+		"[assistant#2] done",
 		"context_json:",
 		"\"task_context\"",
 		"\"prev_flag\":\"notify\"",
@@ -80,5 +83,42 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 		if !strings.Contains(prompt, s) {
 			t.Fatalf("expected prompt contains %q, got %q", s, prompt)
 		}
+	}
+}
+
+func TestBuildTaskAgentUserPrompt_IncludesConversationHistoryBlock(t *testing.T) {
+	prompt := buildTaskAgentUserPrompt(
+		"do X",
+		"",
+		"",
+		TaskAgentTTYContext{},
+		nil,
+		nil,
+		"[user#1] hi",
+	)
+	required := []string{
+		"USER_INPUT_EVENT",
+		"conversation_history:",
+		"[user#1] hi",
+		"context_json:",
+	}
+	for _, s := range required {
+		if !strings.Contains(prompt, s) {
+			t.Fatalf("expected prompt contains %q, got %q", s, prompt)
+		}
+	}
+}
+
+func TestBuildTaskAgentAutoProgressPrompt_IncludesConversationHistoryBlock(t *testing.T) {
+	prompt := buildTaskAgentAutoProgressPrompt(TaskAgentAutoProgressPromptInput{
+		TaskID:       "t_1",
+		Summary:      "idle",
+		HistoryBlock: "[assistant#2] done",
+	})
+	if !strings.Contains(prompt, "conversation_history:") {
+		t.Fatalf("expected conversation_history section, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "[assistant#2] done") {
+		t.Fatalf("expected history content in prompt, got %q", prompt)
 	}
 }

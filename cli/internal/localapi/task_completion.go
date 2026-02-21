@@ -344,17 +344,43 @@ func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID 
 	input.PrevStatusMessage = strings.TrimSpace(entry.FlagDesc)
 	input.TTY = s.buildTaskTTYContext(store, entry, input.TaskID)
 	input.ParentTask, input.ChildTasks = s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), input.TaskID)
+	input.HistoryBlock, _ = s.buildTaskHistoryBlock(store, input.TaskID)
 	return input
 }
 
-func (s *Server) buildUserPrompt(taskID, userInput string) string {
+func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, TaskPromptHistoryMeta) {
 	projectID, store, entry, err := s.findTask(taskID)
 	if err != nil {
-		return buildTaskAgentUserPrompt(userInput, "", "", TaskAgentTTYContext{}, nil, nil)
+		return buildTaskAgentUserPrompt(userInput, "", "", TaskAgentTTYContext{}, nil, nil, ""), TaskPromptHistoryMeta{}
 	}
 	tty := s.buildTaskTTYContext(store, entry, strings.TrimSpace(taskID))
 	parent, children := s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), strings.TrimSpace(taskID))
-	return buildTaskAgentUserPrompt(userInput, strings.TrimSpace(entry.Flag), strings.TrimSpace(entry.FlagDesc), tty, parent, children)
+	historyBlock, historyMeta := s.buildTaskHistoryBlock(store, strings.TrimSpace(taskID))
+	return buildTaskAgentUserPrompt(
+		userInput,
+		strings.TrimSpace(entry.Flag),
+		strings.TrimSpace(entry.FlagDesc),
+		tty,
+		parent,
+		children,
+		historyBlock,
+	), historyMeta
+}
+
+func (s *Server) buildUserPrompt(taskID, userInput string) string {
+	prompt, _ := s.buildUserPromptWithMeta(taskID, userInput)
+	return prompt
+}
+
+func (s *Server) buildTaskHistoryBlock(store *projectstate.Store, taskID string) (string, TaskPromptHistoryMeta) {
+	if store == nil {
+		return "", TaskPromptHistoryMeta{}
+	}
+	msgs, err := store.ListTaskMessages(strings.TrimSpace(taskID), 400)
+	if err != nil {
+		return "", TaskPromptHistoryMeta{}
+	}
+	return buildTaskPromptHistory(msgs, defaultTaskPromptHistoryOptions())
 }
 
 func (s *Server) buildTaskTTYContext(store *projectstate.Store, entry projectstate.TaskIndexEntry, taskID string) TaskAgentTTYContext {
