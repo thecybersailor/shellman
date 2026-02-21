@@ -139,7 +139,7 @@ Expected: tests pass with generated type usage.
 **Step 2: Add e2e docker entry guard**
 
 - Scan `docs/plans` for forbidden direct e2e execution text.
-- Only allow docker entrypoint (`make e2e-docker`).
+- Only allow docker entrypoint (`make e2e-ui-docker`).
 
 **Step 3: include validation makefile**
 
@@ -181,7 +181,7 @@ Expected: all operational rules documented.
 Run:
 - `make gen-api-types`
 - `make validate-quick`
-- `make e2e-docker`
+- `make e2e-ui-docker`
 
 Expected:
 - type generation stable

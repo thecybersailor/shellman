@@ -12,7 +12,7 @@ func TestDetectPaneCurrentCommand_UsesConfiguredTmuxSocket(t *testing.T) {
 	srv := NewServer(Deps{
 		ExecuteCommand: func(_ context.Context, _ string, args ...string) ([]byte, error) {
 			gotArgs = append([]string{}, args...)
-			return []byte("bash\n"), nil
+			return []byte("pane-title\tbash\tabc\n"), nil
 		},
 	})
 

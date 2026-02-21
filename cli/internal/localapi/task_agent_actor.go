@@ -669,7 +669,8 @@ func isAutoProcessTurnSource(source string) bool {
 }
 
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
-	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
+	_, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
+	currentCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID))
 	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source)
 }
 
@@ -696,20 +697,22 @@ func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID 
 }
 
 func resolveTaskAgentToolModeFromCommand(command string) taskAgentToolMode {
+	command = strings.TrimSpace(command)
+	if command == "" {
+		return taskAgentToolModeDefault
+	}
 	if _, ok := progdetector.ProgramDetectorRegistry.DetectByCurrentCommand(command); ok {
 		return taskAgentToolModeAIAgent
 	}
-	parts := strings.Fields(strings.TrimSpace(command))
+	parts := strings.Fields(command)
 	if len(parts) == 0 {
 		return taskAgentToolModeDefault
 	}
 	switch strings.ToLower(strings.TrimSpace(parts[0])) {
-	case "codex", "claude", "cursor", "gemini":
-		return taskAgentToolModeAIAgent
-	case "bash", "zsh":
+	case "sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh":
 		return taskAgentToolModeShell
 	default:
-		return taskAgentToolModeShell
+		return taskAgentToolModeDefault
 	}
 }
 

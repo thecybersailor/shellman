@@ -12,7 +12,7 @@ MATCHES="$(rg -n --pcre2 "$PATTERN" docs/plans || true)"
 if [[ -n "$MATCHES" ]]; then
   echo "[e2e-guard-check] ERROR: found forbidden e2e direct-run command(s):" >&2
   echo "$MATCHES" >&2
-  echo "[e2e-guard-check] Please use: make e2e-docker" >&2
+  echo "[e2e-guard-check] Please use: make e2e-ui-docker" >&2
   exit 1
 fi
 

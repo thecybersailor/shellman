@@ -14,6 +14,7 @@ import (
 
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
+	"shellman/cli/internal/tmux"
 )
 
 var validTaskFlag = map[string]struct{}{
@@ -37,6 +38,26 @@ type taskCompletionContextCacheEntry struct {
 type taskCompletionContextDocument struct {
 	Path    string `json:"path"`
 	Content string `json:"content"`
+}
+
+type commandRunnerExec struct {
+	ctx context.Context
+	run CommandRunner
+}
+
+func (r commandRunnerExec) Output(name string, args ...string) ([]byte, error) {
+	if r.run == nil {
+		return nil, errors.New("command runner unavailable")
+	}
+	return r.run(r.ctx, name, args...)
+}
+
+func (r commandRunnerExec) Run(name string, args ...string) error {
+	if r.run == nil {
+		return errors.New("command runner unavailable")
+	}
+	_, err := r.run(r.ctx, name, args...)
+	return err
 }
 
 func (s *Server) evaluateTaskCompletionDispatch() completionDispatchDecision {
@@ -593,16 +614,22 @@ func (s *Server) detectPaneCurrentCommand(paneTarget string) string {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
 	defer cancel()
-	args := []string{}
+	runner := commandRunnerExec{ctx: ctx, run: execute}
+	var adapter *tmux.Adapter
 	if socket := strings.TrimSpace(os.Getenv("SHELLMAN_TMUX_SOCKET")); socket != "" {
-		args = append(args, "-L", socket)
+		adapter = tmux.NewAdapterWithSocket(runner, socket)
+	} else {
+		adapter = tmux.NewAdapter(runner)
 	}
-	args = append(args, "display-message", "-p", "-t", target, "#{pane_current_command}")
-	out, err := execute(ctx, "tmux", args...)
+	title, out, err := adapter.PaneTitleAndCurrentCommand(target)
 	if err != nil {
 		return ""
 	}
-	return strings.TrimSpace(string(out))
+	out = strings.TrimSpace(out)
+	if out != "" {
+		return out
+	}
+	return strings.TrimSpace(title)
 }
 
 func (s *Server) detectPaneCurrentPath(paneTarget string) string {

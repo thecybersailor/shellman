@@ -1,4 +1,4 @@
-.PHONY: help dev build server server-turn dev-turn webui-dev test e2e-docker gen-api-types
+.PHONY: help dev build server server-turn dev-turn webui-dev test e2e-ui-docker e2e-tty gen-api-types
 
 WORKER_BASE_URL ?= https://turn.runbok.com
 TMUX_SOCKET ?=
@@ -14,7 +14,8 @@ help:
 	@echo "  make server-turn - Run backend once in turn mode"
 	@echo "  make dev-turn    - Run backend with air in turn mode"
 	@echo "  make test    - Run CLI unit tests"
-	@echo "  make e2e-docker  - Run full local e2e chain in docker compose"
+	@echo "  make e2e-ui-docker  - Run Playwright UI e2e chain in docker compose"
+	@echo "  make e2e-tty     - Run tmux/tty behavior e2e (non-UI, no docker)"
 	@echo ""
 	@echo "Environment overrides:"
 	@echo "  WORKER_BASE_URL=<url>  (default: https://turn.runbok.com)"
@@ -67,9 +68,12 @@ test:
 gen-api-types:
 	cd cli && $(MAKE) -f Makefile.swagger swagger-sdk-localapi
 
-e2e-docker:
+e2e-ui-docker:
 	@mkdir -p logs
 	docker compose -f docker-compose.e2e.yml up --build --abort-on-container-exit --exit-code-from e2e-runner
+
+e2e-tty:
+	cd cli && go test -tags e2e_tty ./internal/localapi -run TestTaskAgentModeRealtime_RealTmux_NoShellFallbackForUnknownCommand -count=1 -v
 
 # Validation targets live in Makefile.validate.
 include Makefile.validate

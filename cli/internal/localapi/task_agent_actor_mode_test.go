@@ -21,11 +21,12 @@ func TestResolveTaskAgentToolModeFromCommand(t *testing.T) {
 		{command: "codex --ask", want: taskAgentToolModeAIAgent},
 		{command: "node (codex)", want: taskAgentToolModeAIAgent},
 		{command: "claude", want: taskAgentToolModeAIAgent},
-		{command: "gemini -p hi", want: taskAgentToolModeAIAgent},
+		{command: "gemini -p hi", want: taskAgentToolModeDefault},
 		{command: "cursor agent", want: taskAgentToolModeAIAgent},
 		{command: "bash", want: taskAgentToolModeShell},
 		{command: "zsh", want: taskAgentToolModeShell},
-		{command: "npm test", want: taskAgentToolModeShell},
+		{command: "npm test", want: taskAgentToolModeDefault},
+		{command: "node", want: taskAgentToolModeDefault},
 	}
 	for _, tc := range cases {
 		if got := resolveTaskAgentToolModeFromCommand(tc.command); got != tc.want {
@@ -101,7 +102,7 @@ func TestResolveTaskAgentToolModeAndNames_UserTurn_IgnoresSidecarMode(t *testing
 	}
 }
 
-func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopilot(t *testing.T) {
+func TestResolveTaskAgentToolModeAndNamesRealtime_UsesLivePaneCommandInAutopilot(t *testing.T) {
 	store := projectstate.NewStore(t.TempDir())
 	taskID := fmt.Sprintf("t_mode_realtime_%d", time.Now().UTC().UnixNano())
 	mode := projectstate.SidecarModeAutopilot
@@ -133,14 +134,14 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopil
 			if strings.TrimSpace(name) != "tmux" {
 				t.Fatalf("unexpected command: %s", name)
 			}
-			return []byte("codex\n"), nil
+			return []byte("pane-title\tcodex\tabc\n"), nil
 		},
 	})
 	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
-	if gotMode != string(taskAgentToolModeShell) {
+	if gotMode != string(taskAgentToolModeAIAgent) {
 		t.Fatalf("unexpected mode: got=%q", gotMode)
 	}
-	if gotCommand != "zsh" {
+	if gotCommand != "codex" {
 		t.Fatalf("unexpected current command: got=%q", gotCommand)
 	}
 	if !reflect.DeepEqual(gotTools, []string{
@@ -150,7 +151,59 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesTaskStoredCommandInAutopil
 		"task.child.spawn",
 		"task.child.send_message",
 		"task.parent.report",
-		"exec_command",
+		"task.input_prompt",
+		"readfile",
+		"write_stdin",
+	}) {
+		t.Fatalf("unexpected tools: %#v", gotTools)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissUsesDefaultMode(t *testing.T) {
+	store := projectstate.NewStore(t.TempDir())
+	taskID := fmt.Sprintf("t_mode_realtime_default_%d", time.Now().UTC().UnixNano())
+	mode := projectstate.SidecarModeAutopilot
+	dbCommand := "codex"
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		SidecarMode:    &mode,
+		CurrentCommand: &dbCommand,
+	}); err != nil {
+		t.Fatalf("upsert task failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		taskID: {
+			TaskID:     taskID,
+			PaneID:     "1",
+			PaneTarget: "sess:1.1",
+		},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+
+	srv := NewServer(Deps{
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.TrimSpace(name) != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			return nil, fmt.Errorf("tmux not available")
+		},
+	})
+	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode != string(taskAgentToolModeDefault) {
+		t.Fatalf("unexpected mode: got=%q", gotMode)
+	}
+	if gotCommand != "" {
+		t.Fatalf("unexpected current command: got=%q", gotCommand)
+	}
+	if !reflect.DeepEqual(gotTools, []string{
+		"task.current.set_flag",
+		"task.child.get_context",
+		"task.child.get_tty_output",
+		"task.child.spawn",
+		"task.child.send_message",
+		"task.parent.report",
 		"readfile",
 		"write_stdin",
 	}) {
