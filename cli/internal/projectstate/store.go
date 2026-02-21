@@ -8,11 +8,15 @@ import (
 	"time"
 
 	"shellman/cli/internal/db"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 var (
 	globalDBMu   sync.Mutex
 	globalDB     *sql.DB
+	globalDBGORM *gorm.DB
 	globalDBPath string
 )
 
@@ -32,18 +36,26 @@ func InitGlobalDB(dbPath string) error {
 	if dbPath == "" {
 		return errors.New("db path is required")
 	}
-	if globalDB != nil && globalDBPath == dbPath {
+	if globalDBGORM != nil && globalDBPath == dbPath {
 		return nil
 	}
 	if globalDB != nil {
 		_ = globalDB.Close()
 		globalDB = nil
 	}
-	db, err := openDB(dbPath)
+	globalDBGORM = nil
+
+	gdb, err := openDBGORM(dbPath)
 	if err != nil {
 		return err
 	}
-	globalDB = db
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return err
+	}
+
+	globalDBGORM = gdb
+	globalDB = sqlDB
 	globalDBPath = dbPath
 	return nil
 }
@@ -57,6 +69,17 @@ func GlobalDB() (*sql.DB, error) {
 		return nil, errors.New("global DB not initialized: call InitGlobalDB first")
 	}
 	return db, nil
+}
+
+// GlobalDBGORM returns the process-wide GORM DB. Caller must not close it.
+func GlobalDBGORM() (*gorm.DB, error) {
+	globalDBMu.Lock()
+	gdb := globalDBGORM
+	globalDBMu.Unlock()
+	if gdb == nil {
+		return nil, errors.New("global DB not initialized: call InitGlobalDB first")
+	}
+	return gdb, nil
 }
 
 func (s *Store) SavePanes(index PanesIndex) error {
@@ -90,29 +113,28 @@ func (s *Store) SavePaneSnapshots(index PaneSnapshotsIndex) error {
 	if err != nil {
 		return err
 	}
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	if _, err := tx.Exec(`
-INSERT INTO legacy_state(repo_root, state_key, state_json, updated_at)
-VALUES (?, ?, ?, ?)
-ON CONFLICT(repo_root, state_key) DO UPDATE SET
-  state_json = excluded.state_json,
-  updated_at = excluded.updated_at;
-`, s.repoRoot, "pane_snapshots_json", string(raw), now); err != nil {
-		return err
-	}
-	return tx.Commit()
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		row := db.LegacyState{
+			RepoRoot:  s.repoRoot,
+			StateKey:  "pane_snapshots_json",
+			StateJSON: string(raw),
+			UpdatedAt: now,
+		}
+		return tx.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "repo_root"}, {Name: "state_key"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"state_json": row.StateJSON,
+				"updated_at": row.UpdatedAt,
+			}),
+		}).Create(&row).Error
+	})
 }
 
 func (s *Store) LoadPaneSnapshots() (PaneSnapshotsIndex, error) {
@@ -134,7 +156,7 @@ func (s *Store) LoadPaneSnapshots() (PaneSnapshotsIndex, error) {
 }
 
 func (s *Store) saveJSON(column string, raw []byte) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -147,14 +169,19 @@ func (s *Store) saveJSON(column string, raw []byte) error {
 		return errors.New("unsupported column")
 	}
 
-	_, err = db.Exec(`
-INSERT INTO legacy_state(repo_root, state_key, state_json, updated_at)
-VALUES (?, ?, ?, ?)
-ON CONFLICT(repo_root, state_key) DO UPDATE SET
-  state_json = excluded.state_json,
-  updated_at = excluded.updated_at;
-`, s.repoRoot, column, string(raw), now)
-	return err
+	row := db.LegacyState{
+		RepoRoot:  s.repoRoot,
+		StateKey:  column,
+		StateJSON: string(raw),
+		UpdatedAt: now,
+	}
+	return gdb.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "repo_root"}, {Name: "state_key"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"state_json": row.StateJSON,
+			"updated_at": row.UpdatedAt,
+		}),
+	}).Create(&row).Error
 }
 
 func (s *Store) loadJSON(column string) ([]byte, error) {
@@ -194,6 +221,16 @@ func (s *Store) db() (*sql.DB, func() error, error) {
 	return db, func() error { return nil }, nil
 }
 
-func openDB(path string) (*sql.DB, error) {
-	return db.OpenSQLiteWithMigrations(path)
+func (s *Store) dbGORM() (*gorm.DB, func() error, error) {
+	globalDBMu.Lock()
+	gdb := globalDBGORM
+	globalDBMu.Unlock()
+	if gdb == nil {
+		return nil, nil, errors.New("global DB not initialized: call InitGlobalDB first")
+	}
+	return gdb, func() error { return nil }, nil
+}
+
+func openDBGORM(path string) (*gorm.DB, error) {
+	return db.OpenSQLiteGORMWithMigrations(path)
 }

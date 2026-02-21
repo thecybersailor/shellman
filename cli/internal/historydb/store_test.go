@@ -13,9 +13,9 @@ func TestStore_UpsertAndListRecent(t *testing.T) {
 	if err := projectstate.InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
 	}
-	db, err := projectstate.GlobalDB()
+	db, err := projectstate.GlobalDBGORM()
 	if err != nil {
-		t.Fatalf("GlobalDB failed: %v", err)
+		t.Fatalf("GlobalDBGORM failed: %v", err)
 	}
 	st, err := NewStore(db)
 	if err != nil {
@@ -49,5 +49,16 @@ func TestStore_UpsertAndListRecent(t *testing.T) {
 	}
 	if countByPath["/tmp/a"] != 2 || countByPath["/tmp/b"] != 1 {
 		t.Fatalf("unexpected counts: %#v", countByPath)
+	}
+
+	if err := st.Clear(); err != nil {
+		t.Fatalf("clear failed: %v", err)
+	}
+	rows, err = st.List(10)
+	if err != nil {
+		t.Fatalf("list after clear failed: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("expected empty rows after clear, got %d", len(rows))
 	}
 }

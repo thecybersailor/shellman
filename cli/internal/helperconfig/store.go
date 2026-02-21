@@ -4,15 +4,18 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"database/sql"
 	"encoding/base64"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	dbmodel "shellman/cli/internal/db"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -30,12 +33,12 @@ type OpenAIConfig struct {
 }
 
 type Store struct {
-	db  *sql.DB
+	db  *gorm.DB
 	key []byte
 }
 
 // NewStore uses the shared global DB. Caller must not close the db.
-func NewStore(db *sql.DB, secretPath string) (*Store, error) {
+func NewStore(db *gorm.DB, secretPath string) (*Store, error) {
 	if db == nil {
 		return nil, errors.New("db is required")
 	}
@@ -56,35 +59,22 @@ func (s *Store) SaveOpenAI(cfg OpenAIConfig) error {
 		return errors.New("helper config store is not initialized")
 	}
 
-	tx, err := s.db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() {
-		if err != nil {
-			_ = tx.Rollback()
-		}
-	}()
-
-	if err = upsertValue(tx, cfgKeyOpenAIEndpoint, strings.TrimSpace(cfg.Endpoint)); err != nil {
-		return err
-	}
-	if err = upsertValue(tx, cfgKeyOpenAIModel, strings.TrimSpace(cfg.Model)); err != nil {
-		return err
-	}
-	if strings.TrimSpace(cfg.APIKey) != "" {
-		enc, encErr := encryptAPIKey(cfg.APIKey, s.key)
-		if encErr != nil {
-			return encErr
-		}
-		if err = upsertValue(tx, cfgKeyOpenAIAPIKeyEnc, enc); err != nil {
+	return s.db.Transaction(func(tx *gorm.DB) error {
+		if err := upsertValue(tx, cfgKeyOpenAIEndpoint, strings.TrimSpace(cfg.Endpoint)); err != nil {
 			return err
 		}
-	}
-	if err = tx.Commit(); err != nil {
-		return err
-	}
-	return nil
+		if err := upsertValue(tx, cfgKeyOpenAIModel, strings.TrimSpace(cfg.Model)); err != nil {
+			return err
+		}
+		if strings.TrimSpace(cfg.APIKey) == "" {
+			return nil
+		}
+		enc, err := encryptAPIKey(cfg.APIKey, s.key)
+		if err != nil {
+			return err
+		}
+		return upsertValue(tx, cfgKeyOpenAIAPIKeyEnc, enc)
+	})
 }
 
 func (s *Store) LoadOpenAI() (OpenAIConfig, error) {
@@ -116,12 +106,11 @@ func (s *Store) rawValue(key string) (string, error) {
 	if s == nil || s.db == nil {
 		return "", errors.New("helper config store is not initialized")
 	}
-	var out string
-	err := s.db.QueryRow(`SELECT value FROM config WHERE key = ?`, key).Scan(&out)
-	if err != nil {
+	var row dbmodel.Config
+	if err := s.db.Model(&dbmodel.Config{}).Select("value").Where("key = ?", key).Take(&row).Error; err != nil {
 		return "", err
 	}
-	return out, nil
+	return row.Value, nil
 }
 
 func (s *Store) rawValueOptional(key string) (string, bool) {
@@ -129,21 +118,26 @@ func (s *Store) rawValueOptional(key string) (string, bool) {
 	if err == nil {
 		return v, true
 	}
-	if errors.Is(err, sql.ErrNoRows) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return "", false
 	}
 	return "", false
 }
 
-func upsertValue(tx *sql.Tx, key, value string) error {
-	_, err := tx.Exec(`
-INSERT INTO config(key, value, updated_at)
-VALUES (?, ?, ?)
-ON CONFLICT(key) DO UPDATE SET
-  value = excluded.value,
-  updated_at = excluded.updated_at;
-`, key, value, time.Now().UTC().Unix())
-	return err
+func upsertValue(tx *gorm.DB, key, value string) error {
+	now := time.Now().UTC().Unix()
+	row := dbmodel.Config{
+		Key:       key,
+		Value:     value,
+		UpdatedAt: now,
+	}
+	return tx.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "key"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"value":      row.Value,
+			"updated_at": row.UpdatedAt,
+		}),
+	}).Create(&row).Error
 }
 
 func loadOrCreateSecretKey(secretPath string) ([]byte, error) {

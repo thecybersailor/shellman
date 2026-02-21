@@ -4,12 +4,16 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	dbmodel "shellman/cli/internal/db"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (s *Store) InsertTask(task TaskRecord) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -24,15 +28,22 @@ func (s *Store) InsertTask(task TaskRecord) error {
 	if sidecarMode == "" {
 		sidecarMode = SidecarModeAdvisor
 	}
-	_, err = db.Exec(`
-INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, status, sidecar_mode, created_at, last_modified)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-`, task.TaskID, s.repoRoot, task.ProjectID, task.ParentTaskID, task.Title, status, sidecarMode, now, now)
-	return err
+	row := dbmodel.Task{
+		TaskID:       task.TaskID,
+		RepoRoot:     s.repoRoot,
+		ProjectID:    task.ProjectID,
+		ParentTaskID: task.ParentTaskID,
+		Title:        task.Title,
+		Status:       status,
+		SidecarMode:  sidecarMode,
+		CreatedAt:    now,
+		LastModified: now,
+	}
+	return gdb.Create(&row).Error
 }
 
 func (s *Store) InsertRun(run RunRecord) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -47,11 +58,16 @@ func (s *Store) InsertRun(run RunRecord) error {
 	if startedAt == 0 {
 		startedAt = now
 	}
-	_, err = db.Exec(`
-INSERT INTO task_runs(run_id, task_id, run_status, started_at, completed_at, updated_at, last_error)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-`, run.RunID, run.TaskID, status, startedAt, run.CompletedAt, now, run.LastError)
-	return err
+	row := dbmodel.TaskRun{
+		RunID:       run.RunID,
+		TaskID:      run.TaskID,
+		RunStatus:   status,
+		StartedAt:   startedAt,
+		CompletedAt: run.CompletedAt,
+		UpdatedAt:   now,
+		LastError:   run.LastError,
+	}
+	return gdb.Create(&row).Error
 }
 
 func (s *Store) GetRun(runID string) (RunRecord, error) {
@@ -74,7 +90,7 @@ WHERE run_id = ?
 }
 
 func (s *Store) UpsertRunBinding(binding RunBinding) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -85,57 +101,61 @@ func (s *Store) UpsertRunBinding(binding RunBinding) error {
 	if status == "" {
 		status = BindingStatusLive
 	}
-	_, err = db.Exec(`
-INSERT INTO run_bindings(run_id, server_instance_id, pane_id, pane_target, binding_status, stale_reason, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(run_id) DO UPDATE SET
-  server_instance_id = excluded.server_instance_id,
-  pane_id = excluded.pane_id,
-  pane_target = excluded.pane_target,
-  binding_status = excluded.binding_status,
-  stale_reason = excluded.stale_reason,
-  updated_at = excluded.updated_at
-`, binding.RunID, binding.ServerInstanceID, binding.PaneID, binding.PaneTarget, status, binding.StaleReason, now)
-	return err
+	row := dbmodel.RunBinding{
+		RunID:            binding.RunID,
+		ServerInstanceID: binding.ServerInstanceID,
+		PaneID:           binding.PaneID,
+		PaneTarget:       binding.PaneTarget,
+		BindingStatus:    status,
+		StaleReason:      binding.StaleReason,
+		UpdatedAt:        now,
+	}
+	return gdb.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "run_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"server_instance_id": gorm.Expr("excluded.server_instance_id"),
+			"pane_id":            gorm.Expr("excluded.pane_id"),
+			"pane_target":        gorm.Expr("excluded.pane_target"),
+			"binding_status":     gorm.Expr("excluded.binding_status"),
+			"stale_reason":       gorm.Expr("excluded.stale_reason"),
+			"updated_at":         gorm.Expr("excluded.updated_at"),
+		}),
+	}).Create(&row).Error
 }
 
 func (s *Store) MarkBindingsStaleByServer(serverInstanceID, reason string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&dbmodel.RunBinding{}).
+			Where("server_instance_id = ? AND binding_status = ?", serverInstanceID, BindingStatusLive).
+			Updates(map[string]any{
+				"binding_status": BindingStatusStale,
+				"stale_reason":   reason,
+				"updated_at":     now,
+			}).Error; err != nil {
+			return err
+		}
 
-	if _, err := tx.Exec(`
-UPDATE run_bindings
-SET binding_status = ?, stale_reason = ?, updated_at = ?
-WHERE server_instance_id = ? AND binding_status = ?
-`, BindingStatusStale, reason, now, serverInstanceID, BindingStatusLive); err != nil {
-		return err
-	}
-
-	if _, err := tx.Exec(`
-UPDATE task_runs
-SET run_status = ?, updated_at = ?
-WHERE run_id IN (
-  SELECT run_id FROM run_bindings WHERE server_instance_id = ? AND binding_status = ?
-)
-`, RunStatusNeedsRebind, now, serverInstanceID, BindingStatusStale); err != nil {
-		return err
-	}
-
-	return tx.Commit()
+		sub := tx.Model(&dbmodel.RunBinding{}).
+			Select("run_id").
+			Where("server_instance_id = ? AND binding_status = ?", serverInstanceID, BindingStatusStale)
+		return tx.Model(&dbmodel.TaskRun{}).
+			Where("run_id IN (?)", sub).
+			Updates(map[string]any{
+				"run_status": RunStatusNeedsRebind,
+				"updated_at": now,
+			}).Error
+	})
 }
 
 func (s *Store) AppendRunEvent(runID, eventType string, payload map[string]any) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -145,24 +165,30 @@ func (s *Store) AppendRunEvent(runID, eventType string, payload map[string]any) 
 	if err != nil {
 		return err
 	}
-	_, err = db.Exec(`
-INSERT INTO run_events(run_id, event_type, payload_json, created_at)
-VALUES (?, ?, ?, ?)
-`, runID, eventType, string(raw), time.Now().UTC().Unix())
-	return err
+	row := dbmodel.RunEvent{
+		RunID:       runID,
+		EventType:   eventType,
+		PayloadJSON: string(raw),
+		CreatedAt:   time.Now().UTC().Unix(),
+	}
+	return gdb.Create(&row).Error
 }
 
 func (s *Store) InsertCompletionInbox(runID, requestID, summary, source string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
-	_, err = db.Exec(`
-INSERT INTO completion_inbox(run_id, request_id, summary, source, created_at)
-VALUES (?, ?, ?, ?, ?)
-`, runID, requestID, summary, source, time.Now().UTC().Unix())
+	row := dbmodel.CompletionInbox{
+		RunID:     runID,
+		RequestID: requestID,
+		Summary:   summary,
+		Source:    source,
+		CreatedAt: time.Now().UTC().Unix(),
+	}
+	err = gdb.Create(&row).Error
 	if err != nil {
 		if isUniqueConstraintError(err) {
 			return ErrDuplicateInboxRequest
@@ -238,34 +264,35 @@ WHERE run_id = ?
 }
 
 func (s *Store) MarkRunCompleted(runID string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
-	_, err = db.Exec(`
-UPDATE task_runs
-SET run_status = ?, completed_at = ?, updated_at = ?
-WHERE run_id = ?
-`, RunStatusCompleted, now, now, runID)
-	return err
+	return gdb.Model(&dbmodel.TaskRun{}).
+		Where("run_id = ?", runID).
+		Updates(map[string]any{
+			"run_status":   RunStatusCompleted,
+			"completed_at": now,
+			"updated_at":   now,
+		}).Error
 }
 
 func (s *Store) SetRunStatus(runID, status string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
-	_, err = db.Exec(`
-UPDATE task_runs
-SET run_status = ?, updated_at = ?
-WHERE run_id = ?
-`, status, time.Now().UTC().Unix(), runID)
-	return err
+	return gdb.Model(&dbmodel.TaskRun{}).
+		Where("run_id = ?", runID).
+		Updates(map[string]any{
+			"run_status": status,
+			"updated_at": time.Now().UTC().Unix(),
+		}).Error
 }
 
 func (s *Store) FindLiveRunningRunByPaneTarget(paneTarget string) (RunRecord, bool, error) {
@@ -355,7 +382,7 @@ LIMIT ?
 }
 
 func (s *Store) EnqueueRunAction(runID, actionType string, payload map[string]any) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -366,11 +393,17 @@ func (s *Store) EnqueueRunAction(runID, actionType string, payload map[string]an
 		return err
 	}
 	now := time.Now().UTC().Unix()
-	_, err = db.Exec(`
-INSERT INTO action_outbox(run_id, action_type, payload_json, status, retry_count, next_retry_at, created_at, updated_at)
-VALUES (?, ?, ?, 'pending', 0, 0, ?, ?)
-`, runID, actionType, string(raw), now, now)
-	return err
+	row := dbmodel.ActionOutbox{
+		RunID:       runID,
+		ActionType:  actionType,
+		PayloadJSON: string(raw),
+		Status:      "pending",
+		RetryCount:  0,
+		NextRetryAt: 0,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	}
+	return gdb.Create(&row).Error
 }
 
 func (s *Store) CountOutboxByRunID(runID string) (int, error) {
@@ -402,7 +435,7 @@ func (s *Store) CountRunEventsByType(runID, eventType string) (int, error) {
 }
 
 func (s *Store) TryMarkTaskAutoProgressObserved(task TaskRecord, observedAt int64) (bool, error) {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return false, err
 	}
@@ -417,26 +450,37 @@ func (s *Store) TryMarkTaskAutoProgressObserved(task TaskRecord, observedAt int6
 		status = StatusPending
 	}
 	now := time.Now().UTC().Unix()
-	res, err := db.Exec(`
-INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, status, created_at, last_modified, last_auto_progress_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(task_id) DO UPDATE SET
-  last_auto_progress_at = excluded.last_auto_progress_at,
-  last_modified = excluded.last_modified
-WHERE tasks.last_auto_progress_at < excluded.last_auto_progress_at
-`, taskID, s.repoRoot, strings.TrimSpace(task.ProjectID), strings.TrimSpace(task.ParentTaskID), strings.TrimSpace(task.Title), status, now, now, observedAt)
-	if err != nil {
-		return false, err
+	row := dbmodel.Task{
+		TaskID:             taskID,
+		RepoRoot:           s.repoRoot,
+		ProjectID:          strings.TrimSpace(task.ProjectID),
+		ParentTaskID:       strings.TrimSpace(task.ParentTaskID),
+		Title:              strings.TrimSpace(task.Title),
+		Status:             status,
+		CreatedAt:          now,
+		LastModified:       now,
+		LastAutoProgressAt: observedAt,
 	}
-	affected, err := res.RowsAffected()
-	if err != nil {
-		return false, err
+	tx := gdb.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "task_id"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"last_auto_progress_at": gorm.Expr("excluded.last_auto_progress_at"),
+			"last_modified":         gorm.Expr("excluded.last_modified"),
+		}),
+		Where: clause.Where{
+			Exprs: []clause.Expression{
+				clause.Expr{SQL: "tasks.last_auto_progress_at < excluded.last_auto_progress_at"},
+			},
+		},
+	}).Create(&row)
+	if tx.Error != nil {
+		return false, tx.Error
 	}
-	return affected > 0, nil
+	return tx.RowsAffected > 0, nil
 }
 
 func (s *Store) InsertTaskNote(taskID, notes, flag string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -448,11 +492,13 @@ func (s *Store) InsertTaskNote(taskID, notes, flag string) error {
 	if taskID == "" || notes == "" {
 		return nil
 	}
-	_, err = db.Exec(`
-INSERT INTO notes(task_id, created_at, flag, notes)
-VALUES (?, ?, ?, ?)
-`, taskID, time.Now().UTC().Unix(), flag, notes)
-	return err
+	row := dbmodel.Note{
+		TaskID:    taskID,
+		CreatedAt: time.Now().UTC().Unix(),
+		Flag:      flag,
+		Notes:     notes,
+	}
+	return gdb.Create(&row).Error
 }
 
 func (s *Store) ListTaskNotes(taskID string, limit int) ([]TaskNoteRecord, error) {
@@ -496,7 +542,7 @@ LIMIT ?
 }
 
 func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string) (int64, error) {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return 0, err
 	}
@@ -514,18 +560,23 @@ func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string)
 		status = StatusCompleted
 	}
 	now := time.Now().UTC().Unix()
-	res, err := db.Exec(`
-INSERT INTO task_messages(task_id, role, content, status, error_text, created_at, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?)
-`, taskID, role, content, status, errText, now, now)
-	if err != nil {
+	row := dbmodel.TaskMessage{
+		TaskID:    taskID,
+		Role:      role,
+		Content:   content,
+		Status:    status,
+		ErrorText: errText,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}
+	if err := gdb.Create(&row).Error; err != nil {
 		return 0, err
 	}
-	return res.LastInsertId()
+	return row.ID, nil
 }
 
 func (s *Store) UpdateTaskMessage(id int64, content, status, errText string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
@@ -540,12 +591,14 @@ func (s *Store) UpdateTaskMessage(id int64, content, status, errText string) err
 	if status == "" {
 		status = StatusCompleted
 	}
-	_, err = db.Exec(`
-UPDATE task_messages
-SET content = ?, status = ?, error_text = ?, updated_at = ?
-WHERE id = ?
-`, content, status, errText, time.Now().UTC().Unix(), id)
-	return err
+	return gdb.Model(&dbmodel.TaskMessage{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"content":    content,
+			"status":     status,
+			"error_text": errText,
+			"updated_at": time.Now().UTC().Unix(),
+		}).Error
 }
 
 func (s *Store) ListTaskMessages(taskID string, limit int) ([]TaskMessageRecord, error) {

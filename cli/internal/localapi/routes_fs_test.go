@@ -22,9 +22,9 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 	}
 
 	svc := fsbrowser.NewService()
-	db, err := projectstate.GlobalDB()
+	db, err := projectstate.GlobalDBGORM()
 	if err != nil {
-		t.Fatalf("GlobalDB failed: %v", err)
+		t.Fatalf("GlobalDBGORM failed: %v", err)
 	}
 	hist, err := historydb.NewStore(db)
 	if err != nil {
@@ -57,9 +57,9 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 }
 
 func TestServer_FSHistory_CRUD(t *testing.T) {
-	db, err := projectstate.GlobalDB()
+	db, err := projectstate.GlobalDBGORM()
 	if err != nil {
-		t.Fatalf("GlobalDB failed: %v", err)
+		t.Fatalf("GlobalDBGORM failed: %v", err)
 	}
 	hist, err := historydb.NewStore(db)
 	if err != nil {

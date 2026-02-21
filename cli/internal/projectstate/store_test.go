@@ -10,6 +10,29 @@ import (
 	"testing"
 )
 
+func TestGlobalDBGORM_ReturnsUsableHandle(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
+	if err := InitGlobalDB(dbPath); err != nil {
+		t.Fatalf("InitGlobalDB failed: %v", err)
+	}
+
+	gdb, err := GlobalDBGORM()
+	if err != nil {
+		t.Fatalf("GlobalDBGORM failed: %v", err)
+	}
+	if gdb == nil {
+		t.Fatal("expected non-nil gorm db")
+	}
+
+	var out int
+	if err := gdb.Raw("SELECT 1").Scan(&out).Error; err != nil {
+		t.Fatalf("query via gorm failed: %v", err)
+	}
+	if out != 1 {
+		t.Fatalf("expected 1, got %d", out)
+	}
+}
+
 func TestStore_ListTasksByProject_FromSQLite(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {

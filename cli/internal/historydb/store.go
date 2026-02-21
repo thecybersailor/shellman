@@ -1,10 +1,14 @@
 package historydb
 
 import (
-	"database/sql"
 	"errors"
 	"strings"
 	"time"
+
+	dbmodel "shellman/cli/internal/db"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type Entry struct {
@@ -15,11 +19,11 @@ type Entry struct {
 }
 
 type Store struct {
-	db *sql.DB
+	db *gorm.DB
 }
 
 // NewStore uses the shared global DB. Caller must not close the db.
-func NewStore(db *sql.DB) (*Store, error) {
+func NewStore(db *gorm.DB) (*Store, error) {
 	if db == nil {
 		return nil, errors.New("db is required")
 	}
@@ -35,14 +39,19 @@ func (s *Store) Upsert(path string) error {
 		return errors.New("path is required")
 	}
 	now := time.Now().UTC().Unix()
-	_, err := s.db.Exec(`
-INSERT INTO dir_history(path, first_accessed_at, last_accessed_at, access_count)
-VALUES (?, ?, ?, 1)
-ON CONFLICT(path) DO UPDATE SET
-  last_accessed_at = excluded.last_accessed_at,
-  access_count = dir_history.access_count + 1;
-`, p, now, now)
-	return err
+	row := dbmodel.DirHistory{
+		Path:            p,
+		FirstAccessedAt: now,
+		LastAccessedAt:  now,
+		AccessCount:     1,
+	}
+	return s.db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "path"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"last_accessed_at": now,
+			"access_count":     gorm.Expr("dir_history.access_count + 1"),
+		}),
+	}).Create(&row).Error
 }
 
 func (s *Store) List(limit int) ([]Entry, error) {
@@ -52,37 +61,18 @@ func (s *Store) List(limit int) ([]Entry, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	rows, err := s.db.Query(`
-SELECT path, first_accessed_at, last_accessed_at, access_count
-FROM dir_history
-ORDER BY last_accessed_at DESC
-LIMIT ?;
-`, limit)
-	if err != nil {
+	rows := make([]dbmodel.DirHistory, 0, limit)
+	if err := s.db.Order("last_accessed_at DESC").Limit(limit).Find(&rows).Error; err != nil {
 		return nil, err
 	}
-	defer func() { _ = rows.Close() }()
-
 	entries := make([]Entry, 0, limit)
-	for rows.Next() {
-		var (
-			path  string
-			first int64
-			last  int64
-			count int
-		)
-		if err := rows.Scan(&path, &first, &last, &count); err != nil {
-			return nil, err
-		}
+	for _, row := range rows {
 		entries = append(entries, Entry{
-			Path:          path,
-			FirstAccessed: time.Unix(first, 0).UTC(),
-			LastAccessed:  time.Unix(last, 0).UTC(),
-			AccessCount:   count,
+			Path:          row.Path,
+			FirstAccessed: time.Unix(row.FirstAccessedAt, 0).UTC(),
+			LastAccessed:  time.Unix(row.LastAccessedAt, 0).UTC(),
+			AccessCount:   row.AccessCount,
 		})
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
 	}
 	return entries, nil
 }
@@ -91,8 +81,7 @@ func (s *Store) Clear() error {
 	if s == nil || s.db == nil {
 		return errors.New("history store is not initialized")
 	}
-	_, err := s.db.Exec(`DELETE FROM dir_history`)
-	return err
+	return s.db.Where("1 = 1").Delete(&dbmodel.DirHistory{}).Error
 }
 
 // Close is a no-op; DB is process-wide and must not be closed by the store.

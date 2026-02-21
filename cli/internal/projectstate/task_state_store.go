@@ -3,7 +3,11 @@ package projectstate
 import (
 	"database/sql"
 	"errors"
+	dbmodel "shellman/cli/internal/db"
 	"time"
+
+	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func (s *Store) ListTasksByProject(projectID string) ([]TaskRecordRow, error) {
@@ -55,12 +59,6 @@ ORDER BY created_at ASC, task_id ASC
 }
 
 func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
-	db, release, err := s.db()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = release() }()
-
 	if input.TaskID == "" {
 		return errors.New("task id is required")
 	}
@@ -85,138 +83,172 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	hasChecked := input.Checked != nil
 	hasArchived := input.Archived != nil
 
-	_, err = db.Exec(`
-INSERT INTO tasks(task_id, repo_root, project_id, parent_task_id, title, current_command, status, sidecar_mode, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified)
-VALUES (?, ?, ?, COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, 'advisor'), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, ''), COALESCE(?, false), COALESCE(?, false), COALESCE(?, false), ?, ?)
-ON CONFLICT(task_id) DO UPDATE SET
-  project_id = CASE WHEN excluded.project_id <> '' THEN excluded.project_id ELSE tasks.project_id END,
-  parent_task_id = CASE WHEN ? THEN excluded.parent_task_id ELSE tasks.parent_task_id END,
-  title = CASE WHEN ? THEN excluded.title ELSE tasks.title END,
-  current_command = CASE WHEN ? THEN excluded.current_command ELSE tasks.current_command END,
-  status = CASE WHEN ? THEN excluded.status ELSE tasks.status END,
-  sidecar_mode = CASE WHEN ? THEN excluded.sidecar_mode ELSE tasks.sidecar_mode END,
-  description = CASE WHEN ? THEN excluded.description ELSE tasks.description END,
-  flag = CASE WHEN ? THEN excluded.flag ELSE tasks.flag END,
-  flag_desc = CASE WHEN ? THEN excluded.flag_desc ELSE tasks.flag_desc END,
-  flag_readed = CASE WHEN ? THEN excluded.flag_readed ELSE tasks.flag_readed END,
-  checked = CASE WHEN ? THEN excluded.checked ELSE tasks.checked END,
-  archived = CASE WHEN ? THEN excluded.archived ELSE tasks.archived END,
-  last_modified = excluded.last_modified
-`,
-		input.TaskID,
-		s.repoRoot,
-		input.ProjectID,
-		input.ParentTaskID,
-		input.Title,
-		input.CurrentCommand,
-		input.Status,
-		input.SidecarMode,
-		input.Description,
-		input.Flag,
-		input.FlagDesc,
-		input.FlagReaded,
-		input.Checked,
-		input.Archived,
-		now,
-		now,
-		hasParent,
-		hasTitle,
-		hasCurrentCommand,
-		hasStatus,
-		hasSidecarMode,
-		hasDescription,
-		hasFlag,
-		hasFlagDesc,
-		hasFlagReaded,
-		hasChecked,
-		hasArchived,
-	)
-	return err
+	gdb, release, err := s.dbGORM()
+	if err != nil {
+		return err
+	}
+	defer func() { _ = release() }()
+
+	row := dbmodel.Task{
+		TaskID:         input.TaskID,
+		RepoRoot:       s.repoRoot,
+		ProjectID:      input.ProjectID,
+		ParentTaskID:   strPtrOrDefault(input.ParentTaskID, ""),
+		Title:          strPtrOrDefault(input.Title, ""),
+		CurrentCommand: strPtrOrDefault(input.CurrentCommand, ""),
+		Status:         strPtrOrDefault(input.Status, ""),
+		SidecarMode:    strPtrOrDefault(input.SidecarMode, SidecarModeAdvisor),
+		Description:    strPtrOrDefault(input.Description, ""),
+		Flag:           strPtrOrDefault(input.Flag, ""),
+		FlagDesc:       strPtrOrDefault(input.FlagDesc, ""),
+		FlagReaded:     boolPtrOrDefault(input.FlagReaded, false),
+		Checked:        boolPtrOrDefault(input.Checked, false),
+		Archived:       boolPtrOrDefault(input.Archived, false),
+		CreatedAt:      now,
+		LastModified:   now,
+	}
+
+	assignments := map[string]any{
+		"project_id":    gorm.Expr("CASE WHEN excluded.project_id <> '' THEN excluded.project_id ELSE tasks.project_id END"),
+		"last_modified": gorm.Expr("excluded.last_modified"),
+	}
+	if hasParent {
+		assignments["parent_task_id"] = gorm.Expr("excluded.parent_task_id")
+	}
+	if hasTitle {
+		assignments["title"] = gorm.Expr("excluded.title")
+	}
+	if hasCurrentCommand {
+		assignments["current_command"] = gorm.Expr("excluded.current_command")
+	}
+	if hasStatus {
+		assignments["status"] = gorm.Expr("excluded.status")
+	}
+	if hasSidecarMode {
+		assignments["sidecar_mode"] = gorm.Expr("excluded.sidecar_mode")
+	}
+	if hasDescription {
+		assignments["description"] = gorm.Expr("excluded.description")
+	}
+	if hasFlag {
+		assignments["flag"] = gorm.Expr("excluded.flag")
+	}
+	if hasFlagDesc {
+		assignments["flag_desc"] = gorm.Expr("excluded.flag_desc")
+	}
+	if hasFlagReaded {
+		assignments["flag_readed"] = gorm.Expr("excluded.flag_readed")
+	}
+	if hasChecked {
+		assignments["checked"] = gorm.Expr("excluded.checked")
+	}
+	if hasArchived {
+		assignments["archived"] = gorm.Expr("excluded.archived")
+	}
+
+	return gdb.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "task_id"}},
+		DoUpdates: clause.Assignments(assignments),
+	}).Create(&row).Error
 }
 
 func (s *Store) ArchiveCheckedTasksByProject(projectID string) (int64, error) {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return 0, err
 	}
 	defer func() { _ = release() }()
 
 	now := time.Now().UTC().Unix()
-	res, err := db.Exec(`
-UPDATE tasks
-SET archived = true, last_modified = ?
-WHERE repo_root = ? AND project_id = ? AND checked = true AND archived = false
-`, now, s.repoRoot, projectID)
-	if err != nil {
-		return 0, err
+	tx := gdb.Model(&dbmodel.Task{}).
+		Where("repo_root = ? AND project_id = ? AND checked = ? AND archived = ?", s.repoRoot, projectID, true, false).
+		Updates(map[string]any{
+			"archived":      true,
+			"last_modified": now,
+		})
+	if tx.Error != nil {
+		return 0, tx.Error
 	}
-	return res.RowsAffected()
+	return tx.RowsAffected, nil
 }
 
 func (s *Store) BatchUpsertRuntime(input RuntimeBatchUpdate) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
 
-	tx, err := db.Begin()
-	if err != nil {
-		return err
-	}
-	defer func() { _ = tx.Rollback() }()
-
 	now := time.Now().UTC().Unix()
-	for _, pane := range input.Panes {
-		updatedAt := pane.UpdatedAt
-		if updatedAt <= 0 {
-			updatedAt = now
+	return gdb.Transaction(func(tx *gorm.DB) error {
+		for _, pane := range input.Panes {
+			updatedAt := pane.UpdatedAt
+			if updatedAt <= 0 {
+				updatedAt = now
+			}
+			row := dbmodel.PaneRuntime{
+				PaneID:         pane.PaneID,
+				PaneTarget:     pane.PaneTarget,
+				CurrentCommand: pane.CurrentCommand,
+				RuntimeStatus:  pane.RuntimeStatus,
+				Snapshot:       pane.Snapshot,
+				SnapshotHash:   pane.SnapshotHash,
+				CursorX:        pane.CursorX,
+				CursorY:        pane.CursorY,
+				HasCursor:      pane.HasCursor,
+				UpdatedAt:      updatedAt,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "pane_id"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"pane_target":     gorm.Expr("excluded.pane_target"),
+					"current_command": gorm.Expr("excluded.current_command"),
+					"runtime_status":  gorm.Expr("excluded.runtime_status"),
+					"snapshot":        gorm.Expr("excluded.snapshot"),
+					"snapshot_hash":   gorm.Expr("excluded.snapshot_hash"),
+					"cursor_x":        gorm.Expr("excluded.cursor_x"),
+					"cursor_y":        gorm.Expr("excluded.cursor_y"),
+					"has_cursor":      gorm.Expr("excluded.has_cursor"),
+					"updated_at":      gorm.Expr("excluded.updated_at"),
+				}),
+			}).Create(&row).Error; err != nil {
+				return err
+			}
 		}
-		if _, err := tx.Exec(`
-INSERT INTO pane_runtime(pane_id, pane_target, current_command, runtime_status, snapshot, snapshot_hash, cursor_x, cursor_y, has_cursor, updated_at)
-VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-ON CONFLICT(pane_id) DO UPDATE SET
-  pane_target = excluded.pane_target,
-  current_command = excluded.current_command,
-  runtime_status = excluded.runtime_status,
-  snapshot = excluded.snapshot,
-  snapshot_hash = excluded.snapshot_hash,
-  cursor_x = excluded.cursor_x,
-  cursor_y = excluded.cursor_y,
-  has_cursor = excluded.has_cursor,
-  updated_at = excluded.updated_at
-`, pane.PaneID, pane.PaneTarget, pane.CurrentCommand, pane.RuntimeStatus, pane.Snapshot, pane.SnapshotHash, pane.CursorX, pane.CursorY, pane.HasCursor, updatedAt); err != nil {
-			return err
-		}
-	}
 
-	for _, task := range input.Tasks {
-		updatedAt := task.UpdatedAt
-		if updatedAt <= 0 {
-			updatedAt = now
+		for _, task := range input.Tasks {
+			updatedAt := task.UpdatedAt
+			if updatedAt <= 0 {
+				updatedAt = now
+			}
+			row := dbmodel.TaskRuntime{
+				TaskID:         task.TaskID,
+				SourcePaneID:   task.SourcePaneID,
+				CurrentCommand: task.CurrentCommand,
+				RuntimeStatus:  task.RuntimeStatus,
+				SnapshotHash:   task.SnapshotHash,
+				UpdatedAt:      updatedAt,
+			}
+			if err := tx.Clauses(clause.OnConflict{
+				Columns: []clause.Column{{Name: "task_id"}},
+				DoUpdates: clause.Assignments(map[string]any{
+					"source_pane_id":  gorm.Expr("excluded.source_pane_id"),
+					"current_command": gorm.Expr("excluded.current_command"),
+					"runtime_status":  gorm.Expr("excluded.runtime_status"),
+					"snapshot_hash":   gorm.Expr("excluded.snapshot_hash"),
+					"updated_at":      gorm.Expr("excluded.updated_at"),
+				}),
+			}).Create(&row).Error; err != nil {
+				return err
+			}
+			if err := tx.Model(&dbmodel.Task{}).
+				Where("repo_root = ? AND task_id = ?", s.repoRoot, task.TaskID).
+				Update("current_command", task.CurrentCommand).Error; err != nil {
+				return err
+			}
 		}
-		if _, err := tx.Exec(`
-INSERT INTO task_runtime(task_id, source_pane_id, current_command, runtime_status, snapshot_hash, updated_at)
-VALUES (?, ?, ?, ?, ?, ?)
-ON CONFLICT(task_id) DO UPDATE SET
-  source_pane_id = excluded.source_pane_id,
-  current_command = excluded.current_command,
-  runtime_status = excluded.runtime_status,
-  snapshot_hash = excluded.snapshot_hash,
-  updated_at = excluded.updated_at
-`, task.TaskID, task.SourcePaneID, task.CurrentCommand, task.RuntimeStatus, task.SnapshotHash, updatedAt); err != nil {
-			return err
-		}
-		if _, err := tx.Exec(`
-UPDATE tasks
-SET current_command = ?
-WHERE repo_root = ? AND task_id = ?
-`, task.CurrentCommand, s.repoRoot, task.TaskID); err != nil {
-			return err
-		}
-	}
-
-	return tx.Commit()
+		return nil
+	})
 }
 
 func (s *Store) GetPaneRuntimeByPaneID(paneID string) (PaneRuntimeRecord, bool, error) {
@@ -267,12 +299,24 @@ func (s *Store) GetProjectMaxTaskLastModified(projectID string) (int64, error) {
 }
 
 func (s *Store) DeleteTask(taskID string) error {
-	db, release, err := s.db()
+	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
 	}
 	defer func() { _ = release() }()
+	return gdb.Where("repo_root = ? AND task_id = ?", s.repoRoot, taskID).Delete(&dbmodel.Task{}).Error
+}
 
-	_, err = db.Exec(`DELETE FROM tasks WHERE repo_root = ? AND task_id = ?`, s.repoRoot, taskID)
-	return err
+func strPtrOrDefault(v *string, fallback string) string {
+	if v == nil {
+		return fallback
+	}
+	return *v
+}
+
+func boolPtrOrDefault(v *bool, fallback bool) bool {
+	if v == nil {
+		return fallback
+	}
+	return *v
 }

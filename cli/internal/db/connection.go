@@ -11,6 +11,14 @@ import (
 )
 
 func OpenSQLiteWithMigrations(path string) (*sql.DB, error) {
+	gdb, err := OpenSQLiteGORMWithMigrations(path)
+	if err != nil {
+		return nil, err
+	}
+	return gdb.DB()
+}
+
+func OpenSQLiteGORMWithMigrations(path string) (*gorm.DB, error) {
 	gdb, err := openSQLite(path)
 	if err != nil {
 		return nil, err
@@ -28,7 +36,7 @@ func OpenSQLiteWithMigrations(path string) (*sql.DB, error) {
 	}
 	sqlDB.SetMaxOpenConns(1)
 	sqlDB.SetMaxIdleConns(1)
-	return sqlDB, nil
+	return gdb, nil
 }
 
 func openSQLite(path string) (*gorm.DB, error) {

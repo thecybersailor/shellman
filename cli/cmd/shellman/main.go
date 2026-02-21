@@ -382,16 +382,16 @@ func runLocal(ctx context.Context, out io.Writer, cfg config.Config) error {
 	if err := projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db")); err != nil {
 		return err
 	}
-	globalDB, err := projectstate.GlobalDB()
+	globalDBGORM, err := projectstate.GlobalDBGORM()
 	if err != nil {
 		return err
 	}
-	helperCfgStore, err := helperconfig.NewStore(globalDB, filepath.Join(configDir, ".shellman-helper-openai-secret"))
+	helperCfgStore, err := helperconfig.NewStore(globalDBGORM, filepath.Join(configDir, ".shellman-helper-openai-secret"))
 	if err != nil {
 		return err
 	}
 	tmuxAdapter := tmux.NewAdapterWithSocket(&tmux.RealExec{}, cfg.TmuxSocket)
-	historyStore, err := historydb.NewStore(globalDB)
+	historyStore, err := historydb.NewStore(globalDBGORM)
 	if err != nil {
 		return err
 	}
@@ -925,11 +925,11 @@ func buildGatewayLocalAPIServer(configDir string, tmuxService bridge.TmuxService
 	projectsStore := global.NewProjectsStore(configDir)
 	var helperCfgStore localapi.HelperConfigStore
 	var historyStore localapi.DirHistory
-	if db, err := projectstate.GlobalDB(); err == nil {
-		if st, err := helperconfig.NewStore(db, filepath.Join(configDir, ".shellman-helper-openai-secret")); err == nil {
+	if gdb, err := projectstate.GlobalDBGORM(); err == nil {
+		if st, err := helperconfig.NewStore(gdb, filepath.Join(configDir, ".shellman-helper-openai-secret")); err == nil {
 			helperCfgStore = st
 		}
-		if st, err := historydb.NewStore(db); err == nil {
+		if st, err := historydb.NewStore(gdb); err == nil {
 			historyStore = st
 		}
 	}

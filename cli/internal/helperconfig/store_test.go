@@ -14,7 +14,7 @@ func TestStore_SaveAndLoad_OpenAIConfig_EncryptsAPIKey(t *testing.T) {
 	if err := projectstate.InitGlobalDB(dbPath); err != nil {
 		t.Fatal(err)
 	}
-	db, err := projectstate.GlobalDB()
+	db, err := projectstate.GlobalDBGORM()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,5 +46,19 @@ func TestStore_SaveAndLoad_OpenAIConfig_EncryptsAPIKey(t *testing.T) {
 	}
 	if strings.Contains(raw, "sk-test-123") {
 		t.Fatalf("api key stored in plaintext")
+	}
+
+	if err := st.SaveOpenAI(OpenAIConfig{
+		Endpoint: "https://example.com",
+		Model:    "gpt-5-mini",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got2, err := st.LoadOpenAI()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got2.APIKey != "sk-test-123" || !got2.APIKeySet {
+		t.Fatalf("empty api key update should not overwrite existing encrypted key: %+v", got2)
 	}
 }
