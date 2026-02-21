@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -19,7 +20,11 @@ func OpenSQLiteWithMigrations(path string) (*sql.DB, error) {
 }
 
 func OpenSQLiteGORMWithMigrations(path string) (*gorm.DB, error) {
-	gdb, err := openSQLite(path)
+	return OpenSQLiteGORMWithMigrationsFromDSN(path)
+}
+
+func OpenSQLiteGORMWithMigrationsFromDSN(dsn string) (*gorm.DB, error) {
+	gdb, err := openSQLiteDSN(dsn)
 	if err != nil {
 		return nil, err
 	}
@@ -40,12 +45,18 @@ func OpenSQLiteGORMWithMigrations(path string) (*gorm.DB, error) {
 }
 
 func openSQLite(path string) (*gorm.DB, error) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return nil, err
+	return openSQLiteDSN(path)
+}
+
+func openSQLiteDSN(dsn string) (*gorm.DB, error) {
+	if shouldEnsureSQLiteParentDir(dsn) {
+		if err := os.MkdirAll(filepath.Dir(dsn), 0o755); err != nil {
+			return nil, err
+		}
 	}
 	gdb, err := gorm.Open(sqlite.Dialector{
 		DriverName: "sqlite",
-		DSN:        path,
+		DSN:        dsn,
 	}, &gorm.Config{})
 	if err != nil {
 		return nil, err
@@ -57,4 +68,16 @@ func openSQLite(path string) (*gorm.DB, error) {
 		return nil, err
 	}
 	return gdb, nil
+}
+
+func shouldEnsureSQLiteParentDir(dsn string) bool {
+	dsn = strings.TrimSpace(dsn)
+	if dsn == "" {
+		return false
+	}
+	lower := strings.ToLower(dsn)
+	if strings.Contains(lower, "mode=memory") || strings.HasPrefix(lower, "file:") {
+		return false
+	}
+	return true
 }

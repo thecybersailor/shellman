@@ -30,13 +30,18 @@ func NewStore(repoRoot string) *Store {
 
 // InitGlobalDB sets the process-wide sqlite file used by project state storage.
 func InitGlobalDB(dbPath string) error {
+	return InitGlobalDBWithDSN(dbPath)
+}
+
+// InitGlobalDBWithDSN sets the process-wide sqlite dsn used by project state storage.
+func InitGlobalDBWithDSN(dsn string) error {
 	globalDBMu.Lock()
 	defer globalDBMu.Unlock()
 
-	if dbPath == "" {
+	if dsn == "" {
 		return errors.New("db path is required")
 	}
-	if globalDBGORM != nil && globalDBPath == dbPath {
+	if globalDBGORM != nil && globalDBPath == dsn {
 		return nil
 	}
 	if globalDB != nil {
@@ -45,7 +50,7 @@ func InitGlobalDB(dbPath string) error {
 	}
 	globalDBGORM = nil
 
-	gdb, err := openDBGORM(dbPath)
+	gdb, err := openDBGORMFromDSN(dsn)
 	if err != nil {
 		return err
 	}
@@ -56,7 +61,7 @@ func InitGlobalDB(dbPath string) error {
 
 	globalDBGORM = gdb
 	globalDB = sqlDB
-	globalDBPath = dbPath
+	globalDBPath = dsn
 	return nil
 }
 
@@ -233,4 +238,8 @@ func (s *Store) dbGORM() (*gorm.DB, func() error, error) {
 
 func openDBGORM(path string) (*gorm.DB, error) {
 	return db.OpenSQLiteGORMWithMigrations(path)
+}
+
+func openDBGORMFromDSN(dsn string) (*gorm.DB, error) {
+	return db.OpenSQLiteGORMWithMigrationsFromDSN(dsn)
 }
