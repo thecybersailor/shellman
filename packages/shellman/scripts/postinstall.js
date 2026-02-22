@@ -18,22 +18,39 @@ function resolveTargetTriple() {
   return "";
 }
 
-function getPackageVersion() {
+function getPackageMeta() {
   const packageJSON = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
-  return packageJSON.version;
+  const version = String(packageJSON.version ?? "").trim();
+  return { version };
+}
+
+function getChannel(pkgVersion) {
+  const forced = String(process.env.SHELLMAN_RELEASE_CHANNEL ?? "").trim();
+  if (forced === "stable" || forced === "dev") {
+    return forced;
+  }
+  return pkgVersion.includes("-dev") ? "dev" : "stable";
 }
 
 function getRepo() {
-  const raw = (process.env.SHELLMAN_GITHUB_REPO || "cybersailor/shellman-project").trim();
-  return raw || "cybersailor/shellman-project";
+  const raw = (process.env.SHELLMAN_GITHUB_REPO || "thecybersailor/shellman").trim();
+  return raw || "thecybersailor/shellman";
 }
 
-function getDownloadBase(version) {
-  const customBase = (process.env.SHELLMAN_DOWNLOAD_BASE_URL || "").trim();
-  if (customBase) {
-    return customBase.replace(/\/+$/, "");
+function getManifestURL(channel) {
+  const custom = String(process.env.SHELLMAN_RELEASE_MANIFEST_URL ?? "").trim();
+  if (custom) {
+    return custom;
   }
-  return `https://github.com/${getRepo()}/releases/download/v${version}`;
+  const repo = getRepo();
+  if (channel === "dev") {
+    return `https://github.com/${repo}/releases/download/dev-main/release.json`;
+  }
+  return `https://github.com/${repo}/releases/latest/download/release.json`;
+}
+
+function getInstallRoot(channel, triple) {
+  return path.join(homedir(), ".shellman", "channels", channel, triple);
 }
 
 async function download(url, outFile) {
@@ -44,28 +61,56 @@ async function download(url, outFile) {
   await pipeline(Readable.fromWeb(res.body), createWriteStream(outFile));
 }
 
+async function fetchJSON(url) {
+  const res = await fetch(url, { headers: { Accept: "application/json" } });
+  if (!res.ok) {
+    throw new Error(`manifest request failed ${res.status} ${res.statusText}: ${url}`);
+  }
+  return res.json();
+}
+
 function sha256File(filePath) {
   const hash = createHash("sha256");
   hash.update(readFileSync(filePath));
   return hash.digest("hex");
 }
 
-function parseSHA256Sums(filePath) {
-  const lines = readFileSync(filePath, "utf8").split(/\r?\n/);
-  const out = new Map();
-  for (const line of lines) {
-    const trimmed = line.trim();
-    if (!trimmed) continue;
-    const m = trimmed.match(/^([a-fA-F0-9]{64})\s+\*?(.+)$/);
-    if (!m) continue;
-    out.set(m[2].trim(), m[1].toLowerCase());
+function resolveReleaseAsset(manifest, triple) {
+  const version = String(manifest?.version ?? "").trim();
+  const baseURL = String(manifest?.base_url ?? "").replace(/\/+$/, "");
+  const artifacts = Array.isArray(manifest?.artifacts) ? manifest.artifacts : [];
+  const hit = artifacts.find((item) => String(item?.target ?? "") === triple);
+  if (!version) {
+    throw new Error("invalid release manifest: missing version");
   }
-  return out;
+  if (!baseURL) {
+    throw new Error("invalid release manifest: missing base_url");
+  }
+  if (!hit) {
+    throw new Error(`release manifest missing target: ${triple}`);
+  }
+  const file = String(hit.file ?? "").trim();
+  const sha256 = String(hit.sha256 ?? "").trim().toLowerCase();
+  if (!file || !sha256) {
+    throw new Error(`release manifest target incomplete: ${triple}`);
+  }
+  return {
+    version,
+    file,
+    sha256,
+    url: `${baseURL}/${file}`
+  };
 }
 
 async function main() {
   if ((process.env.SHELLMAN_SKIP_POSTINSTALL || "").trim() === "1") {
     console.log("shellman: skip postinstall by SHELLMAN_SKIP_POSTINSTALL=1");
+    return;
+  }
+  const forcePostinstall = String(process.env.SHELLMAN_FORCE_POSTINSTALL ?? "").trim() === "1";
+  const isGlobalInstall = String(process.env.npm_config_global ?? "").trim() === "true";
+  if (!forcePostinstall && !isGlobalInstall) {
+    console.log("shellman: skip postinstall for non-global install");
     return;
   }
 
@@ -75,53 +120,43 @@ async function main() {
     process.exit(1);
   }
 
-  const version = getPackageVersion();
-  const assetName = `shellman-v${version}-${triple}.zip`;
-  const checksumsName = "SHA256SUMS";
-  const base = getDownloadBase(version);
-
-  const installRoot = path.join(homedir(), ".shellman", "versions", `v${version}`, triple);
+  const { version: pkgVersion } = getPackageMeta();
+  const channel = getChannel(pkgVersion);
+  const installRoot = getInstallRoot(channel, triple);
   const binPath = path.join(installRoot, "bin", "shellman");
+
   if (existsSync(binPath)) {
     console.log(`shellman: binary already installed at ${binPath}`);
     return;
   }
 
-  const tmpRoot = path.join(homedir(), ".shellman", "tmp", `v${version}-${triple}`);
+  const manifestURL = getManifestURL(channel);
+  console.log(`shellman: reading release manifest (${channel}) ${manifestURL}`);
+  const manifest = await fetchJSON(manifestURL);
+  const releaseAsset = resolveReleaseAsset(manifest, triple);
+
+  const tmpRoot = path.join(homedir(), ".shellman", "tmp", `${channel}-${triple}`);
   rmSync(tmpRoot, { recursive: true, force: true });
   mkdirSync(tmpRoot, { recursive: true });
 
-  const zipPath = path.join(tmpRoot, assetName);
-  const sumsPath = path.join(tmpRoot, checksumsName);
-  const zipURL = `${base}/${assetName}`;
-  const sumsURL = `${base}/${checksumsName}`;
+  const zipPath = path.join(tmpRoot, releaseAsset.file);
+  console.log(`shellman: downloading ${releaseAsset.url}`);
+  await download(releaseAsset.url, zipPath);
 
-  console.log(`shellman: downloading ${zipURL}`);
-  await download(zipURL, zipPath);
-  await download(sumsURL, sumsPath);
-
-  const parsed = parseSHA256Sums(sumsPath);
-  const expected = parsed.get(assetName);
-  if (!expected) {
-    throw new Error(`missing checksum entry for ${assetName}`);
-  }
   const actual = sha256File(zipPath);
-  if (actual !== expected) {
-    throw new Error(`checksum mismatch for ${assetName}`);
+  if (actual !== releaseAsset.sha256) {
+    throw new Error(`checksum mismatch for ${releaseAsset.file}`);
   }
 
   rmSync(installRoot, { recursive: true, force: true });
   mkdirSync(installRoot, { recursive: true });
-  await pipeline(
-    createReadStream(zipPath),
-    unzipper.Extract({ path: installRoot }),
-  );
+  await pipeline(createReadStream(zipPath), unzipper.Extract({ path: installRoot }));
 
   if (!existsSync(binPath)) {
     throw new Error(`installed package missing binary: ${binPath}`);
   }
 
-  console.log(`shellman: installed v${version} for ${triple}`);
+  console.log(`shellman: installed ${releaseAsset.version} (${channel}) for ${triple}`);
 }
 
 main().catch((error) => {
