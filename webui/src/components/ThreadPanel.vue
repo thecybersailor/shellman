@@ -2,7 +2,6 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { InputGroupButton } from "@/components/ui/input-group";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation";
@@ -18,7 +17,8 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
-import { Eye, MessageCircle, Plane, SquareIcon } from "lucide-vue-next";
+import SidecarModeSelect from "@/components/SidecarModeSelect.vue";
+import { SquareIcon } from "lucide-vue-next";
 import type { TaskMessage } from "@/stores/shellman";
 const { t } = useI18n();
 
@@ -370,43 +370,10 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
 
     <div class="px-2 text-[11px] text-muted-foreground/80 font-mono mt-0.5 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 flex-wrap">
-        <Select :model-value="sidecarMode" @update:model-value="onSidecarModeUpdate">
-          <SelectTrigger data-test-id="shellman-shellman-sidecar-mode-trigger" class="h-7 min-w-[132px] text-[11px] border-0 bg-transparent! gap-1.5 py-0! cursor-pointer">
-            <MessageCircle v-if="sidecarMode === 'advisor'" class="size-3.5 shrink-0 text-muted-foreground" />
-            <Eye v-else-if="sidecarMode === 'observer'" class="size-3.5 shrink-0 text-muted-foreground" />
-            <Plane v-else-if="sidecarMode === 'autopilot'" class="size-3.5 shrink-0 text-muted-foreground" />
-            <span>{{ sidecarMode === "advisor" ? t("thread.sidecarModeAdvisor") : sidecarMode === "observer" ? t("thread.sidecarModeObserver") : sidecarMode === "autopilot" ? t("thread.sidecarModeAutopilot") : t("thread.sidecarMode") }}</span>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-advisor" value="advisor">
-              <div>
-                <div class="flex items-center gap-2 mb-1">
-                  <MessageCircle class="size-3.5 shrink-0" />
-                  {{ t("thread.sidecarModeAdvisor") }}
-                </div>
-                <div class="ml-5 text-xs text-muted-foreground/70">{{ t("thread.sidecarModeAdvisorDescription") }}</div>
-              </div>
-            </SelectItem>
-            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-observer" value="observer">
-              <div>
-                <div class="flex items-center gap-2 mb-1">
-                  <Eye class="size-3.5 shrink-0" />
-                  {{ t("thread.sidecarModeObserver") }}
-                </div>
-                <div class="ml-5 text-xs text-muted-foreground/70">{{ t("thread.sidecarModeObserverDescription") }}</div>
-              </div>
-            </SelectItem>
-            <SelectItem data-test-id="shellman-shellman-sidecar-mode-option-autopilot" value="autopilot">
-              <div>
-                <div class="flex items-center gap-2 mb-1">
-                  <Plane class="size-3.5 shrink-0" />
-                  {{ t("thread.sidecarModeAutopilot") }}
-                </div>
-                <div class="ml-5 text-xs text-muted-foreground/70">{{ t("thread.sidecarModeAutopilotDescription") }}</div>
-              </div>
-            </SelectItem>
-          </SelectContent>
-        </Select>
+        <SidecarModeSelect
+          :model-value="sidecarMode"
+          @update:model-value="(next) => onSidecarModeUpdate(next)"
+        />
       </div>
       <div class="text-xs">#{{ props.paneUuid ? props.paneUuid.slice(0, 7) : "-" }}</div>
     </div>

@@ -279,7 +279,7 @@ describe("TerminalPane", () => {
     expect(writes).not.toContain(repaint);
   });
 
-  it("suppresses ansi repaint append during task switch until reset arrives", async () => {
+  it("keeps ansi repaint append visible during task switch", async () => {
     terminalOptions = undefined;
     writes = [];
     resized = [];
@@ -299,13 +299,7 @@ describe("TerminalPane", () => {
     const repaintNormalized = "\u001b[0m\u001b[H\u001b[2Jcodex";
     const writesBefore = writes.length;
     await wrapper.setProps({ frame: { mode: "append", data: repaint }, cursor: { x: 0, y: 0 } });
-    expect(writes.slice(writesBefore)).not.toContain(repaintNormalized);
-
-    await wrapper.setProps({ frame: { mode: "reset", data: "pane-ready\n" }, cursor: { x: 0, y: 0 } });
-    const writesAfterReset = writes.length;
-
-    await wrapper.setProps({ frame: { mode: "append", data: repaint }, cursor: { x: 0, y: 0 } });
-    expect(writes.slice(writesAfterReset)).toContain(repaintNormalized);
+    expect(writes.slice(writesBefore)).toContain(repaintNormalized);
   });
 
   it("re-applies cursor after reset even when cursor value does not change", async () => {
@@ -322,7 +316,7 @@ describe("TerminalPane", () => {
 
     await wrapper.setProps({ cursor: { x: 2, y: 1 } });
     await wrapper.setProps({ frame: { mode: "reset", data: "bash-5.3$ " } });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 40));
 
     expect(writes[writes.length - 1]).toBe("\u001b[2;3H");
   });
@@ -340,7 +334,7 @@ describe("TerminalPane", () => {
     const wrapper = mount(TerminalPane);
 
     await wrapper.setProps({ frame: { mode: "reset", data: "bash-5.3$ " }, cursor: { x: 1, y: 0 } });
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 40));
 
     expect(scrollToBottomCalls).toBeGreaterThan(0);
     expect(writes).toContain(SCROLL_MARKER);

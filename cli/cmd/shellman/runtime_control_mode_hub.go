@@ -396,7 +396,7 @@ func (c *realControlSessionClient) closeLines() {
 }
 
 func loadPaneIDMap(socket, session string) (map[string]string, error) {
-	args := append(tmuxArgsWithSocket(socket), "list-panes", "-s", "-t", session, "-F", "#{pane_id}\t#{pane_id}")
+	args := append(tmuxArgsWithSocket(socket), "list-panes", "-s", "-t", session, "-F", "#{pane_id}|#{pane_id}")
 	out, err := exec.Command("tmux", args...).CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
@@ -411,7 +411,7 @@ func loadPaneIDMap(socket, session string) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.SplitN(line, "\t", 2)
+		parts := strings.SplitN(line, "|", 2)
 		if len(parts) != 2 {
 			continue
 		}

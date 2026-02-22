@@ -363,6 +363,13 @@ async function readCursorAlignment(page: Page) {
   });
 }
 
+function paneTailTokenByIndex(index: number) {
+  if (index === 0) {
+    return "Find and fix a bug in @filename";
+  }
+  return `PANE_T${String(index + 1).padStart(2, "0")}_LINE_05000`;
+}
+
 async function seedProjectWithManyRootTasks(request: APIRequestContext, count: number) {
   if (count < 2) {
     throw new Error(`invalid task count: ${String(count)}`);
@@ -559,16 +566,13 @@ test.describe("shellman local web full chain (docker)", () => {
       const taskID = evicted[i].taskID;
       const projectID = evicted[i].projectID;
       const paneToken = `T${String(i + 1).padStart(2, "0")}`;
+      const tailToken = paneTailTokenByIndex(i);
       await selectTask(page, projectID, taskID);
       await page.waitForTimeout(1200);
       await activeTerminal(page).click();
-      if (i === 0 || i === evicted.length - 1) {
-        if (i === 0) {
-          await waitBufferContains(page, "Find and fix a bug in @filename", 45000);
-        } else {
-          await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
-          expect(await bufferContains(page, `PANE_${paneToken}_LINE_00001`)).toBe(false);
-        }
+      await waitBufferContains(page, tailToken, 45000);
+      if (i > 0) {
+        expect(await bufferContains(page, `PANE_${paneToken}_LINE_00001`)).toBe(false);
       }
       await expect
         .poll(async () => {
@@ -577,8 +581,9 @@ test.describe("shellman local web full chain (docker)", () => {
         })
         .toBe(0);
       const alignmentByBuffer = await readCursorAlignment(page);
-      // eslint-disable-next-line no-console
-      console.log(`[lru-gap-recover][buffer] i=${i} token=${paneToken} state=${JSON.stringify(alignmentByBuffer)}`);
+      if (alignmentByBuffer.visualCursorDelta === null || alignmentByBuffer.cursorPromptDelta === 1) {
+        console.log(`[lru-gap-recover][first-anomaly] i=${i} token=${paneToken} state=${JSON.stringify(alignmentByBuffer)}`);
+      }
       expect(alignmentByBuffer.ok).toBe(true);
       if (alignmentByBuffer.promptLineIndex !== -1) {
         expect(alignmentByBuffer.cursorPromptDelta).toBe(0);
@@ -589,14 +594,17 @@ test.describe("shellman local web full chain (docker)", () => {
       for (let i = 0; i < evicted.length; i += 1) {
         const taskID = evicted[i].taskID;
         const projectID = evicted[i].projectID;
+        const tailToken = paneTailTokenByIndex(i);
         await selectTask(page, projectID, taskID);
         await page.waitForTimeout(360);
         await activeTerminal(page).click();
+        await waitBufferContains(page, tailToken, 15000);
         const alignment = await readCursorAlignment(page);
+        if (alignment.visualCursorDelta === null || alignment.cursorPromptDelta === 1) {
+          console.log(`[lru-gap-recover][round-anomaly] round=${round} i=${i} state=${JSON.stringify(alignment)}`);
+        }
         expect(alignment.ok).toBe(true);
         expect(alignment.visualCursorDelta).toBe(0);
-        // eslint-disable-next-line no-console
-        console.log(`[lru-gap-recover][round] round=${round} i=${i} state=${JSON.stringify(alignment)}`);
         if (alignment.promptLineIndex !== -1) {
           expect(alignment.cursorPromptDelta).toBe(0);
         }

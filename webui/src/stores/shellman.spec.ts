@@ -1955,6 +1955,120 @@ describe("shellman store", () => {
     expect(store.state.terminalCursor).toEqual({ x: 6, y: 1 });
   });
 
+  it("keeps selected pane ansi repaint append frame while snapshot cache is overwritten", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: [{ task_id: "t1", title: "one", status: "running" }]
+            }
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+
+    await store.selectTask("t1");
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_reset",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "reset", data: "old-tail\nroot# ", cursor: { x: 6, y: 1 } }
+      })
+    );
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_repaint_append",
+        type: "event",
+        op: "term.output",
+        payload: {
+          target: "e2e:0.0",
+          mode: "append",
+          data: "\u001b[0m\u001b[H\u001b[2Jnew-tail\nroot# ",
+          cursor: { x: 6, y: 1 }
+        }
+      })
+    );
+
+    expect(store.state.terminalOutput).toBe("new-tail\nroot# ");
+    expect(store.state.terminalFrame).toEqual({
+      mode: "append",
+      data: "\u001b[0m\u001b[H\u001b[2Jnew-tail\nroot# "
+    });
+    expect(store.state.terminalByPaneUuid["uuid-t1"]?.output).toBe("new-tail\nroot# ");
+    expect(store.state.terminalByPaneUuid["uuid-t1"]?.frame).toEqual({
+      mode: "append",
+      data: "\u001b[0m\u001b[H\u001b[2Jnew-tail\nroot# "
+    });
+  });
+
+  it("ignores clear-only ansi repaint append for selected pane", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: [{ task_id: "t1", title: "one", status: "running" }]
+            }
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+    await store.selectTask("t1");
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_reset",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "reset", data: "old-tail\nroot# ", cursor: { x: 6, y: 1 } }
+      })
+    );
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_repaint_clear_only",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "append", data: "\u001b[0m\u001b[H\u001b[2J", cursor: { x: 0, y: 0 } }
+      })
+    );
+    expect(store.state.terminalOutput).toBe("old-tail\nroot# ");
+    expect(store.state.terminalFrame).toEqual({ mode: "reset", data: "old-tail\nroot# " });
+    expect(store.state.terminalByPaneUuid["uuid-t1"]?.frame).toEqual({ mode: "reset", data: "old-tail\nroot# " });
+  });
+
   it("skips short ansi repaint append during gap_recover and applies reset", async () => {
     const sock = new FakeSocket();
     const fakeFetch = async (url: string) => {

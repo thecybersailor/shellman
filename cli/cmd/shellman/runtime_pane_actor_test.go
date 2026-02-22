@@ -577,6 +577,50 @@ func TestTermOutputMessages_OversizedResetCarriesCursorOnlyOnLastChunk(t *testin
 	}
 }
 
+func TestTermOutputMessages_ResetTrimsTrailingNewlineOnCursorChunk(t *testing.T) {
+	msgs := termOutputMessages("e2e:0.0", "reset", "root# \n", 6, 0, true)
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	var payload struct {
+		Mode string         `json:"mode"`
+		Data string         `json:"data"`
+		Cur  map[string]int `json:"cursor"`
+	}
+	if err := json.Unmarshal(msgs[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload failed: %v", err)
+	}
+	if payload.Mode != "reset" {
+		t.Fatalf("expected mode reset, got %q", payload.Mode)
+	}
+	if payload.Data != "root# " {
+		t.Fatalf("expected trailing newline trimmed, got %q", payload.Data)
+	}
+	if payload.Cur == nil || payload.Cur["x"] != 6 || payload.Cur["y"] != 0 {
+		t.Fatalf("unexpected cursor payload: %#v", payload.Cur)
+	}
+}
+
+func TestTermOutputMessages_AppendKeepsTrailingNewline(t *testing.T) {
+	msgs := termOutputMessages("e2e:0.0", "append", "line\n", 0, 0, true)
+	if len(msgs) != 1 {
+		t.Fatalf("expected one message, got %d", len(msgs))
+	}
+	var payload struct {
+		Mode string `json:"mode"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(msgs[0].Payload, &payload); err != nil {
+		t.Fatalf("decode payload failed: %v", err)
+	}
+	if payload.Mode != "append" {
+		t.Fatalf("expected mode append, got %q", payload.Mode)
+	}
+	if payload.Data != "line\n" {
+		t.Fatalf("append payload should keep trailing newline, got %q", payload.Data)
+	}
+}
+
 func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 	resetAutoProgressSuppressionForTest()
 	oldStatusInterval := statusPumpInterval

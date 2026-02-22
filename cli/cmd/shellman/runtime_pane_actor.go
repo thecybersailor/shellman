@@ -699,10 +699,16 @@ func termOutputMessages(target, mode, data string, cursorX, cursorY int, hasCurs
 	out := make([]protocol.Message, 0, len(frames))
 	lastIdx := len(frames) - 1
 	for idx, frame := range frames {
+		frameData := frame.Data
+		if mode == "reset" && idx == lastIdx && strings.HasSuffix(frameData, "\n") {
+			// tmux capture-pane includes a terminal sentinel newline that should not
+			// move prompt rows when we later restore cursor on task switch.
+			frameData = strings.TrimSuffix(frameData, "\n")
+		}
 		payload := map[string]any{
 			"target": target,
 			"mode":   frame.Mode,
-			"data":   frame.Data,
+			"data":   frameData,
 		}
 		if hasCursor && idx == lastIdx {
 			payload["cursor"] = map[string]int{"x": cursorX, "y": cursorY}

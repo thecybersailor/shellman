@@ -186,7 +186,7 @@ if [ "$has_s" -ne 1 ]; then
   exit 65
 fi
 
-printf "%%16\t%%16\n%%17\t%%17\n%%18\t%%18\n"
+printf "%%16|%%16\n%%17|%%17\n%%18|%%18\n"
 `
 	if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake tmux failed: %v", err)

@@ -1093,6 +1093,18 @@ export function createShellmanStore(
       const mode = payload.mode === "append" ? "append" : "reset";
       const text = String(payload.data ?? "");
       const frameKind = classifyTermFrame(mode, text);
+      const ansiRepaintBody = mode === "append" && frameKind === "append_ansi_repaint" ? text.slice(ANSI_REPAINT_PREFIX.length) : "";
+      const ansiRepaintHasVisibleContent = /[^\s]/.test(ansiRepaintBody);
+      const ansiRepaintSnapshot = mode === "append" && frameKind === "append_ansi_repaint" && ansiRepaintHasVisibleContent;
+      if (mode === "append" && frameKind === "append_ansi_repaint" && !ansiRepaintHasVisibleContent) {
+        logInfo("shellman.term.output.skip", {
+          outputSeq: termOutputSeq + 1,
+          target,
+          mode,
+          reason: "clear-only-ansi-repaint"
+        });
+        return;
+      }
       trackTermFrameProfile(target, mode, text);
       const outputSeq = ++termOutputSeq;
       const cachePaneUUID = incomingPaneUuid || findPaneUUIDByTarget(target);
@@ -1118,13 +1130,19 @@ export function createShellmanStore(
         });
         return;
       }
-      if (isSelectedPane && selectedPaneUuid && mode === "reset" && pendingGapRecoverByPaneUuid[selectedPaneUuid]) {
+      if (
+        isSelectedPane &&
+        selectedPaneUuid &&
+        (mode === "reset" || ansiRepaintSnapshot) &&
+        pendingGapRecoverByPaneUuid[selectedPaneUuid]
+      ) {
         delete pendingGapRecoverByPaneUuid[selectedPaneUuid];
       }
       const prevCache = cachePaneUUID ? state.terminalByPaneUuid[cachePaneUUID] ?? persistedSnapshotByPaneUuid[cachePaneUUID] : null;
       const baseOutput = isSelectedPane ? state.terminalOutput : String(prevCache?.output ?? "");
       const beforeLen = baseOutput.length;
-      const nextOutputRaw = mode === "append" ? baseOutput + text : text;
+      const nextOutputRaw =
+        mode === "append" ? (ansiRepaintSnapshot ? ansiRepaintBody : baseOutput + text) : text;
       const nextOutput = trimToRecentLines(nextOutputRaw, TERMINAL_CACHE_MAX_LINES);
       let nextCursor: { x: number; y: number } | null = isSelectedPane ? state.terminalCursor : prevCache?.cursor ?? null;
       if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {

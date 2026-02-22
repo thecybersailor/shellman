@@ -45,15 +45,12 @@ let resizeRAF = 0;
 let scrollRAF = 0;
 let fitRetryCount = 0;
 let taskSwitchRetryTimer: number | null = null;
-let repaintSuppressionTimer: number | null = null;
 let viewWriteSeq = 0;
 let onDataSeq = 0;
 let cursorMoveSeq = 0;
 let terminalInput: HTMLTextAreaElement | null = null;
 let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
-const ANSI_REPAINT_SUPPRESSION_MS = 1200;
-let suppressAnsiRepaintAppendUntilReset = false;
 const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.reopen")));
 
 interface BufferSnapshot {
@@ -335,28 +332,6 @@ function normalizeAppendFrameData(text: string) {
   return text;
 }
 
-function stopAnsiRepaintSuppression(reason: string) {
-  suppressAnsiRepaintAppendUntilReset = false;
-  if (repaintSuppressionTimer !== null) {
-    window.clearTimeout(repaintSuppressionTimer);
-    repaintSuppressionTimer = null;
-  }
-  logInfo("shellman.term.view.repaint_suppress.stop", { reason });
-}
-
-function startAnsiRepaintSuppression(reason: string) {
-  suppressAnsiRepaintAppendUntilReset = true;
-  if (repaintSuppressionTimer !== null) {
-    window.clearTimeout(repaintSuppressionTimer);
-  }
-  repaintSuppressionTimer = window.setTimeout(() => {
-    repaintSuppressionTimer = null;
-    suppressAnsiRepaintAppendUntilReset = false;
-    logInfo("shellman.term.view.repaint_suppress.timeout", { reason });
-  }, ANSI_REPAINT_SUPPRESSION_MS);
-  logInfo("shellman.term.view.repaint_suppress.start", { reason, ms: ANSI_REPAINT_SUPPRESSION_MS });
-}
-
 function onPaste(ev: ClipboardEvent) {
   if (!ev.clipboardData) {
     return;
@@ -415,7 +390,6 @@ watch(
     const text = next.mode === "reset" ? normalizeResetFrameData(rawText) : normalizeAppendFrameData(rawText);
     logInfo("shellman.term.view.frame.watch", { mode: next.mode, dataLen: text.length, rawDataLen: rawText.length });
     if (next.mode === "reset") {
-      stopAnsiRepaintSuppression("frame-reset");
       const beforeReset = readBufferSnapshot();
       (term as unknown as { reset?: () => void }).reset?.();
       const afterReset = readBufferSnapshot();
@@ -433,11 +407,6 @@ watch(
         moveCursor(props.cursor ?? null);
         scheduleScrollToBottom("frame-reset-empty");
       }
-      return;
-    }
-
-    if (suppressAnsiRepaintAppendUntilReset && text.startsWith(ANSI_REPAINT_PREFIX)) {
-      logInfo("shellman.term.view.frame.append.skip", { reason: "task-switch-repaint-suppressed", dataLen: text.length });
       return;
     }
 
@@ -474,7 +443,6 @@ watch(
     if (!opened.value || !next || next === prev) {
       return;
     }
-    startAnsiRepaintSuppression("task-switch");
     logInfo("shellman.term.view.task.switch", { fromTaskId: prev, toTaskId: next });
     scheduleTerminalSizeSync(true);
     scheduleScrollToBottom("task-switch");
@@ -602,10 +570,6 @@ onBeforeUnmount(() => {
   if (taskSwitchRetryTimer !== null) {
     window.clearTimeout(taskSwitchRetryTimer);
     taskSwitchRetryTimer = null;
-  }
-  if (repaintSuppressionTimer !== null) {
-    window.clearTimeout(repaintSuppressionTimer);
-    repaintSuppressionTimer = null;
   }
   if (resizeObserver) {
     resizeObserver.disconnect();
