@@ -187,7 +187,6 @@ function scheduleScrollToBottom(reason: string) {
     }
     const terminal = term as unknown as { scrollToBottom?: () => void };
     terminal.scrollToBottom?.();
-    moveCursor(props.cursor ?? null);
     logInfo("shellman.term.view.scroll_bottom", { trigger: reason });
   });
 }

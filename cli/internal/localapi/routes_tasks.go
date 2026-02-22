@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -121,17 +122,21 @@ func buildTreeNodesFromTaskRows(rows []projectstate.TaskRecordRow) []projectstat
 }
 
 func (s *Server) handleProjectArchiveDone(w http.ResponseWriter, _ *http.Request, projectID string) {
+	slog.Info("archive.done.requested", "project_id", strings.TrimSpace(projectID))
 	repoRoot, err := s.findProjectRepoRoot(projectID)
 	if err != nil {
+		slog.Error("archive.done.project_lookup_failed", "project_id", strings.TrimSpace(projectID), "err", err)
 		respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", err.Error())
 		return
 	}
 	store := projectstate.NewStore(repoRoot)
 	affected, err := s.archiveCheckedTasksByProject(store, projectID)
 	if err != nil {
+		slog.Error("archive.done.failed", "project_id", strings.TrimSpace(projectID), "repo_root", strings.TrimSpace(repoRoot), "err", err)
 		respondError(w, http.StatusInternalServerError, "TASK_ARCHIVE_FAILED", err.Error())
 		return
 	}
+	slog.Info("archive.done.succeeded", "project_id", strings.TrimSpace(projectID), "repo_root", strings.TrimSpace(repoRoot), "archived_count", affected)
 	s.publishEvent("task.tree.updated", projectID, "", map[string]any{})
 	respondOK(w, map[string]any{"project_id": projectID, "archived_count": affected})
 }
@@ -158,14 +163,23 @@ func (s *Server) archiveCheckedTasksByProject(store *projectstate.Store, project
 		}
 		target := strings.TrimSpace(binding.PaneTarget)
 		if target == "" {
+			slog.Info("archive.done.skip_no_pane_target", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID))
 			continue
 		}
 		if s.deps.PaneService == nil {
+			slog.Error("archive.done.pane_service_unavailable", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID), "pane_target", target)
 			return 0, errors.New("pane service is not configured")
 		}
+		slog.Info("archive.done.close_pane_attempt", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID), "pane_target", target)
 		if err := s.deps.PaneService.ClosePane(target); err != nil {
+			if isArchiveIgnorablePaneCloseError(err) {
+				slog.Warn("archive.done.close_pane_ignored", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID), "pane_target", target, "err", err)
+				continue
+			}
+			slog.Error("archive.done.close_pane_failed", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID), "pane_target", target, "err", err)
 			return 0, fmt.Errorf("archive close pane failed task_id=%s pane_target=%s: %w", strings.TrimSpace(row.TaskID), target, err)
 		}
+		slog.Info("archive.done.close_pane_succeeded", "project_id", strings.TrimSpace(projectID), "task_id", strings.TrimSpace(row.TaskID), "pane_target", target)
 	}
 
 	if len(archiveTaskIDs) > 0 {
@@ -193,6 +207,24 @@ func isTaskTerminalStatus(status string) bool {
 	default:
 		return false
 	}
+}
+
+func isArchiveIgnorablePaneCloseError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	if msg == "" {
+		return false
+	}
+	return strings.Contains(msg, "can't find pane") ||
+		strings.Contains(msg, "cannot find pane") ||
+		strings.Contains(msg, "pane not found") ||
+		strings.Contains(msg, "no such pane") ||
+		strings.Contains(msg, "can't find window") ||
+		strings.Contains(msg, "cannot find window") ||
+		strings.Contains(msg, "window not found") ||
+		strings.Contains(msg, "no such window")
 }
 
 func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {

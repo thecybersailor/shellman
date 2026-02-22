@@ -159,7 +159,7 @@ function taskRowTitle(page: Page, projectID: string, taskID: string) {
 
 async function selectTask(page: Page, projectID: string, taskID: string) {
   const row = projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first();
-  await expect(row).toBeVisible();
+  await expect(row).toBeVisible({ timeout: 30000 });
   await row.click();
   // Simulate human pacing to avoid panel transition races between task switches.
   await page.waitForTimeout(120);
@@ -181,38 +181,211 @@ async function runEcho(page: Page, token: string) {
 }
 
 async function runCodexStyleRepaintStorm(page: Page) {
-  const cmd = [
-    "for i in $(seq 1 18); do",
-    "printf '\\033[0m\\033[H\\033[2J';",
-    "printf 'OpenAI Codex (v0.104.0)\\n';",
-    "printf 'Find and fix a bug in @filename\\n';",
-    "printf '? for shortcuts\\n';",
-    "seq 1 90 | sed 's/^/codex-tui-line-/';",
-    "sleep 0.05;",
-    "done"
-  ].join(" ");
+  await activeTerminal(page).click();
+  await page.keyboard.type("clear");
+  await page.keyboard.press("Enter");
+  await page.keyboard.type(
+    "printf 'OpenAI Codex (v0.104.0)\\nFind and fix a bug in @filename\\n? for shortcuts\\n' && seq 1 240 | awk '{printf \"codex-tui-line-%03d\\n\", $1}'"
+  );
+  await page.keyboard.press("Enter");
+}
+
+async function appendManyLines(page: Page, paneToken: string, lines: number) {
+  const cmd = `seq 1 ${String(lines)} | awk '{printf \"PANE_${paneToken}_LINE_%05d\\n\", $1}'`;
   await activeTerminal(page).click();
   await page.keyboard.type(cmd);
   await page.keyboard.press("Enter");
 }
 
-async function countBufferLinesContaining(page: Page, needle: string) {
-  return page.evaluate((text) => {
+async function waitBufferContains(page: Page, text: string, timeoutMs = 12000) {
+  await expect
+    .poll(
+      async () =>
+        page.evaluate((needle) => {
+          const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any> };
+          const terms = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__ : [];
+          const term =
+            terms.findLast?.((item) => Boolean(item?.element && item.element.offsetParent !== null)) ??
+            terms[terms.length - 1] ??
+            null;
+          const active = term?.buffer?.active;
+          if (!active || typeof active.length !== "number") {
+            return false;
+          }
+          for (let i = 0; i < active.length; i += 1) {
+            const line = String(active.getLine(i)?.translateToString?.(true) ?? "");
+            if (line.includes(needle)) {
+              return true;
+            }
+          }
+          return false;
+        }, text),
+      { timeout: timeoutMs }
+    )
+    .toBe(true);
+}
+
+async function bufferContains(page: Page, text: string) {
+  return page.evaluate((needle) => {
     const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any> };
-    const term = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__[g.__SHELLMAN_TERM_INSTANCES__.length - 1] : null;
+    const terms = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__ : [];
+    const term =
+      terms.findLast?.((item) => Boolean(item?.element && item.element.offsetParent !== null)) ??
+      terms[terms.length - 1] ??
+      null;
     const active = term?.buffer?.active;
     if (!active || typeof active.length !== "number") {
-      return -1;
+      return false;
     }
-    let count = 0;
     for (let i = 0; i < active.length; i += 1) {
       const line = String(active.getLine(i)?.translateToString?.(true) ?? "");
-      if (line.includes(text)) {
-        count += 1;
+      if (line.includes(needle)) {
+        return true;
       }
     }
-    return count;
-  }, needle);
+    return false;
+  }, text);
+}
+
+async function readPaneHistoryFetchURLs(page: Page) {
+  return page.evaluate(() => {
+    const g = window as unknown as { __SHELLMAN_FETCH_URLS__?: string[] };
+    return Array.isArray(g.__SHELLMAN_FETCH_URLS__) ? g.__SHELLMAN_FETCH_URLS__.slice() : [];
+  });
+}
+
+async function readSelectPanePayloads(page: Page) {
+  return page.evaluate(() => {
+    const g = window as unknown as { __SHELLMAN_SELECT_PAYLOADS__?: Array<Record<string, unknown>> };
+    return Array.isArray(g.__SHELLMAN_SELECT_PAYLOADS__) ? g.__SHELLMAN_SELECT_PAYLOADS__.slice() : [];
+  });
+}
+
+async function readCursorAlignment(page: Page) {
+  return page.evaluate(() => {
+    const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any>; __SHELLMAN_TERM_DEBUG_LOGS__?: Array<any> };
+    const terms = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__ : [];
+    const term =
+      terms.findLast?.((item) => Boolean(item?.element && item.element.offsetParent !== null)) ??
+      terms[terms.length - 1] ??
+      null;
+    const active = term?.buffer?.active ?? null;
+    if (!active) {
+      return { ok: false, reason: "no-active-buffer" };
+    }
+    const lines: string[] = [];
+    for (let i = 0; i < active.length; i += 1) {
+      lines.push(String(active.getLine(i)?.translateToString?.(true) ?? ""));
+    }
+    const promptLineIndex = lines.reduce((acc, line, idx) => (line.includes("root@") || line.includes("#") ? idx : acc), -1);
+    const canvasCursor = (() => {
+      const root = Array.from(document.querySelectorAll('[data-test-id="tt-terminal-root"]')).find(
+        (el) => (el as HTMLElement).offsetParent !== null
+      ) as HTMLElement | undefined;
+      if (!root) {
+        return { found: false, reason: "no-terminal-root" };
+      }
+      const canvases = Array.from(root.querySelectorAll(".xterm-screen canvas")) as HTMLCanvasElement[];
+      const candidates: Array<Record<string, number>> = [];
+      for (let idx = 0; idx < canvases.length; idx += 1) {
+        const c = canvases[idx];
+        const ctx = c.getContext("2d");
+        if (!ctx || c.width <= 0 || c.height <= 0) {
+          continue;
+        }
+        const data = ctx.getImageData(0, 0, c.width, c.height).data;
+        let minX = c.width;
+        let minY = c.height;
+        let maxX = -1;
+        let maxY = -1;
+        let count = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i];
+          const gg = data[i + 1];
+          const b = data[i + 2];
+          const a = data[i + 3];
+          if (a < 210 || r < 230 || gg < 230 || b < 230) {
+            continue;
+          }
+          const p = i / 4;
+          const x = p % c.width;
+          const y = Math.floor(p / c.width);
+          count += 1;
+          if (x < minX) minX = x;
+          if (y < minY) minY = y;
+          if (x > maxX) maxX = x;
+          if (y > maxY) maxY = y;
+        }
+        if (count < 20 || maxX < minX || maxY < minY) {
+          continue;
+        }
+        const rect = c.getBoundingClientRect();
+        const dpr = rect.width > 0 ? c.width / rect.width : 1;
+        candidates.push({
+          index: idx,
+          count,
+          minX,
+          minY,
+          maxX,
+          maxY,
+          cssTop: minY / dpr,
+          cssHeight: (maxY - minY + 1) / dpr
+        });
+      }
+      if (candidates.length === 0) {
+        return { found: false, reason: "no-cursor-candidate", canvasCount: canvases.length };
+      }
+      candidates.sort((a, b) => (a.cssHeight as number) - (b.cssHeight as number));
+      return { found: true, selected: candidates[0] };
+    })();
+    const renderDims = term?._core?._renderService?.dimensions?.css ?? null;
+    const cellHeight = typeof renderDims?.cell?.height === "number" ? renderDims.cell.height : null;
+    const visualCursorRow =
+      canvasCursor && (canvasCursor as any).found && cellHeight && cellHeight > 0
+        ? Math.round(((canvasCursor as any).selected.cssTop as number) / cellHeight)
+        : null;
+    return {
+      ok: true,
+      cursorY: active.cursorY,
+      promptLineIndex,
+      cursorPromptDelta: promptLineIndex >= 0 ? active.cursorY - promptLineIndex : null,
+      visualCursorRow,
+      visualCursorDelta: visualCursorRow !== null ? visualCursorRow - active.cursorY : null,
+      debugTail: (g.__SHELLMAN_TERM_DEBUG_LOGS__ ?? []).slice(-20)
+    };
+  });
+}
+
+async function seedProjectWithManyRootTasks(request: APIRequestContext, count: number) {
+  if (count < 2) {
+    throw new Error(`invalid task count: ${String(count)}`);
+  }
+  await waitForAPIReady(request);
+  const projectID = `e2e_docker_lru_${Date.now()}`;
+  await unwrap<{ project_id: string }>(
+    await request.post(`${apiBaseURL}/api/v1/projects/active`, {
+      data: {
+        project_id: projectID,
+        repo_root: e2eRepoRoot
+      }
+    })
+  );
+  const entries: Array<{ projectID: string; taskID: string; paneTarget: string }> = [];
+  for (let i = 0; i < count; i += 1) {
+    const rootTask = await unwrap<{ task_id: string; pane_target: string }>(
+      await request.post(`${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
+        data: {
+          title: `root-task-${String(i + 1).padStart(2, "0")}`
+        }
+      })
+    );
+    entries.push({
+      projectID,
+      taskID: rootTask.task_id,
+      paneTarget: String(rootTask.pane_target ?? "").trim()
+    });
+  }
+  return entries;
 }
 
 async function setTaskSidecarMode(request: APIRequestContext, taskID: string, mode: "advisor" | "observer" | "autopilot") {
@@ -320,27 +493,105 @@ test.describe("shellman local web full chain (docker)", () => {
     await runEcho(page, "__ROOT_BACK__");
   });
 
-  test("codex-style repaint stream keeps task switch viewport stable", async ({ page, request }) => {
+  test("10 panes with 5000 lines should evict LRU and recover evicted panes with gap_recover", async ({ page, request }) => {
+    test.setTimeout(240_000);
     await page.addInitScript(() => {
-      (window as unknown as { __SHELLMAN_TERM_DEBUG__?: boolean }).__SHELLMAN_TERM_DEBUG__ = true;
+      const g = window as unknown as {
+        __SHELLMAN_TERM_DEBUG__?: boolean;
+        __SHELLMAN_FETCH_URLS__?: string[];
+        __SHELLMAN_SELECT_PAYLOADS__?: Array<Record<string, unknown>>;
+        fetch?: typeof window.fetch;
+      };
+      g.__SHELLMAN_TERM_DEBUG__ = true;
+      g.__SHELLMAN_FETCH_URLS__ = [];
+      g.__SHELLMAN_SELECT_PAYLOADS__ = [];
+      const originFetch = window.fetch.bind(window);
+      window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input.url ?? "");
+        if (url.includes("/api/v1/tasks/") && url.includes("/pane-history")) {
+          g.__SHELLMAN_FETCH_URLS__?.push(url);
+        }
+        return originFetch(input, init);
+      };
+      const originSend = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data: string | ArrayBufferLike | Blob | ArrayBufferView) {
+        if (typeof data === "string") {
+          try {
+            const parsed = JSON.parse(data) as { op?: string; payload?: Record<string, unknown> };
+            if (parsed.op === "tmux.select_pane" && parsed.payload && typeof parsed.payload === "object") {
+              g.__SHELLMAN_SELECT_PAYLOADS__?.push({ ...parsed.payload });
+            }
+          } catch {
+            // ignore parse failures
+          }
+        }
+        return originSend.apply(this, [data as any]);
+      };
     });
-    const seeded = await seedProject(request);
+
+    const seeded = await seedProjectWithManyRootTasks(request, 10);
     await page.goto(visitURL);
 
-    await selectTask(page, seeded.projectID, seeded.rootTaskID);
-    await runCodexStyleRepaintStorm(page);
-    await page.waitForTimeout(320);
+    for (let i = 0; i < seeded.length; i += 1) {
+      const taskID = seeded[i].taskID;
+      const projectID = seeded[i].projectID;
+      const paneToken = `T${String(i + 1).padStart(2, "0")}`;
+      await selectTask(page, projectID, taskID);
+      await runCodexStyleRepaintStorm(page);
+      await page.waitForTimeout(260);
+      await appendManyLines(page, paneToken, 5000);
+      await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 20000);
+      await page.waitForTimeout(180);
+    }
 
-    // Human-paced switch interval to reproduce real usage.
-    await selectTask(page, seeded.projectID, seeded.siblingTaskID);
-    await page.waitForTimeout(420);
-    await selectTask(page, seeded.projectID, seeded.rootTaskID);
-    await page.waitForTimeout(520);
+    const evicted = seeded.slice(0, 5);
+    for (let i = 0; i < evicted.length; i += 1) {
+      const taskID = evicted[i].taskID;
+      const projectID = evicted[i].projectID;
+      const paneToken = `T${String(i + 1).padStart(2, "0")}`;
+      await selectTask(page, projectID, taskID);
+      await page.waitForTimeout(1200);
+      await activeTerminal(page).click();
+      if (i === 0 || i === evicted.length - 1) {
+        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
+        expect(await bufferContains(page, `PANE_${paneToken}_LINE_00001`)).toBe(false);
+      }
+      await expect
+        .poll(async () => {
+          const alignment = await readCursorAlignment(page);
+          return alignment.ok ? alignment.visualCursorDelta : null;
+        })
+        .toBe(0);
+    }
 
-    await runEcho(page, "__CODEX_SWITCH_BACK_OK__");
-    const duplicatedPromptLines = await countBufferLinesContaining(page, "Find and fix a bug in @filename");
-    expect(duplicatedPromptLines).toBeGreaterThanOrEqual(0);
-    expect(duplicatedPromptLines).toBeLessThanOrEqual(1);
+    for (let round = 0; round < 2; round += 1) {
+      for (let i = 0; i < evicted.length; i += 1) {
+        const taskID = evicted[i].taskID;
+        const projectID = evicted[i].projectID;
+        await selectTask(page, projectID, taskID);
+        await page.waitForTimeout(360);
+        await activeTerminal(page).click();
+        const alignment = await readCursorAlignment(page);
+        expect(alignment.ok).toBe(true);
+        expect(alignment.visualCursorDelta).toBe(0);
+      }
+    }
+
+    const selectPayloads = await readSelectPanePayloads(page);
+    for (const item of evicted) {
+      expect(
+        selectPayloads.some(
+          (payload) =>
+            String(payload.target ?? "") === item.paneTarget &&
+            payload.gap_recover === true &&
+            Number(payload.history_lines ?? 0) >= 4000
+        )
+      ).toBe(true);
+    }
+
+    // Optional signal: manual history pull API should still be idle in this flow (no top-scroll pull).
+    const paneHistoryURLs = await readPaneHistoryFetchURLs(page);
+    expect(paneHistoryURLs.length).toBe(0);
   });
 
   test("task switch restores correct sidecar mode value", async ({ page, request }) => {

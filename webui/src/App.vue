@@ -51,6 +51,9 @@ const fileViewerContent = ref("");
 const showRemoveProjectDialog = ref(false);
 const pendingRemoveProjectId = ref("");
 const projectPanelActiveTab = ref<"diff" | "file" | "thread">("thread");
+const isMobileLayout = ref(false);
+let mobileLayoutMediaQuery: MediaQueryList | null = null;
+let mobileLayoutListener: ((event: MediaQueryListEvent) => void) | null = null;
 
 function logInfo(event: string, payload: Record<string, unknown> = {}) {
   if (import.meta.env.MODE === "test") {
@@ -532,6 +535,14 @@ async function onFileOpen(path: string) {
 }
 
 onMounted(async () => {
+  if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
+    mobileLayoutMediaQuery = window.matchMedia("(max-width: 980px)");
+    isMobileLayout.value = mobileLayoutMediaQuery.matches;
+    mobileLayoutListener = (event: MediaQueryListEvent) => {
+      isMobileLayout.value = event.matches;
+    };
+    mobileLayoutMediaQuery.addEventListener("change", mobileLayoutListener);
+  }
   logInfo("shellman.app.mounted.start");
   const routeSessionId = Array.isArray(route.params.sessionId) ? route.params.sessionId[0] : route.params.sessionId;
   try {
@@ -574,13 +585,18 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
+  if (mobileLayoutMediaQuery && mobileLayoutListener) {
+    mobileLayoutMediaQuery.removeEventListener("change", mobileLayoutListener);
+  }
+  mobileLayoutMediaQuery = null;
+  mobileLayoutListener = null;
   logInfo("shellman.app.before_unmount");
   store.disconnectWS();
 });
 </script>
 
 <template>
-  <div class="shellman-desktop h-screen w-full bg-background text-foreground">
+  <div v-if="!isMobileLayout" class="shellman-desktop h-screen w-full bg-background text-foreground">
     <ResizablePanelGroup direction="horizontal" class="h-full items-stretch">
       <!-- Left Panel -->
       <ResizablePanel :default-size="20" :min-size="15" :max-size="30" class="min-w-[340px]">
@@ -686,7 +702,7 @@ onBeforeUnmount(() => {
     </ResizablePanelGroup>
   </div>
 
-  <main class="shellman-mobile-only">
+  <main v-else class="shellman-mobile-only">
     <MobileStackView 
       :projects="projects" 
       :selected-task-id="selectedTaskId" 
