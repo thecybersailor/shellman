@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 )
@@ -24,12 +25,13 @@ type Config struct {
 }
 
 var (
-	cacheTTL   = 10 * time.Second
-	nowFunc    = time.Now
-	cacheMu    sync.RWMutex
-	cachedCfg  Config
-	cachedAt   time.Time
-	cacheValid bool
+	cacheTTL         = 10 * time.Second
+	nowFunc          = time.Now
+	cacheMu          sync.RWMutex
+	cachedCfg        Config
+	cachedAt         time.Time
+	cacheValid       bool
+	defaultWebUIMode = "dev"
 )
 
 func LoadConfig() Config {
@@ -102,7 +104,7 @@ func loadFromEnv() Config {
 	}
 	webUIMode := os.Getenv("SHELLMAN_WEBUI_MODE")
 	if webUIMode == "" {
-		webUIMode = "dev"
+		webUIMode = defaultWebUIMode
 	}
 	webUIDevProxyURL := os.Getenv("SHELLMAN_WEBUI_DEV_PROXY_URL")
 	if webUIDevProxyURL == "" {
@@ -110,7 +112,7 @@ func loadFromEnv() Config {
 	}
 	webUIDistDir := os.Getenv("SHELLMAN_WEBUI_DIST_DIR")
 	if webUIDistDir == "" {
-		webUIDistDir = "../webui/dist"
+		webUIDistDir = defaultWebUIDistDir()
 	}
 	openAIEndpoint := os.Getenv("OPENAI_ENDPOINT")
 	openAIModel := os.Getenv("OPENAI_MODEL")
@@ -132,6 +134,14 @@ func loadFromEnv() Config {
 		OpenAIModel:      openAIModel,
 		OpenAIAPIKey:     openAIAPIKey,
 	}
+}
+
+func defaultWebUIDistDir() string {
+	execPath, err := os.Executable()
+	if err != nil || execPath == "" {
+		return filepath.Clean("../webui/dist")
+	}
+	return filepath.Clean(filepath.Join(filepath.Dir(execPath), "..", "webui", "dist"))
 }
 
 func atoiOrDefault(v string, fallback int) int {

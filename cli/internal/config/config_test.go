@@ -36,7 +36,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.WebUIDevProxyURL != "http://127.0.0.1:15173" {
 		t.Fatalf("unexpected default web ui proxy: %s", cfg.WebUIDevProxyURL)
 	}
-	if cfg.WebUIDistDir != "../webui/dist" {
+	if cfg.WebUIDistDir != defaultWebUIDistDir() {
 		t.Fatalf("unexpected default web ui dist: %s", cfg.WebUIDistDir)
 	}
 	if cfg.OpenAIEndpoint != "" || cfg.OpenAIModel != "" || cfg.OpenAIAPIKey != "" {

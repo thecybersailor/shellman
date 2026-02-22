@@ -1,0 +1,180 @@
+name: Dev Release Assets
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-webui:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: webui/package-lock.json
+      - name: Build webui
+        run: |
+          cd webui
+          npm ci
+          npm run build
+      - name: Upload webui dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-webui-dist
+          path: webui/dist
+
+  build-bundles:
+    needs: build-webui
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: darwin
+            goarch: arm64
+            target: darwin-arm64
+          - goos: darwin
+            goarch: amd64
+            target: darwin-amd64
+          - goos: linux
+            goarch: arm64
+            target: linux-arm64
+          - goos: linux
+            goarch: amd64
+            target: linux-amd64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.x"
+          cache-dependency-path: cli/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Download webui dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dev-webui-dist
+          path: tmp/release/webui/dist
+      - name: Build binary and package zip
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          BASE_VERSION="$(node -p "require('./packages/shellman/package.json').version.split('-')[0]")"
+          VERSION="${BASE_VERSION}-dev.${GITHUB_RUN_NUMBER}"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          OUT_ROOT="tmp/release/${TARGET}"
+          PKG_ROOT="${OUT_ROOT}/package"
+          BIN_DIR="${PKG_ROOT}/bin"
+          WEBUI_DIR="${PKG_ROOT}/webui"
+          mkdir -p "${BIN_DIR}" "${WEBUI_DIR}"
+          (
+            cd cli
+            CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X shellman/cli/internal/config.defaultWebUIMode=prod" -o "../${BIN_DIR}/shellman" ./cmd/shellman
+          )
+          WEBUI_SRC="tmp/release/webui/dist"
+          if [ -d "tmp/release/webui/dist/dist" ]; then
+            WEBUI_SRC="tmp/release/webui/dist/dist"
+          fi
+          cp -R "${WEBUI_SRC}" "${WEBUI_DIR}/dist"
+          printf "v%s\n" "${VERSION}" > "${PKG_ROOT}/VERSION"
+          (
+            cd "${PKG_ROOT}"
+            zip -rq "../shellman-v${VERSION}-${TARGET}.zip" .
+          )
+      - name: Upload bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dev-bundle-${{ matrix.target }}
+          path: tmp/release/${{ matrix.target }}/shellman-v*.zip
+
+  publish-dev-release:
+    needs: build-bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Download bundle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dev-bundle-*
+          path: tmp/release/assets
+          merge-multiple: true
+      - name: Build checksums and release manifest
+        env:
+          DEV_TAG: dev-main
+        run: |
+          set -euo pipefail
+          BASE_VERSION="$(node -p "require('./packages/shellman/package.json').version.split('-')[0]")"
+          VERSION="${BASE_VERSION}-dev.${GITHUB_RUN_NUMBER}"
+          export VERSION
+          ASSETS_DIR="tmp/release/assets"
+          cd "${ASSETS_DIR}"
+          sha256sum shellman-v*.zip > SHA256SUMS
+          node <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+
+          const version = process.env.VERSION;
+          const tag = process.env.DEV_TAG;
+          const repo = process.env.GITHUB_REPOSITORY;
+          const sha = process.env.GITHUB_SHA;
+          const runId = process.env.GITHUB_RUN_ID;
+          const runNumber = process.env.GITHUB_RUN_NUMBER;
+          const checksumsFile = "SHA256SUMS";
+          const sumsRaw = fs.readFileSync(checksumsFile, "utf8").trim().split(/\r?\n/);
+          const sums = new Map();
+          for (const line of sumsRaw) {
+            const m = line.match(/^([a-f0-9]{64})\s+\*?(.+)$/i);
+            if (!m) continue;
+            sums.set(m[2], m[1].toLowerCase());
+          }
+          const targets = ["darwin-arm64", "darwin-amd64", "linux-arm64", "linux-amd64"];
+          const artifacts = targets.map((target) => {
+            const file = `shellman-v${version}-${target}.zip`;
+            const sha256 = sums.get(file);
+            if (!sha256) {
+              throw new Error(`missing checksum for ${file}`);
+            }
+            return { target, file, sha256 };
+          });
+          const manifest = {
+            channel: "dev",
+            tag,
+            version,
+            commit: sha,
+            run_id: runId,
+            run_number: Number(runNumber),
+            published_at: new Date().toISOString(),
+            base_url: `https://github.com/${repo}/releases/download/${tag}`,
+            checksums_file: checksumsFile,
+            artifacts,
+          };
+          fs.writeFileSync(path.join(process.cwd(), "release.json"), JSON.stringify(manifest, null, 2) + "\n");
+          NODE
+        shell: bash
+      - name: Publish GitHub release assets (dev-main)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: dev-main
+          name: Dev Main Snapshot
+          prerelease: true
+          target_commitish: main
+          files: |
+            tmp/release/assets/shellman-v*.zip
+            tmp/release/assets/SHA256SUMS
+            tmp/release/assets/release.json
+          generate_release_notes: false
+          append_body: false

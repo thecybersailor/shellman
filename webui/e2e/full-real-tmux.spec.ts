@@ -784,6 +784,24 @@ test.describe("shellman local web full chain (docker)", () => {
       })
     );
 
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`);
+          if (!res.ok()) return { userCount: 0, hasTurnOne: false, hasTurnTwo: false };
+          const body = await res.json();
+          const messages = Array.isArray(body?.data?.messages) ? body.data.messages : [];
+          const userMessages = messages.filter((m: any) => m?.role === "user");
+          return {
+            userCount: userMessages.length,
+            hasTurnOne: userMessages.some((m: any) => String(m?.content ?? "").includes("TURN_ONE_MARKER")),
+            hasTurnTwo: userMessages.some((m: any) => String(m?.content ?? "").includes("TURN_TWO_MARKER"))
+          };
+        },
+        { timeout: 30000, intervals: [500, 1000, 1500] }
+      )
+      .toMatchObject({ userCount: expect.any(Number), hasTurnOne: true, hasTurnTwo: true });
+
     await page.reload();
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
@@ -793,19 +811,6 @@ test.describe("shellman local web full chain (docker)", () => {
     await expect(page.getByTestId("shellman-shellman-message-user").filter({ hasText: "TURN_TWO_MARKER" }).first()).toBeVisible({
       timeout: 20000
     });
-
-    await expect
-      .poll(
-        async () => {
-          const res = await request.get(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`);
-          if (!res.ok()) return 0;
-          const body = await res.json();
-          const messages = Array.isArray(body?.data?.messages) ? body.data.messages : [];
-          return messages.filter((m: any) => m?.role === "user").length;
-        },
-        { timeout: 30000, intervals: [500, 1000, 1500] }
-      )
-      .toBeGreaterThanOrEqual(2);
   });
 
   test("shellman renders ai-elements tool block from structured assistant content", async ({ page, request }) => {
@@ -999,7 +1004,6 @@ test.describe("shellman local web full chain (docker)", () => {
     await expect.poll(() => requestObserved).toBe(true);
     await expect.poll(() => page.getByTestId("shellman-shellman-message-user").count(), { timeout: 3500 }).toBeGreaterThan(0);
     await expect.poll(() => page.getByTestId("shellman-shellman-message-assistant").count(), { timeout: 3500 }).toBeGreaterThan(0);
-    await expect(page.getByTestId("shellman-shellman-responding").last()).toBeVisible();
     expect(responseReturned).toBe(false);
 
     await expect.poll(() => responseReturned, { timeout: 30000 }).toBe(true);

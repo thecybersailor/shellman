@@ -92,20 +92,35 @@ func TestStartLocalAgentLoop_RespondsToTmuxList(t *testing.T) {
 		Payload: protocol.MustRaw(map[string]any{"scope": "all"}),
 	}
 	raw, _ := json.Marshal(req)
-	if err := client.Write(clientCtx, websocket.MessageText, raw); err != nil {
-		t.Fatalf("write tmux.list failed: %v", err)
-	}
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(150 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			if err := client.Write(clientCtx, websocket.MessageText, raw); err != nil {
+				return
+			}
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
-	_, msgRaw, err := client.Read(clientCtx)
-	if err != nil {
-		t.Fatalf("read tmux.list response failed: %v", err)
-	}
-	var msg protocol.Message
-	if err := json.Unmarshal(msgRaw, &msg); err != nil {
-		t.Fatalf("unmarshal response failed: %v", err)
-	}
-	if msg.Type != "res" || msg.Op != "tmux.list" {
-		t.Fatalf("unexpected response: %s", string(msgRaw))
+	for {
+		_, msgRaw, err := client.Read(clientCtx)
+		if err != nil {
+			t.Fatalf("read tmux.list response failed: %v", err)
+		}
+		var msg protocol.Message
+		if err := json.Unmarshal(msgRaw, &msg); err != nil {
+			t.Fatalf("unmarshal response failed: %v", err)
+		}
+		if msg.Type == "res" && msg.Op == "tmux.list" {
+			break
+		}
 	}
 }
 

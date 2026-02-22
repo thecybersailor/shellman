@@ -67,12 +67,13 @@ jobs:
         run: |
           set -euo pipefail
           VERSION="${GITHUB_REF_NAME#v}"
+          BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
           OUT_ROOT="tmp/release/${TARGET}"
           PKG_ROOT="${OUT_ROOT}/package"
           BIN_DIR="${PKG_ROOT}/bin"
           WEBUI_DIR="${PKG_ROOT}/webui"
           mkdir -p "${BIN_DIR}" "${WEBUI_DIR}"
-          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "${BIN_DIR}/shellman" ./cli/cmd/shellman
+          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION} -X main.buildTime=${BUILD_TIME} -X shellman/cli/internal/config.defaultWebUIMode=prod" -o "${BIN_DIR}/shellman" ./cli/cmd/shellman
           WEBUI_SRC="tmp/release/webui/dist"
           if [ -d "tmp/release/webui/dist/dist" ]; then
             WEBUI_SRC="tmp/release/webui/dist/dist"
