@@ -1586,7 +1586,13 @@ export function createShellmanStore(
     const cached = state.selectedPaneUuid ? state.terminalByPaneUuid[state.selectedPaneUuid] : null;
     if (cached && (cached.source !== "persisted" || paneEnded)) {
       state.terminalOutput = cached.output;
-      state.terminalFrame = cached.frame;
+      state.terminalFrame =
+        cached.source === "ended"
+          ? cached.frame
+          : {
+              mode: "reset",
+              data: cached.output
+            };
       state.terminalCursor = cached.cursor;
       state.terminalEnded = cached.source === "ended";
     } else if (cached) {

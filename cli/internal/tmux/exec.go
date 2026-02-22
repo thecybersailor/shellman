@@ -26,5 +26,13 @@ func (r *RealExec) Output(name string, args ...string) ([]byte, error) {
 }
 
 func (r *RealExec) Run(name string, args ...string) error {
-	return exec.Command(name, args...).Run()
+	out, err := exec.Command(name, args...).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg != "" {
+			return fmt.Errorf("%w: %s", err, msg)
+		}
+		return err
+	}
+	return nil
 }

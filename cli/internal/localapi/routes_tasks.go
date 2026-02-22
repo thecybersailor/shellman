@@ -164,7 +164,7 @@ func (s *Server) archiveCheckedTasksByProject(store *projectstate.Store, project
 			return 0, errors.New("pane service is not configured")
 		}
 		if err := s.deps.PaneService.ClosePane(target); err != nil {
-			return 0, err
+			return 0, fmt.Errorf("archive close pane failed task_id=%s pane_target=%s: %w", strings.TrimSpace(row.TaskID), target, err)
 		}
 	}
 
