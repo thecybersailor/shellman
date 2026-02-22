@@ -180,21 +180,25 @@ async function runEcho(page: Page, token: string) {
   await expect(activeTerminalInput(page)).not.toBeDisabled();
 }
 
-async function runCodexStyleRepaintStorm(page: Page) {
-  await activeTerminal(page).click();
-  await page.keyboard.type("clear");
-  await page.keyboard.press("Enter");
-  await page.keyboard.type(
-    "printf 'OpenAI Codex (v0.104.0)\\nFind and fix a bug in @filename\\n? for shortcuts\\n' && seq 1 240 | awk '{printf \"codex-tui-line-%03d\\n\", $1}'"
+async function sendTTYInput(request: APIRequestContext, taskID: string, input: string) {
+  await unwrap(
+    await request.post(`${apiBaseURL}/api/v1/tasks/${taskID}/messages`, {
+      data: {
+        source: "tty_write_stdin",
+        input
+      }
+    })
   );
-  await page.keyboard.press("Enter");
 }
 
-async function appendManyLines(page: Page, paneToken: string, lines: number) {
-  const cmd = `seq 1 ${String(lines)} | awk '{printf \"PANE_${paneToken}_LINE_%05d\\n\", $1}'`;
-  await activeTerminal(page).click();
-  await page.keyboard.type(cmd);
-  await page.keyboard.press("Enter");
+async function runMockCodexTUI(request: APIRequestContext, taskID: string, paneToken: string, lines: number) {
+  const cmd = `bash /workspace/scripts/e2e/codex_tui_mock.sh ${paneToken} ${String(lines)}\r`;
+  await sendTTYInput(request, taskID, cmd);
+}
+
+async function startCodexMockCommand(request: APIRequestContext, taskID: string, paneToken: string, lines: number) {
+  const cmd = `CODEX_MOCK_TOKEN=${paneToken} CODEX_MOCK_LINES=${String(lines)} codex\r`;
+  await sendTTYInput(request, taskID, cmd);
 }
 
 async function waitBufferContains(page: Page, text: string, timeoutMs = 12000) {
@@ -537,10 +541,13 @@ test.describe("shellman local web full chain (docker)", () => {
       const projectID = seeded[i].projectID;
       const paneToken = `T${String(i + 1).padStart(2, "0")}`;
       await selectTask(page, projectID, taskID);
-      await runCodexStyleRepaintStorm(page);
-      await page.waitForTimeout(260);
-      await appendManyLines(page, paneToken, 5000);
-      await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 20000);
+      if (i === 0) {
+        await startCodexMockCommand(request, taskID, paneToken, 5000);
+        await waitBufferContains(page, "Find and fix a bug in @filename", 20000);
+      } else {
+        await runMockCodexTUI(request, taskID, paneToken, 5000);
+        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 20000);
+      }
       await page.waitForTimeout(180);
     }
 
@@ -553,8 +560,12 @@ test.describe("shellman local web full chain (docker)", () => {
       await page.waitForTimeout(1200);
       await activeTerminal(page).click();
       if (i === 0 || i === evicted.length - 1) {
-        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
-        expect(await bufferContains(page, `PANE_${paneToken}_LINE_00001`)).toBe(false);
+        if (i === 0) {
+          await waitBufferContains(page, "Find and fix a bug in @filename", 45000);
+        } else {
+          await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
+          expect(await bufferContains(page, `PANE_${paneToken}_LINE_00001`)).toBe(false);
+        }
       }
       await expect
         .poll(async () => {

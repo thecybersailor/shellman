@@ -164,26 +164,36 @@ function onProjectPanelActiveTabChange(next: string) {
 
       <main class="flex-1 min-h-0 relative bg-black overflow-hidden">
         <div class="h-full w-full" :class="{ 'opacity-20 blur-sm pointer-events-none': showInfoPanel }">
-          <TerminalPane
-            :task-id="props.selectedTaskId"
-            :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
-            :task-description="props.selectedTaskDescription ?? ''"
-            :pane-uuid="props.selectedPaneUuid ?? ''"
-            :current-command="props.selectedCurrentCommand ?? ''"
-            :frame="props.frame ?? null"
-            :cursor="props.cursor ?? null"
-            :is-ended="Boolean(props.isEnded)"
-            :show-reopen-button="Boolean(props.showReopenPaneButton)"
-            :is-no-pane-task="Boolean(props.isNoPaneTask)"
-            :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
-            :app-programs="props.appPrograms ?? []"
-            @terminal-input="(text) => emit('terminal-input', text)"
-            @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
-            @terminal-resize="(size) => emit('terminal-resize', size)"
-            @terminal-history-more="() => emit('terminal-history-more')"
-            @reopen-pane="(payload) => emit('reopen-pane', payload)"
-            @open-session-detail="openSessionDetailPanel"
-          />
+          <slot name="terminal" v-bind="{
+            taskId: props.selectedTaskId,
+            taskTitle: props.selectedTaskTitle ?? resolveSelectedTaskTitle(),
+            taskDescription: props.selectedTaskDescription ?? '',
+            frame: props.frame ?? null,
+            cursor: props.cursor ?? null,
+            isEnded: Boolean(props.isEnded),
+            showReopenButton: Boolean(props.showReopenPaneButton)
+          }">
+            <TerminalPane
+              :task-id="props.selectedTaskId"
+              :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
+              :task-description="props.selectedTaskDescription ?? ''"
+              :pane-uuid="props.selectedPaneUuid ?? ''"
+              :current-command="props.selectedCurrentCommand ?? ''"
+              :frame="props.frame ?? null"
+              :cursor="props.cursor ?? null"
+              :is-ended="Boolean(props.isEnded)"
+              :show-reopen-button="Boolean(props.showReopenPaneButton)"
+              :is-no-pane-task="Boolean(props.isNoPaneTask)"
+              :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
+              :app-programs="props.appPrograms ?? []"
+              @terminal-input="(text) => emit('terminal-input', text)"
+              @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
+              @terminal-resize="(size) => emit('terminal-resize', size)"
+              @terminal-history-more="() => emit('terminal-history-more')"
+              @reopen-pane="(payload) => emit('reopen-pane', payload)"
+              @open-session-detail="openSessionDetailPanel"
+            />
+          </slot>
         </div>
 
         <!-- Overlaid Side Panel -->

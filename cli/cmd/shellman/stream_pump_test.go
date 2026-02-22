@@ -210,6 +210,52 @@ func TestStreamPump_UsesAppendForFullscreenRedraw(t *testing.T) {
 	}
 }
 
+func TestSendTermFrame_OversizedResetCarriesCursorOnlyOnLastChunk(t *testing.T) {
+	sock := &fakeSocket{}
+	wsClient := turn.NewWSClient(sock)
+	oversized := strings.Repeat("x", maxTermFrameDataBytes*2+9)
+
+	sendTermFrame(context.Background(), wsClient, "e2e:0.0", "reset", oversized, 3, 5, true, testLogger())
+
+	type payloadShape struct {
+		Mode   string         `json:"mode"`
+		Cursor map[string]int `json:"cursor"`
+	}
+	payloads := make([]payloadShape, 0, len(sock.writes))
+	for _, line := range sock.writes {
+		var msg protocol.Message
+		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Op != "term.output" {
+			continue
+		}
+		var payload payloadShape
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			t.Fatalf("decode payload failed: %v", err)
+		}
+		payloads = append(payloads, payload)
+	}
+	if len(payloads) < 3 {
+		t.Fatalf("expected chunked term.output payloads, got %d", len(payloads))
+	}
+	cursorFrames := 0
+	for i, payload := range payloads {
+		if payload.Cursor != nil {
+			cursorFrames++
+			if i != len(payloads)-1 {
+				t.Fatalf("cursor should appear only on last frame, got frame %d/%d", i, len(payloads))
+			}
+			if payload.Cursor["x"] != 3 || payload.Cursor["y"] != 5 {
+				t.Fatalf("unexpected cursor payload: %#v", payload.Cursor)
+			}
+		}
+	}
+	if cursorFrames != 1 {
+		t.Fatalf("expected exactly one cursor-bearing frame, got %d", cursorFrames)
+	}
+	if payloads[len(payloads)-1].Mode != "append" {
+		t.Fatalf("expected last chunk to be append after reset split, got %q", payloads[len(payloads)-1].Mode)
+	}
+}
+
 func TestStreamPump_TargetSwitchResetUsesHistorySnapshot(t *testing.T) {
 	sock := &fakeSocket{}
 	wsClient := turn.NewWSClient(sock)

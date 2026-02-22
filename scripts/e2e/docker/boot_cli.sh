@@ -5,6 +5,9 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update >/dev/null
 apt-get install -y --no-install-recommends tmux curl ca-certificates >/dev/null
 
+# Install e2e codex mock command into PATH for tmux shell.
+install -m 0755 /workspace/scripts/e2e/codex_mock_command.sh /usr/local/bin/codex
+
 if [[ -z "${OPENAI_ENDPOINT:-}" || -z "${OPENAI_MODEL:-}" || -z "${OPENAI_API_KEY:-}" ]]; then
   echo "agent openai env missing: OPENAI_ENDPOINT / OPENAI_MODEL / OPENAI_API_KEY" | tee -a /workspace/logs/cli.log
 fi

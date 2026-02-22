@@ -9,6 +9,7 @@ let scrollToBottomCalls = 0;
 let customKeyEventHandler: ((ev: KeyboardEvent) => boolean) | null = null;
 let onScrollHandler: ((y: number) => void) | null = null;
 let deferWriteCallback = false;
+const SCROLL_MARKER = "__SCROLL__";
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
@@ -40,6 +41,7 @@ vi.mock("@xterm/xterm", () => ({
     }
     scrollToBottom() {
       scrollToBottomCalls += 1;
+      writes.push(SCROLL_MARKER);
     }
     resize(cols: number, rows: number) {
       this.cols = cols;
@@ -203,6 +205,20 @@ describe("TerminalPane", () => {
     expect(writes).toContain("\u001b[2;3H");
   });
 
+  it("clamps cursor position to terminal bounds", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    await wrapper.setProps({ frame: { mode: "reset", data: "bash-5.3$ " }, cursor: { x: 999, y: 999 } });
+    expect(writes).toContain("\u001b[24;80H");
+  });
+
   it("applies cursor after append output with trailing spaces", async () => {
     terminalOptions = undefined;
     writes = [];
@@ -264,6 +280,26 @@ describe("TerminalPane", () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
 
     expect(writes[writes.length - 1]).toBe("\u001b[2;3H");
+  });
+
+  it("keeps cursor write as last operation after scrollToBottom", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    scrollToBottomCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+
+    await wrapper.setProps({ frame: { mode: "reset", data: "bash-5.3$ " }, cursor: { x: 1, y: 0 } });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+
+    expect(scrollToBottomCalls).toBeGreaterThan(0);
+    expect(writes).toContain(SCROLL_MARKER);
+    expect(writes[writes.length - 1]).toBe("\u001b[1;2H");
   });
 
   it("emits terminal-resize when viewport size changes", async () => {

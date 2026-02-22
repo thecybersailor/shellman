@@ -187,6 +187,7 @@ function scheduleScrollToBottom(reason: string) {
     }
     const terminal = term as unknown as { scrollToBottom?: () => void };
     terminal.scrollToBottom?.();
+    moveCursor(props.cursor ?? null);
     logInfo("shellman.term.view.scroll_bottom", { trigger: reason });
   });
 }
@@ -267,8 +268,10 @@ function moveCursor(cursor: { x: number; y: number } | null | undefined) {
     });
     return;
   }
-  const row = Math.max(1, cursor.y + 1);
-  const col = Math.max(1, cursor.x + 1);
+  const maxRows = Math.max(1, term.rows || 1);
+  const maxCols = Math.max(1, term.cols || 1);
+  const row = Math.max(1, Math.min(maxRows, cursor.y + 1));
+  const col = Math.max(1, Math.min(maxCols, cursor.x + 1));
   const seq = ++cursorMoveSeq;
   const before = readBufferSnapshot();
   logInfo("shellman.term.view.cursor.move.before", {
@@ -398,7 +401,11 @@ watch(
     }
 
     if (text) {
-      writeOutput(text);
+      writeOutput(text, () => {
+        moveCursor(props.cursor ?? null);
+      });
+    } else {
+      moveCursor(props.cursor ?? null);
     }
     logInfo("shellman.term.view.frame.append", { dataLen: text.length });
   }

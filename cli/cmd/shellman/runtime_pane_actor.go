@@ -239,21 +239,9 @@ func (p *PaneActor) captureResetSnapshotWithOptions(opt paneSubscribeOptions) (s
 		if lines <= 0 {
 			lines = streamHistoryLines
 		}
-		snapshot, err := p.tmuxService.CaptureHistory(p.target, lines)
-		if err == nil {
-			snapshot = normalizeTermSnapshot(snapshot)
-			cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
-			if cursorErr != nil {
-				if isPaneTargetMissingError(cursorErr) {
-					return "", 0, 0, false, cursorErr
-				}
-				return snapshot, 0, 0, false, nil
-			}
-			return snapshot, cursorX, cursorY, true, nil
-		}
-		if isPaneTargetMissingError(err) {
-			return "", 0, 0, false, err
-		}
+		return p.captureResetSnapshotConsistent(func() (string, error) {
+			return p.tmuxService.CaptureHistory(p.target, lines)
+		})
 	}
 	return p.captureResetSnapshot()
 }
@@ -368,23 +356,50 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 }
 
 func (p *PaneActor) captureResetSnapshot() (string, int, int, bool, error) {
-	snapshot, err := p.tmuxService.CapturePane(p.target)
+	return p.captureResetSnapshotConsistent(func() (string, error) {
+		snapshot, err := p.tmuxService.CapturePane(p.target)
+		if err != nil {
+			if isPaneTargetMissingError(err) {
+				return "", err
+			}
+			return p.tmuxService.CaptureHistory(p.target, streamHistoryLines)
+		}
+		return snapshot, nil
+	})
+}
+
+func (p *PaneActor) captureResetSnapshotConsistent(capture func() (string, error)) (string, int, int, bool, error) {
+	if p == nil || capture == nil {
+		return "", 0, 0, false, nil
+	}
+	snapshot, err := capture()
 	if err != nil {
 		if isPaneTargetMissingError(err) {
 			return "", 0, 0, false, err
 		}
-		snapshot, err = p.tmuxService.CaptureHistory(p.target, streamHistoryLines)
-		if err != nil {
-			return "", 0, 0, false, err
-		}
+		return "", 0, 0, false, err
 	}
 	snapshot = normalizeTermSnapshot(snapshot)
+
 	cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
 	if cursorErr != nil {
 		if isPaneTargetMissingError(cursorErr) {
 			return "", 0, 0, false, cursorErr
 		}
 		return snapshot, 0, 0, false, nil
+	}
+
+	// Guard against non-atomic tmux sampling (snapshot/cursor sampled at different moments).
+	snapshotCheck, checkErr := capture()
+	if checkErr != nil {
+		if isPaneTargetMissingError(checkErr) {
+			return "", 0, 0, false, checkErr
+		}
+		return snapshot, cursorX, cursorY, true, nil
+	}
+	snapshotCheck = normalizeTermSnapshot(snapshotCheck)
+	if snapshotCheck != snapshot {
+		return snapshotCheck, 0, 0, false, nil
 	}
 	return snapshot, cursorX, cursorY, true, nil
 }
@@ -605,13 +620,14 @@ func (p *PaneActor) stopRealtime() {
 func termOutputMessages(target, mode, data string, cursorX, cursorY int, hasCursor bool) []protocol.Message {
 	frames := chunkTermData(mode, data)
 	out := make([]protocol.Message, 0, len(frames))
-	for _, frame := range frames {
+	lastIdx := len(frames) - 1
+	for idx, frame := range frames {
 		payload := map[string]any{
 			"target": target,
 			"mode":   frame.Mode,
 			"data":   frame.Data,
 		}
-		if hasCursor {
+		if hasCursor && idx == lastIdx {
 			payload["cursor"] = map[string]int{"x": cursorX, "y": cursorY}
 		}
 		out = append(out, protocol.Message{

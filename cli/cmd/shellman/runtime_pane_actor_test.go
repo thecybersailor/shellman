@@ -286,6 +286,50 @@ func TestPaneActor_Subscribe_GapRecoverUsesHistoryLines(t *testing.T) {
 	}
 }
 
+func TestPaneActor_CaptureResetSnapshot_StableSnapshotKeepsCursor(t *testing.T) {
+	tmuxService := &streamPumpTmux{
+		paneSnapshots: []string{"line-1\nline-2\n", "line-1\nline-2\n"},
+		cursors:       [][2]int{{4, 1}},
+	}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, nil, nil, testLogger())
+
+	snapshot, cursorX, cursorY, hasCursor, err := actor.captureResetSnapshot()
+	if err != nil {
+		t.Fatalf("captureResetSnapshot failed: %v", err)
+	}
+	if snapshot != "line-1\nline-2\n" {
+		t.Fatalf("unexpected snapshot: %q", snapshot)
+	}
+	if !hasCursor {
+		t.Fatal("expected cursor to be preserved for stable snapshot")
+	}
+	if cursorX != 4 || cursorY != 1 {
+		t.Fatalf("unexpected cursor: %d,%d", cursorX, cursorY)
+	}
+}
+
+func TestPaneActor_CaptureResetSnapshot_SnapshotChangedDropsCursor(t *testing.T) {
+	tmuxService := &streamPumpTmux{
+		paneSnapshots: []string{"line-1\n", "line-1\nline-2\n"},
+		cursors:       [][2]int{{2, 0}},
+	}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, nil, nil, testLogger())
+
+	snapshot, cursorX, cursorY, hasCursor, err := actor.captureResetSnapshot()
+	if err != nil {
+		t.Fatalf("captureResetSnapshot failed: %v", err)
+	}
+	if snapshot != "line-1\nline-2\n" {
+		t.Fatalf("expected latest snapshot after drift, got %q", snapshot)
+	}
+	if hasCursor {
+		t.Fatal("expected cursor to be dropped when snapshot drift is detected")
+	}
+	if cursorX != 0 || cursorY != 0 {
+		t.Fatalf("unexpected cursor fallback: %d,%d", cursorX, cursorY)
+	}
+}
+
 func TestPaneActor_ControlModeOutputBypassesSnapshotDiff(t *testing.T) {
 	tmuxService := &streamPumpTmux{
 		history:       "hello\n",
@@ -416,6 +460,41 @@ func TestPaneActor_SendToConn_PrioritizesResetWhenQueueFull(t *testing.T) {
 		}
 	default:
 		t.Fatal("expected one queued message")
+	}
+}
+
+func TestTermOutputMessages_OversizedResetCarriesCursorOnlyOnLastChunk(t *testing.T) {
+	oversized := strings.Repeat("x", maxTermFrameDataBytes*2+11)
+	msgs := termOutputMessages("e2e:0.0", "reset", oversized, 7, 9, true)
+	if len(msgs) < 3 {
+		t.Fatalf("expected chunked reset frames, got %d", len(msgs))
+	}
+	cursorFrames := 0
+	lastPayloadMode := ""
+	for i, msg := range msgs {
+		var payload struct {
+			Mode   string         `json:"mode"`
+			Cursor map[string]int `json:"cursor"`
+		}
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			t.Fatalf("decode payload[%d] failed: %v", i, err)
+		}
+		lastPayloadMode = payload.Mode
+		if payload.Cursor != nil {
+			cursorFrames++
+			if i != len(msgs)-1 {
+				t.Fatalf("cursor should appear only on last frame, got on frame %d/%d", i, len(msgs))
+			}
+			if payload.Cursor["x"] != 7 || payload.Cursor["y"] != 9 {
+				t.Fatalf("unexpected cursor payload: %#v", payload.Cursor)
+			}
+		}
+	}
+	if cursorFrames != 1 {
+		t.Fatalf("expected exactly one cursor-bearing frame, got %d", cursorFrames)
+	}
+	if lastPayloadMode != "append" {
+		t.Fatalf("expected last chunk mode append after reset split, got %q", lastPayloadMode)
 	}
 }
 

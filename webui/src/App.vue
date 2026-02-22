@@ -646,27 +646,43 @@ onBeforeUnmount(() => {
       <!-- Center Panel (Terminal) -->
       <ResizablePanel :default-size="48" :min-size="30">
         <section class="h-full p-2 bg-background">
-          <TerminalPane
-            :task-id="selectedTaskId"
-            :task-title="selectedTaskTitle"
-            :task-description="selectedTaskDescription"
-            :task-messages="selectedTaskMessages"
-            :pane-uuid="selectedPaneUuid"
-            :current-command="selectedCurrentCommand"
-            :frame="selectedTaskFrame"
-            :cursor="selectedTaskCursor"
-            :is-ended="selectedTaskEnded"
-            :show-reopen-button="showReopenPaneButton"
-            :is-no-pane-task="selectedTaskIsNoPane"
-            :default-launch-program="store.state.defaultLaunchProgram"
-            :app-programs="store.state.appPrograms"
-            @terminal-input="onTerminalInput"
-            @terminal-image-paste="onTerminalImagePaste"
-            @terminal-resize="onTerminalResize"
-            @terminal-history-more="onTerminalHistoryMore"
-            @reopen-pane="onReopenPane"
-            @open-session-detail="onOpenSessionDetail"
-          />
+          <slot name="terminal" v-bind="{ 
+            selectedTaskId, 
+            selectedTaskTitle, 
+            selectedTaskDescription, 
+            selectedTaskMessages,
+            selectedPaneUuid,
+            selectedCurrentCommand,
+            selectedTaskFrame,
+            selectedTaskCursor,
+            selectedTaskEnded,
+            showReopenPaneButton,
+            selectedTaskIsNoPane,
+            defaultLaunchProgram: store.state.defaultLaunchProgram,
+            appPrograms: store.state.appPrograms
+          }">
+            <TerminalPane
+              :task-id="selectedTaskId"
+              :task-title="selectedTaskTitle"
+              :task-description="selectedTaskDescription"
+              :task-messages="selectedTaskMessages"
+              :pane-uuid="selectedPaneUuid"
+              :current-command="selectedCurrentCommand"
+              :frame="selectedTaskFrame"
+              :cursor="selectedTaskCursor"
+              :is-ended="selectedTaskEnded"
+              :show-reopen-button="showReopenPaneButton"
+              :is-no-pane-task="selectedTaskIsNoPane"
+              :default-launch-program="store.state.defaultLaunchProgram"
+              :app-programs="store.state.appPrograms"
+              @terminal-input="onTerminalInput"
+              @terminal-image-paste="onTerminalImagePaste"
+              @terminal-resize="onTerminalResize"
+              @terminal-history-more="onTerminalHistoryMore"
+              @reopen-pane="onReopenPane"
+              @open-session-detail="onOpenSessionDetail"
+            />
+          </slot>
         </section>
       </ResizablePanel>
 

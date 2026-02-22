@@ -206,13 +206,14 @@ func sendTermFrame(
 	logger *slog.Logger,
 ) {
 	frames := chunkTermData(mode, data)
-	for _, frame := range frames {
+	lastIdx := len(frames) - 1
+	for idx, frame := range frames {
 		payload := map[string]any{
 			"target": target,
 			"mode":   frame.Mode,
 			"data":   frame.Data,
 		}
-		if hasCursor {
+		if hasCursor && idx == lastIdx {
 			payload["cursor"] = map[string]int{
 				"x": cursorX,
 				"y": cursorY,
