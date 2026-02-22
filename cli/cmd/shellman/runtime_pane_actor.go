@@ -43,7 +43,7 @@ type PaneActor struct {
 	onStatus      func(paneStatusUpdate)
 
 	mu          sync.RWMutex
-	subscribers map[string]chan<- protocol.Message
+	subscribers map[string]chan protocol.Message
 	lastSnap    string
 	lastCursorX int
 	lastCursorY int
@@ -93,7 +93,7 @@ func NewPaneActor(
 		realtime:      realtime,
 		taskStateSink: taskStateSink,
 		logger:        logger,
-		subscribers:   map[string]chan<- protocol.Message{},
+		subscribers:   map[string]chan protocol.Message{},
 	}
 }
 
@@ -185,7 +185,7 @@ func (p *PaneActor) loop(ctx context.Context) {
 	}
 }
 
-func (p *PaneActor) Subscribe(connID string, out chan<- protocol.Message) {
+func (p *PaneActor) Subscribe(connID string, out chan protocol.Message) {
 	if p == nil || out == nil {
 		return
 	}
@@ -426,7 +426,7 @@ func (p *PaneActor) broadcast(messages []protocol.Message) {
 	}
 
 	p.mu.RLock()
-	subs := make(map[string]chan<- protocol.Message, len(p.subscribers))
+	subs := make(map[string]chan protocol.Message, len(p.subscribers))
 	for connID, ch := range p.subscribers {
 		subs[connID] = ch
 	}
@@ -434,14 +434,13 @@ func (p *PaneActor) broadcast(messages []protocol.Message) {
 
 	for connID, ch := range subs {
 		for _, msg := range messages {
-			select {
-			case ch <- msg:
-			default:
-				if isAppendTermOutput(msg) {
-					continue
-				}
-				p.logger.Warn("drop pane actor message due to backpressure", "pane_target", p.target, "conn_id", connID, "op", msg.Op)
+			if enqueuePaneMessage(ch, msg) {
+				continue
 			}
+			if isAppendTermOutput(msg) {
+				continue
+			}
+			p.logger.Warn("drop pane actor message due to backpressure", "pane_target", p.target, "conn_id", connID, "op", msg.Op)
 		}
 	}
 }
@@ -456,10 +455,40 @@ func (p *PaneActor) sendToConn(connID string, msg protocol.Message) {
 	if ch == nil {
 		return
 	}
+	if enqueuePaneMessage(ch, msg) {
+		return
+	}
+	p.logger.Warn("drop pane actor direct message due to backpressure", "pane_target", p.target, "conn_id", connID, "op", msg.Op)
+}
+
+func enqueuePaneMessage(ch chan protocol.Message, msg protocol.Message) bool {
 	select {
 	case ch <- msg:
+		return true
 	default:
-		p.logger.Warn("drop pane actor direct message due to backpressure", "pane_target", p.target, "conn_id", connID, "op", msg.Op)
+	}
+	if isAppendTermOutput(msg) {
+		return false
+	}
+
+	// Prefer preserving reset/system events over stale append frames when queue is saturated.
+	select {
+	case dropped := <-ch:
+		if !isAppendTermOutput(dropped) {
+			// Keep a non-append frame in front; do not replace it.
+			select {
+			case ch <- dropped:
+			default:
+			}
+			return false
+		}
+	default:
+	}
+	select {
+	case ch <- msg:
+		return true
+	default:
+		return false
 	}
 }
 

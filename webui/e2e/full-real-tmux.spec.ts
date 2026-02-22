@@ -180,6 +180,41 @@ async function runEcho(page: Page, token: string) {
   await expect(activeTerminalInput(page)).not.toBeDisabled();
 }
 
+async function runCodexStyleRepaintStorm(page: Page) {
+  const cmd = [
+    "for i in $(seq 1 18); do",
+    "printf '\\033[0m\\033[H\\033[2J';",
+    "printf 'OpenAI Codex (v0.104.0)\\n';",
+    "printf 'Find and fix a bug in @filename\\n';",
+    "printf '? for shortcuts\\n';",
+    "seq 1 90 | sed 's/^/codex-tui-line-/';",
+    "sleep 0.05;",
+    "done"
+  ].join(" ");
+  await activeTerminal(page).click();
+  await page.keyboard.type(cmd);
+  await page.keyboard.press("Enter");
+}
+
+async function countBufferLinesContaining(page: Page, needle: string) {
+  return page.evaluate((text) => {
+    const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any> };
+    const term = Array.isArray(g.__SHELLMAN_TERM_INSTANCES__) ? g.__SHELLMAN_TERM_INSTANCES__[g.__SHELLMAN_TERM_INSTANCES__.length - 1] : null;
+    const active = term?.buffer?.active;
+    if (!active || typeof active.length !== "number") {
+      return -1;
+    }
+    let count = 0;
+    for (let i = 0; i < active.length; i += 1) {
+      const line = String(active.getLine(i)?.translateToString?.(true) ?? "");
+      if (line.includes(text)) {
+        count += 1;
+      }
+    }
+    return count;
+  }, needle);
+}
+
 async function setTaskSidecarMode(request: APIRequestContext, taskID: string, mode: "advisor" | "observer" | "autopilot") {
   await unwrap<{ task_id: string; sidecar_mode: string }>(
     await request.patch(`${apiBaseURL}/api/v1/tasks/${taskID}/sidecar-mode`, {
@@ -283,6 +318,29 @@ test.describe("shellman local web full chain (docker)", () => {
 
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
     await runEcho(page, "__ROOT_BACK__");
+  });
+
+  test("codex-style repaint stream keeps task switch viewport stable", async ({ page, request }) => {
+    await page.addInitScript(() => {
+      (window as unknown as { __SHELLMAN_TERM_DEBUG__?: boolean }).__SHELLMAN_TERM_DEBUG__ = true;
+    });
+    const seeded = await seedProject(request);
+    await page.goto(visitURL);
+
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+    await runCodexStyleRepaintStorm(page);
+    await page.waitForTimeout(320);
+
+    // Human-paced switch interval to reproduce real usage.
+    await selectTask(page, seeded.projectID, seeded.siblingTaskID);
+    await page.waitForTimeout(420);
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+    await page.waitForTimeout(520);
+
+    await runEcho(page, "__CODEX_SWITCH_BACK_OK__");
+    const duplicatedPromptLines = await countBufferLinesContaining(page, "Find and fix a bug in @filename");
+    expect(duplicatedPromptLines).toBeGreaterThanOrEqual(0);
+    expect(duplicatedPromptLines).toBeLessThanOrEqual(1);
   });
 
   test("task switch restores correct sidecar mode value", async ({ page, request }) => {

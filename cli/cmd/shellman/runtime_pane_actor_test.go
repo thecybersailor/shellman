@@ -339,6 +339,43 @@ func TestPaneActor_SubscribeSendsResetBeforeRealtimeAppend(t *testing.T) {
 	}
 }
 
+func TestPaneActor_SendToConn_PrioritizesResetWhenQueueFull(t *testing.T) {
+	out := make(chan protocol.Message, 1)
+	appendMsg := termOutputMessages("e2e:0.0", "append", "old-append", 0, 0, false)[0]
+	out <- appendMsg
+
+	actor := &PaneActor{
+		target:      "e2e:0.0",
+		logger:      testLogger(),
+		subscribers: map[string]chan protocol.Message{"conn_1": out},
+	}
+	resetMsg := termOutputMessages("e2e:0.0", "reset", "fresh-reset", 0, 0, false)[0]
+
+	actor.sendToConn("conn_1", resetMsg)
+
+	select {
+	case got := <-out:
+		if got.Op != "term.output" {
+			t.Fatalf("expected term.output, got %q", got.Op)
+		}
+		var payload struct {
+			Mode string `json:"mode"`
+			Data string `json:"data"`
+		}
+		if err := json.Unmarshal(got.Payload, &payload); err != nil {
+			t.Fatalf("decode payload failed: %v", err)
+		}
+		if payload.Mode != "reset" {
+			t.Fatalf("expected reset prioritized over append, got mode=%q data=%q", payload.Mode, payload.Data)
+		}
+		if payload.Data != "fresh-reset" {
+			t.Fatalf("unexpected reset data: %q", payload.Data)
+		}
+	default:
+		t.Fatal("expected one queued message")
+	}
+}
+
 func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 	resetAutoProgressSuppressionForTest()
 	oldStatusInterval := statusPumpInterval
