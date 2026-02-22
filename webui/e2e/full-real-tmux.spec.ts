@@ -625,6 +625,69 @@ test.describe("shellman local web full chain (docker)", () => {
     await expect(page.getByTestId("shellman-shellman-responding").first()).toBeVisible();
   });
 
+  test("shellman switches send to stop when running assistant and empty input, then calls messages/stop", async ({ page, request }) => {
+    const seeded = await seedProject(request);
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages`, async (route) => {
+      if (route.request().method() !== "GET") {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            task_id: seeded.rootTaskID,
+            messages: [
+              {
+                id: 301,
+                task_id: seeded.rootTaskID,
+                role: "assistant",
+                content: "",
+                status: "running",
+                created_at: 1,
+                updated_at: 1
+              }
+            ]
+          }
+        })
+      });
+    });
+
+    let stopCalled = false;
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages/stop`, async (route) => {
+      if (route.request().method() !== "POST") {
+        await route.fallback();
+        return;
+      }
+      stopCalled = true;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ok: true,
+          data: {
+            task_id: seeded.rootTaskID,
+            canceled: true
+          }
+        })
+      });
+    });
+
+    await page.goto(visitURL);
+    await selectTask(page, seeded.projectID, seeded.rootTaskID);
+
+    await expect(page.getByTestId("shellman-shellman-stop")).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-send")).toHaveCount(0);
+    await page.getByTestId("shellman-shellman-stop").click();
+    await expect.poll(() => stopCalled).toBe(true);
+
+    await page.getByTestId("shellman-shellman-input").fill("continue");
+    await expect(page.getByTestId("shellman-shellman-send")).toBeVisible();
+    await expect(page.getByTestId("shellman-shellman-stop")).toHaveCount(0);
+  });
+
   test("shellman chat ui updates before /messages response returns", async ({ page, request }) => {
     const seeded = await seedProject(request);
     await page.goto(visitURL);

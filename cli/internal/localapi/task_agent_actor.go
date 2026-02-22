@@ -328,6 +328,25 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
 		return names
 	})
+	runCtx, cancel := context.WithCancel(scopeCtx)
+	s.setTaskMessageRun(taskID, assistantMessageID, cancel)
+	defer s.clearTaskMessageRun(taskID)
+	defer cancel()
+
+	markCanceled := func() error {
+		if err := store.UpdateTaskMessage(assistantMessageID, "", projectstate.StatusCanceled, ""); err != nil {
+			return err
+		}
+		logger.Log("task.message.send.canceled", map[string]any{
+			"task_id":              taskID,
+			"source":               strings.TrimSpace(evt.Source),
+			"user_message_id":      userMessageID,
+			"assistant_message_id": assistantMessageID,
+		})
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		return nil
+	}
+
 	reply := ""
 	runErr := error(nil)
 	responsesStore := evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore
@@ -366,7 +385,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			lastPublishAt = now
 			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
 		}
-		reply, runErr = streamRunner.RunStreamWithTools(scopeCtx, agentPrompt, func(delta string) {
+		reply, runErr = streamRunner.RunStreamWithTools(runCtx, agentPrompt, func(delta string) {
 			if delta == "" {
 				return
 			}
@@ -465,6 +484,9 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			flushRunning(false)
 		})
 		if runErr != nil {
+			if errors.Is(runErr, context.Canceled) {
+				return markCanceled()
+			}
 			partial := strings.TrimSpace(streamState.Text)
 			next := marshalAssistantStructuredContent(streamState)
 			if partial == "" {
@@ -519,7 +541,7 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			lastPublishAt = now
 			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
 		}
-		reply, runErr = streamRunner.RunStream(scopeCtx, agentPrompt, func(delta string) {
+		reply, runErr = streamRunner.RunStream(runCtx, agentPrompt, func(delta string) {
 			if delta == "" {
 				return
 			}
@@ -527,6 +549,9 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			flushRunning(false)
 		})
 		if runErr != nil {
+			if errors.Is(runErr, context.Canceled) {
+				return markCanceled()
+			}
 			partial := strings.TrimSpace(streamText.String())
 			next := marshalAssistantStructuredContent(assistantStructuredContent{Text: partial})
 			_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
@@ -561,9 +586,12 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 			invokeFields[k] = v
 		}
 		logger.Log("task.message.send.agentloop.invoke", invokeFields)
-		reply, runErr = s.deps.AgentLoopRunner.Run(scopeCtx, agentPrompt)
+		reply, runErr = s.deps.AgentLoopRunner.Run(runCtx, agentPrompt)
 	}
 	if runErr != nil {
+		if errors.Is(runErr, context.Canceled) {
+			return markCanceled()
+		}
 		_ = store.UpdateTaskMessage(assistantMessageID, "", "error", runErr.Error())
 		logger.Log("task.message.send.failed", map[string]any{
 			"task_id": taskID,

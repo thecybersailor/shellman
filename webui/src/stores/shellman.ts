@@ -2473,6 +2473,21 @@ export function createShellmanStore(
     }
   }
 
+  async function stopTaskMessage(taskId: string): Promise<boolean> {
+    const nextTaskID = String(taskId ?? "").trim();
+    if (!nextTaskID) {
+      throw new Error("INVALID_TASK_ID");
+    }
+    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/messages/stop`), {
+      method: "POST",
+      headers: apiHeaders()
+    }).then((r) => r.json())) as APIResponse<{ task_id?: string; canceled?: boolean }>;
+    if (!res.ok) {
+      throw new Error(res.error?.code || "TASK_MESSAGE_STOP_FAILED");
+    }
+    return Boolean(res.data?.canceled);
+  }
+
   async function loadTaskSidecarMode(taskId: string, force = false): Promise<SidecarMode> {
     const nextTaskID = String(taskId ?? "").trim();
     if (!nextTaskID) {
@@ -2626,6 +2641,7 @@ export function createShellmanStore(
     loadTaskMessages,
     loadTaskSidecarMode,
     sendTaskMessage,
+    stopTaskMessage,
     setTaskSidecarMode,
     submitTaskCommit,
     reportRunResult,

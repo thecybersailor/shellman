@@ -292,6 +292,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handlePatchTaskSidecarMode(w, r, taskID)
 	case r.Method == http.MethodPost && action == "messages":
 		s.handlePostTaskMessage(w, r, taskID)
+	case r.Method == http.MethodPost && action == "messages/stop":
+		s.handleStopTaskMessage(w, r, taskID)
 	case r.Method == http.MethodPost && action == "runs":
 		s.handleCreateRun(w, r, taskID)
 	case r.Method == http.MethodPost && action == "panes/sibling":
@@ -333,6 +335,26 @@ func (s *Server) handleGetTaskMessages(w http.ResponseWriter, _ *http.Request, t
 		return
 	}
 	respondOK(w, map[string]any{"task_id": taskID, "messages": items})
+}
+
+func (s *Server) handleStopTaskMessage(w http.ResponseWriter, _ *http.Request, taskID string) {
+	projectID, store, _, err := s.findTask(taskID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
+		return
+	}
+	assistantMessageID, canceled := s.stopTaskMessageRun(taskID)
+	if canceled && assistantMessageID > 0 {
+		if err := store.UpdateTaskMessage(assistantMessageID, "", projectstate.StatusCanceled, ""); err != nil {
+			respondError(w, http.StatusInternalServerError, "TASK_MESSAGE_STOP_FAILED", err.Error())
+			return
+		}
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+	}
+	respondOK(w, map[string]any{
+		"task_id":  strings.TrimSpace(taskID),
+		"canceled": canceled,
+	})
 }
 
 func (s *Server) handleGetTaskSidecarMode(w http.ResponseWriter, _ *http.Request, taskID string) {

@@ -443,35 +443,15 @@ async function onSetTaskSidecarMode(payload: { mode: "advisor" | "observer" | "a
   }
 }
 
-async function onStopSidecarChat() {
+async function onStopRunningAssistantMessage() {
   const taskId = String(store.state.selectedTaskId ?? "").trim();
   if (!taskId) {
     return;
   }
   try {
-    await store.setTaskSidecarMode(taskId, "observer");
+    await store.stopTaskMessage(taskId);
   } catch (err) {
-    notifyError(err instanceof Error ? err.message : "TASK_SIDECAR_MODE_UPDATE_FAILED");
-  }
-}
-
-async function onRestartSidecarContext(payload: { strategy: "child" | "root" }) {
-  const taskId = String(store.state.selectedTaskId ?? "").trim();
-  if (!taskId) {
-    return;
-  }
-  try {
-    if (payload.strategy === "child") {
-      await store.createChildTask(taskId, t("app.childOfTask", { taskId }));
-      return;
-    }
-    const projectId = String(findProjectIdByTask(taskId) ?? "").trim();
-    if (!projectId) {
-      return;
-    }
-    await store.createRootTask(projectId, "");
-  } catch (err) {
-    notifyError(err instanceof Error ? err.message : "TASK_CONTEXT_RESTART_FAILED");
+    notifyError(err instanceof Error ? err.message : "TASK_MESSAGE_STOP_FAILED");
   }
 }
 
@@ -682,8 +662,7 @@ onBeforeUnmount(() => {
             @save-task-meta="onSaveTaskMeta"
             @send-message="onSendTaskMessage"
             @set-sidecar-mode="onSetTaskSidecarMode"
-            @stop-sidecar-chat="onStopSidecarChat"
-            @restart-sidecar-context="onRestartSidecarContext"
+            @stop-running-assistant-message="onStopRunningAssistantMessage"
             @ai="onSCMAI"
             @submit="onSCMSubmit"
             @file-open="onFileOpen"
@@ -725,8 +704,7 @@ onBeforeUnmount(() => {
       @save-task-meta="onSaveTaskMeta"
       @send-message="onSendTaskMessage"
       @set-sidecar-mode="onSetTaskSidecarMode"
-      @stop-sidecar-chat="onStopSidecarChat"
-      @restart-sidecar-context="onRestartSidecarContext"
+      @stop-running-assistant-message="onStopRunningAssistantMessage"
       @add-project="onOpenAddProject('mobile')"
       @open-settings="onOpenSettings('mobile')"
       @create-root-pane="onCreateRoot"

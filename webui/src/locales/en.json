@@ -41,10 +41,7 @@
     "sidecarModeAdvisor": "Advisor",
     "sidecarModeObserver": "Observer (no auto-continue)",
     "sidecarModeAutopilot": "Autopilot",
-    "sidecarModeObserverHint": "Observer = no auto-continue",
-    "stopSidecarChat": "Stop Sidecar Chat",
-    "restartContextChild": "Restart Context (Child)",
-    "restartContextRoot": "Restart Context (Root)"
+    "sidecarModeObserverHint": "Observer = no auto-continue"
   },
   "projectTaskTree": {
     "projects": "Projects",
