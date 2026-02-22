@@ -103,7 +103,24 @@ func main() {
 		LoadConfig: config.LoadConfig,
 		RunLocalMode: func(ctx context.Context, cfg config.Config) error {
 			applyRuntimeConfig(cfg)
-			return runLocal(ctx, os.Stdout, cfg)
+			return runServe(
+				ctx,
+				cfg,
+				func(runCtx context.Context) error {
+					return runLocal(runCtx, os.Stdout, cfg)
+				},
+				func(runCtx context.Context) error {
+					return run(
+						runCtx,
+						os.Stdout,
+						os.Stderr,
+						turn.NewRegisterClient(cfg.WorkerBaseURL),
+						turn.RealDialer{},
+						tmux.NewAdapterWithSocket(&tmux.RealExec{}, cfg.TmuxSocket),
+					)
+				},
+				newRuntimeLogger(os.Stderr).With("module", "serve"),
+			)
 		},
 		RunTurnMode: func(ctx context.Context, cfg config.Config) error {
 			applyRuntimeConfig(cfg)
@@ -140,11 +157,32 @@ func runMigrateUp(_ context.Context, cfg config.Config) error {
 	return projectstate.InitGlobalDB(filepath.Join(configDir, "shellman.db"))
 }
 
-func runByMode(ctx context.Context, cfg config.Config, runTurn func(context.Context) error, runLocalMode func(context.Context) error) error {
-	if cfg.Mode == "turn" {
-		return runTurn(ctx)
+func runServe(
+	ctx context.Context,
+	cfg config.Config,
+	runLocalFn func(context.Context) error,
+	runTurnFn func(context.Context) error,
+	logger *slog.Logger,
+) error {
+	if runLocalFn == nil {
+		return errors.New("local mode runner is not configured")
 	}
-	return runLocalMode(ctx)
+
+	runtimeCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	if cfg.TurnEnabled && runTurnFn != nil {
+		started := make(chan struct{})
+		go func() {
+			close(started)
+			if err := runTurnFn(runtimeCtx); err != nil && runtimeCtx.Err() == nil && logger != nil {
+				logger.Warn("optional turn bridge failed", "err", err)
+			}
+		}()
+		<-started
+	}
+
+	return runLocalFn(runtimeCtx)
 }
 
 func run(

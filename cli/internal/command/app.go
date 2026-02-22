@@ -3,6 +3,8 @@ package command
 import (
 	"context"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/urfave/cli/v2"
@@ -23,35 +25,16 @@ func BuildApp(deps Deps) *cli.App {
 		Usage: "tmux runtime bridge",
 		Action: func(ctx *cli.Context) error {
 			cfg := loadConfig(deps)
-			return runServeByConfig(ctx.Context, deps, cfg)
+			return runServe(ctx.Context, deps, cfg, ctx)
 		},
 		Commands: []*cli.Command{
 			{
 				Name:  "serve",
 				Usage: "start runtime",
+				Flags: serveFlags(),
 				Action: func(ctx *cli.Context) error {
 					cfg := loadConfig(deps)
-					return runServeByConfig(ctx.Context, deps, cfg)
-				},
-				Subcommands: []*cli.Command{
-					{
-						Name:  "local",
-						Usage: "start local runtime",
-						Action: func(ctx *cli.Context) error {
-							cfg := loadConfig(deps)
-							cfg.Mode = "local"
-							return runLocalMode(ctx.Context, deps, cfg)
-						},
-					},
-					{
-						Name:  "turn",
-						Usage: "start turn runtime",
-						Action: func(ctx *cli.Context) error {
-							cfg := loadConfig(deps)
-							cfg.Mode = "turn"
-							return runTurnMode(ctx.Context, deps, cfg)
-						},
-					},
+					return runServe(ctx.Context, deps, cfg, ctx)
 				},
 			},
 			{
@@ -79,12 +62,61 @@ func loadConfig(deps Deps) config.Config {
 	return config.LoadConfig()
 }
 
-func runServeByConfig(ctx context.Context, deps Deps, cfg config.Config) error {
-	mode := strings.TrimSpace(strings.ToLower(cfg.Mode))
-	if mode == "turn" {
-		return runTurnMode(ctx, deps, cfg)
+func serveFlags() []cli.Flag {
+	return []cli.Flag{
+		&cli.StringFlag{
+			Name:  "host",
+			Usage: "local listen host",
+		},
+		&cli.IntFlag{
+			Name:  "port",
+			Usage: "local listen port",
+		},
+		&cli.StringFlag{
+			Name:  "config-dir",
+			Usage: "shellman config directory",
+		},
+		&cli.StringFlag{
+			Name:  "tmux-socket",
+			Usage: "tmux socket path",
+		},
+		&cli.StringFlag{
+			Name:  "webui-dist-dir",
+			Usage: "web ui dist directory",
+		},
 	}
+}
+
+func runServe(ctx context.Context, deps Deps, cfg config.Config, cliCtx *cli.Context) error {
+	if cliCtx != nil && cliCtx.Args().Len() > 0 {
+		return fmt.Errorf("unexpected argument: %s", cliCtx.Args().First())
+	}
+	cfg = applyServeFlagOverrides(cliCtx, cfg)
 	return runLocalMode(ctx, deps, cfg)
+}
+
+func applyServeFlagOverrides(cliCtx *cli.Context, cfg config.Config) config.Config {
+	if cliCtx == nil {
+		return cfg
+	}
+
+	if cliCtx.IsSet("host") {
+		cfg.LocalHost = strings.TrimSpace(cliCtx.String("host"))
+	}
+	if cliCtx.IsSet("port") {
+		cfg.LocalPort = cliCtx.Int("port")
+	}
+	if cliCtx.IsSet("tmux-socket") {
+		cfg.TmuxSocket = strings.TrimSpace(cliCtx.String("tmux-socket"))
+	}
+	if cliCtx.IsSet("webui-dist-dir") {
+		cfg.WebUIDistDir = strings.TrimSpace(cliCtx.String("webui-dist-dir"))
+	}
+	if cliCtx.IsSet("config-dir") {
+		_ = os.Setenv("SHELLMAN_CONFIG_DIR", strings.TrimSpace(cliCtx.String("config-dir")))
+	}
+
+	return cfg
 }
 
 func runLocalMode(ctx context.Context, deps Deps, cfg config.Config) error {

@@ -14,6 +14,7 @@ type Config struct {
 	TraceStream      bool
 	HistoryLines     int
 	Mode             string
+	TurnEnabled      bool
 	LocalHost        string
 	LocalPort        int
 	WebUIMode        string
@@ -87,6 +88,7 @@ func loadFromEnv() Config {
 	if mode == "" {
 		mode = "local"
 	}
+	turnEnabled := os.Getenv("SHELLMAN_TURN_ENABLED") == "1"
 	localHost := os.Getenv("SHELLMAN_LOCAL_HOST")
 	if localHost == "" {
 		localHost = "127.0.0.1"
@@ -125,6 +127,7 @@ func loadFromEnv() Config {
 		TraceStream:      traceStream,
 		HistoryLines:     historyLines,
 		Mode:             mode,
+		TurnEnabled:      turnEnabled,
 		LocalHost:        localHost,
 		LocalPort:        localPort,
 		WebUIMode:        webUIMode,

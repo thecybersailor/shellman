@@ -24,6 +24,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.Mode != "local" {
 		t.Fatalf("mode should default to local, got %s", cfg.Mode)
 	}
+	if cfg.TurnEnabled {
+		t.Fatal("turn should default to disabled")
+	}
 	if cfg.LocalPort != 4621 {
 		t.Fatalf("unexpected local port: %d", cfg.LocalPort)
 	}
@@ -41,6 +44,14 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	}
 	if cfg.OpenAIEndpoint != "" || cfg.OpenAIModel != "" || cfg.OpenAIAPIKey != "" {
 		t.Fatalf("openai env should default empty, got endpoint=%q model=%q key-set=%v", cfg.OpenAIEndpoint, cfg.OpenAIModel, cfg.OpenAIAPIKey != "")
+	}
+}
+
+func TestLoadConfig_TurnEnabled(t *testing.T) {
+	t.Setenv("SHELLMAN_TURN_ENABLED", "1")
+	cfg := LoadConfig()
+	if !cfg.TurnEnabled {
+		t.Fatal("turn should be enabled when SHELLMAN_TURN_ENABLED=1")
 	}
 }
 
