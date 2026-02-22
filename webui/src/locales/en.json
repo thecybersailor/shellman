@@ -41,9 +41,10 @@
     "sidecarModeAdvisor": "Advisor",
     "sidecarModeAdvisorDescription": "You decide when to run.",
     "sidecarModeObserver": "Observer",
-    "sidecarModeObserverDescription": "Only update task status.",
+    "sidecarModeObserverDescription": "Observe only, no auto-continue.",
     "sidecarModeAutopilot": "Autopilot",
-    "sidecarModeAutopilotDescription": "Handle Terminal automatically until done or paused."
+    "sidecarModeAutopilotDescription": "Handle Terminal automatically until done or paused.",
+    "stop": "Stop"
   },
   "projectTaskTree": {
     "projects": "Projects",

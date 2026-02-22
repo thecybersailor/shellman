@@ -217,13 +217,11 @@ describe("ThreadPanel", () => {
     expect(wrapper.find("[data-test-id='shellman-shellman-stop']").exists()).toBe(false);
   });
 
-  it("uses explicit observer wording to avoid stop confusion", async () => {
+  it("shows current sidecar mode label in thread footer", async () => {
     const wrapper = mount(ThreadPanel, {
       props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [], sidecarMode: "advisor" }
     });
     await nextTick();
-
-    expect(wrapper.text()).toContain("Observer");
-    expect(wrapper.text()).toContain("no auto-continue");
+    expect(wrapper.text()).toContain("Advisor");
   });
 });

@@ -356,7 +356,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
               v-if="shouldShowStopSubmit"
               type="button"
               data-test-id="shellman-shellman-stop"
-              aria-label="Stop"
+              :aria-label="t('thread.stop')"
               size="icon-sm"
               @click="emit('stop-running-assistant-message')"
             >
@@ -372,6 +372,9 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
       <div class="flex items-center gap-2 flex-wrap">
         <SidecarModeSelect
           :model-value="sidecarMode"
+          content-side="top"
+          content-align="start"
+          :content-side-offset="6"
           @update:model-value="(next) => onSidecarModeUpdate(next)"
         />
       </div>

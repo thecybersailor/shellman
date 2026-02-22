@@ -19,6 +19,7 @@ const props = withDefaults(defineProps<{
   autopilotOptionTestId?: string;
 }>(), {
   triggerClass: "h-7 min-w-[132px] text-[11px] border-0 bg-transparent! gap-1.5 py-0! cursor-pointer",
+  contentClass: "z-[140]",
   contentPortal: true,
   triggerTestId: "shellman-shellman-sidecar-mode-trigger",
   advisorOptionTestId: "shellman-shellman-sidecar-mode-option-advisor",
@@ -30,7 +31,7 @@ const emit = defineEmits<{
   (e: "update:modelValue", mode: "advisor" | "observer" | "autopilot"): void;
 }>();
 
-function onModeUpdate(next: string) {
+function onModeUpdate(next: unknown) {
   if (next === "advisor" || next === "observer" || next === "autopilot") {
     emit("update:modelValue", next);
   }
@@ -52,7 +53,7 @@ function onOpenUpdate(_next: boolean) {
     <SidecarModeSelectContent
       :class="props.contentClass"
       :portal="props.contentPortal"
-      :body-lock="props.forceOpen ? false : undefined"
+      :body-lock="false"
       :side="props.contentSide"
       :align="props.contentAlign"
       :side-offset="props.contentSideOffset"

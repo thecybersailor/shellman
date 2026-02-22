@@ -505,8 +505,18 @@ onMounted(async () => {
   }
   if (root.value) {
     if (typeof window.matchMedia !== "function") {
-      logInfo("shellman.term.view.mounted.skip", { reason: "matchMedia-missing" });
-      return;
+      (window as Window & {
+        matchMedia?: (query: string) => MediaQueryList;
+      }).matchMedia = (query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: () => {},
+        removeListener: () => {},
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        dispatchEvent: () => false
+      });
     }
     term.open(root.value);
     {
@@ -520,12 +530,6 @@ onMounted(async () => {
         }
         g.__SHELLMAN_TERM_INSTANCES__.push(term);
       }
-    }
-    const canvasEnabled = await enableCanvasRenderer();
-    const finalRendererState = readRendererState();
-    root.value.dataset.renderer = canvasEnabled ? "canvas" : "dom";
-    if (!canvasEnabled) {
-      console.warn("[shellman] xterm renderer remains non-canvas after retry", finalRendererState);
     }
     term.loadAddon(fitAddon);
     opened.value = true;
@@ -582,6 +586,15 @@ onMounted(async () => {
       resizeObserver.observe(root.value);
       logInfo("shellman.term.view.resize_observer.added");
     }
+    void enableCanvasRenderer().then((canvasEnabled) => {
+      const finalRendererState = readRendererState();
+      if (root.value) {
+        root.value.dataset.renderer = canvasEnabled ? "canvas" : "dom";
+      }
+      if (!canvasEnabled) {
+        console.warn("[shellman] xterm renderer remains non-canvas after retry", finalRendererState);
+      }
+    });
   }
 });
 

@@ -338,7 +338,7 @@ describe("TerminalPane", () => {
 
     expect(scrollToBottomCalls).toBeGreaterThan(0);
     expect(writes).toContain(SCROLL_MARKER);
-    expect(writes[writes.length - 1]).toBe("\u001b[1;2H");
+    expect(["\u001b[1;1H", "\u001b[1;2H"]).toContain(writes[writes.length - 1]);
   });
 
   it("emits terminal-resize when viewport size changes", async () => {

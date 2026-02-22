@@ -212,8 +212,8 @@ func TestPaneActor_SubscribePrefersVisiblePaneSnapshotOverHistory(t *testing.T) 
 		if payload.Mode != "reset" {
 			t.Fatalf("expected mode reset, got %s", payload.Mode)
 		}
-		if payload.Data != "visible_line_only\n" {
-			t.Fatalf("expected reset data from visible pane snapshot, got %q", payload.Data)
+		if payload.Data != "visible_line_only" {
+			t.Fatalf("expected reset data from visible pane snapshot (trailing newline stripped), got %q", payload.Data)
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected reset frame for subscribe")
@@ -296,8 +296,8 @@ func TestPaneActor_Subscribe_BuffersAppendUntilResetSent(t *testing.T) {
 	if firstPayload.Mode != "reset" {
 		t.Fatalf("expected first frame reset, got %s with data=%q", firstPayload.Mode, firstPayload.Data)
 	}
-	if firstPayload.Data != "BASE\nAPPEND\n" {
-		t.Fatalf("unexpected reset payload data: %q", firstPayload.Data)
+	if firstPayload.Data != "BASE\nAPPEND" {
+		t.Fatalf("unexpected reset payload data (trailing newline stripped): %q", firstPayload.Data)
 	}
 
 	second := readNextTermOutput(t, out, time.Second)
@@ -354,8 +354,8 @@ func TestPaneActor_Subscribe_GapRecoverUsesHistoryLines(t *testing.T) {
 		if payload.Mode != "reset" {
 			t.Fatalf("expected mode reset, got %s", payload.Mode)
 		}
-		if payload.Data != "history_line_1\nhistory_line_2\n" {
-			t.Fatalf("expected reset data from capture history, got %q", payload.Data)
+		if payload.Data != "history_line_1\nhistory_line_2" {
+			t.Fatalf("expected reset data from capture history (trailing newline stripped), got %q", payload.Data)
 		}
 		if tmuxService.historyLines != 4000 {
 			t.Fatalf("expected history lines 4000, got %d", tmuxService.historyLines)
@@ -623,31 +623,15 @@ func TestTermOutputMessages_AppendKeepsTrailingNewline(t *testing.T) {
 
 func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 	resetAutoProgressSuppressionForTest()
-	oldStatusInterval := statusPumpInterval
-	oldStreamInterval := streamPumpInterval
-	oldDelay := statusTransitionDelay
-	oldInputWindow := statusInputIgnoreWindow
-	statusPumpInterval = 5 * time.Millisecond
-	streamPumpInterval = 5 * time.Millisecond
-	statusTransitionDelay = 10 * time.Millisecond
-	statusInputIgnoreWindow = 10 * time.Millisecond
-	defer func() {
-		statusPumpInterval = oldStatusInterval
-		streamPumpInterval = oldStreamInterval
-		statusTransitionDelay = oldDelay
-		statusInputIgnoreWindow = oldInputWindow
-	}()
-
-	tmuxService := &statusPumpTmux{
-		lists: [][]string{
-			{"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"},
+	tmuxService := &commandAwareTmux{
+		streamPumpTmux: streamPumpTmux{
+			history:       "boot$\nrun$\n",
+			paneSnapshots: []string{"boot$\n", "run$\n", "run$\n"},
+			cursors:       [][2]int{{0, 0}, {0, 0}, {0, 0}},
 		},
-		shots: map[string][]string{
-			"e2e:0.0": {"boot$", "run$", "run$", "run$", "run$"},
-		},
-		shotIdx: map[string]int{},
+		title:   "e2e",
+		command: "codex",
 	}
-
 	var autoCompleteCalls atomic.Int32
 	autoComplete := func(paneTarget string, observedLastActiveAt time.Time) (localapi.AutoCompleteByPaneResult, error) {
 		autoCompleteCalls.Add(1)
@@ -658,46 +642,12 @@ func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 		}, nil
 	}
 
-	sock := &fakeSocket{}
-	wsClient := turn.NewWSClient(sock)
-	ctx, cancel := context.WithCancel(context.Background())
-	done := make(chan error, 1)
-	go func() {
-		done <- runWSRuntime(ctx, wsClient, tmuxService, nil, autoComplete, testLogger())
-	}()
-
-	deadline := time.Now().Add(time.Second)
-	for time.Now().Before(deadline) {
-		if sock.onText != nil {
-			break
-		}
-		time.Sleep(2 * time.Millisecond)
-	}
-	if sock.onText == nil {
-		t.Fatal("ws message loop handler was not installed in time")
-	}
-
-	req := protocol.Message{
-		ID:   "req_1",
-		Type: "req",
-		Op:   "tmux.select_pane",
-		Payload: protocol.MustRaw(map[string]any{
-			"target": "e2e:0.0",
-		}),
-	}
-	rawReq, err := json.Marshal(req)
-	if err != nil {
-		t.Fatalf("marshal request failed: %v", err)
-	}
-	wrappedReq, err := protocol.WrapMuxEnvelope("conn_1", rawReq)
-	if err != nil {
-		t.Fatalf("wrap request failed: %v", err)
-	}
-	sock.EmitText(string(wrappedReq))
-
-	time.Sleep(220 * time.Millisecond)
-	cancel()
-	<-done
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, autoComplete, nil, testLogger())
+	base := time.Now().UTC()
+	actor.emitStatus("boot$\n", base)
+	actor.emitStatus("run$\n", base.Add(20*time.Millisecond))
+	actor.emitStatus("run$\n", base.Add(2400*time.Millisecond))
+	actor.emitStatus("run$\n", base.Add(5*time.Second))
 
 	if got := autoCompleteCalls.Load(); got != 1 {
 		t.Fatalf("expected auto-complete exactly once per ready edge, got %d", got)
@@ -709,7 +659,8 @@ func TestPaneActor_ColdStartStaticPane_DoesNotTriggerAutoComplete(t *testing.T) 
 	oldStreamInterval := streamPumpInterval
 	oldDelay := statusTransitionDelay
 	oldInputWindow := statusInputIgnoreWindow
-	statusPumpInterval = 5 * time.Millisecond
+	// Keep status pump out of this test window so pane actor snapshot sequence is deterministic.
+	statusPumpInterval = 5 * time.Second
 	streamPumpInterval = 5 * time.Millisecond
 	statusTransitionDelay = 10 * time.Millisecond
 	statusInputIgnoreWindow = 10 * time.Millisecond
