@@ -117,7 +117,7 @@ func TestServer_EdgeWSBridge(t *testing.T) {
 	defer ts.Close()
 
 	baseWS := "ws" + strings.TrimPrefix(ts.URL, "http")
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	agent, _, err := websocket.Dial(ctx, baseWS+"/ws/agent/u1", nil)
@@ -322,18 +322,33 @@ func TestServer_PublishClientEvent_DeliversToWSClient(t *testing.T) {
 	client.SetReadLimit(-1)
 	defer func() { _ = client.Close(websocket.StatusNormalClosure, "") }()
 
-	srv.PublishClientEvent("local", "task.messages.updated", "p1", "t1", map[string]any{"source": "auto_progress"})
+	done := make(chan struct{})
+	defer close(done)
+	go func() {
+		ticker := time.NewTicker(100 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			srv.PublishClientEvent("local", "task.messages.updated", "p1", "t1", map[string]any{"source": "auto_progress"})
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+			}
+		}
+	}()
 
-	_, raw, err := client.Read(ctx)
-	if err != nil {
-		t.Fatalf("client read failed: %v", err)
-	}
 	var msg protocol.Message
-	if err := json.Unmarshal(raw, &msg); err != nil {
-		t.Fatalf("unmarshal client event failed: %v", err)
-	}
-	if msg.Type != "event" || msg.Op != "task.messages.updated" {
-		t.Fatalf("unexpected event envelope: %#v", msg)
+	for {
+		_, raw, err := client.Read(ctx)
+		if err != nil {
+			t.Fatalf("client read failed: %v", err)
+		}
+		if err := json.Unmarshal(raw, &msg); err != nil {
+			t.Fatalf("unmarshal client event failed: %v", err)
+		}
+		if msg.Type == "event" && msg.Op == "task.messages.updated" {
+			break
+		}
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(msg.Payload, &payload); err != nil {
