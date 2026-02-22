@@ -781,6 +781,7 @@ onBeforeUnmount(() => {
 
   <ActiveProjectEntry
     v-model:show="showAddProjectDialog"
+    :get-f-s-roots="store.getFSRoots"
     :list-directories="store.listDirectories"
     :resolve-directory="store.resolveDirectory"
     :search-directories="store.searchDirectories"

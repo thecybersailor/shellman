@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,7 @@ const { t } = useI18n();
 
 const props = defineProps<{
   show: boolean;
+  getFSRoots?: () => Promise<string[]>;
   listDirectories: (path: string) => Promise<DirectoryListResult>;
   resolveDirectory: (path: string) => Promise<string>;
   searchDirectories: (base: string, q: string) => Promise<DirectoryItem[]>;
@@ -22,12 +23,18 @@ const emit = defineEmits<{
 
 const currentPath = ref("");
 const pathInput = ref("");
-const searchQ = ref("");
 const items = ref<DirectoryItem[]>([]);
-const searchItems = ref<DirectoryItem[]>([]);
+const autocompleteItems = ref<DirectoryItem[]>([]);
+const autocompleteIndex = ref(-1);
+const autocompleteNavigated = ref(false);
+const pathFocused = ref(false);
 const history = ref<DirectoryHistoryItem[]>([]);
 const loading = ref(false);
 const error = ref("");
+let autocompleteSeq = 0;
+const historyVisible = false;
+
+const showAutocomplete = computed(() => pathFocused.value && autocompleteItems.value.length > 0);
 
 async function loadDirectory(path: string) {
   const target = path.trim() || "/";
@@ -38,6 +45,9 @@ async function loadDirectory(path: string) {
     currentPath.value = out.path;
     pathInput.value = out.path;
     items.value = out.items ?? [];
+    autocompleteItems.value = [];
+    autocompleteIndex.value = -1;
+    autocompleteNavigated.value = false;
   } catch (err) {
     error.value = err instanceof Error ? err.message : "FS_LIST_FAILED";
   } finally {
@@ -57,7 +67,19 @@ async function loadInitial() {
   if (!props.show) {
     return;
   }
-  await loadDirectory(currentPath.value || "/");
+  let initialPath = currentPath.value || "/";
+  if (!currentPath.value && props.getFSRoots) {
+    try {
+      const roots = await props.getFSRoots();
+      const first = String(roots?.[0] ?? "").trim();
+      if (first) {
+        initialPath = first;
+      }
+    } catch {
+      // fall back to "/"
+    }
+  }
+  await loadDirectory(initialPath);
   await loadHistory();
 }
 
@@ -68,27 +90,61 @@ watch(
       await loadInitial();
       return;
     }
-    searchQ.value = "";
-    searchItems.value = [];
+    autocompleteItems.value = [];
+    autocompleteIndex.value = -1;
+    autocompleteNavigated.value = false;
+    pathFocused.value = false;
     error.value = "";
   },
   { immediate: true }
 );
 
-watch(searchQ, async (q) => {
-  const query = q.trim();
+function splitAutocompleteInput(raw: string): { base: string; query: string } {
+  const value = raw.trim();
+  const normalized = value.replace(/\\/g, "/");
+  const idx = normalized.lastIndexOf("/");
+  if (idx >= 0) {
+    const basePart = normalized.slice(0, idx + 1);
+    const query = normalized.slice(idx + 1);
+    const base = basePart === "" ? "/" : basePart;
+    return { base, query };
+  }
+  return { base: currentPath.value || "/", query: value };
+}
+
+watch(pathInput, async (next) => {
+  const { base, query } = splitAutocompleteInput(next);
   if (!query) {
-    searchItems.value = [];
+    autocompleteItems.value = [];
+    autocompleteIndex.value = -1;
+    autocompleteNavigated.value = false;
     return;
   }
+  const seq = ++autocompleteSeq;
   try {
-    searchItems.value = await props.searchDirectories(currentPath.value || pathInput.value || "/", query);
+    const out = await props.searchDirectories(base, query);
+    if (seq !== autocompleteSeq) {
+      return;
+    }
+    autocompleteItems.value = out;
+    autocompleteIndex.value = out.length > 0 ? 0 : -1;
+    autocompleteNavigated.value = false;
   } catch {
-    searchItems.value = [];
+    if (seq !== autocompleteSeq) {
+      return;
+    }
+    autocompleteItems.value = [];
+    autocompleteIndex.value = -1;
+    autocompleteNavigated.value = false;
   }
 });
 
 async function onPathEnter() {
+  if (showAutocomplete.value && autocompleteItems.value.length > 0 && autocompleteNavigated.value) {
+    const idx = autocompleteIndex.value >= 0 ? autocompleteIndex.value : 0;
+    await onSelectAutocomplete(autocompleteItems.value[idx]);
+    return;
+  }
   try {
     const resolved = await props.resolveDirectory(pathInput.value);
     await loadDirectory(resolved);
@@ -105,7 +161,8 @@ async function onOpenHistory(path: string) {
   await loadDirectory(path);
 }
 
-async function onOpenSearch(item: DirectoryItem) {
+async function onSelectAutocomplete(item: DirectoryItem) {
+  pathInput.value = item.path;
   await loadDirectory(item.path);
 }
 
@@ -121,25 +178,78 @@ async function onSelectCurrent() {
   emit("select-directory", currentPath.value);
   emit("update:show", false);
 }
+
+async function onPathTab(event: KeyboardEvent) {
+  event.preventDefault();
+  if (!autocompleteItems.value.length) {
+    await onPathEnter();
+    return;
+  }
+  const idx = autocompleteIndex.value >= 0 ? autocompleteIndex.value : 0;
+  await onSelectAutocomplete(autocompleteItems.value[idx]);
+}
+
+function onPathArrowDown() {
+  if (!autocompleteItems.value.length) {
+    return;
+  }
+  autocompleteNavigated.value = true;
+  autocompleteIndex.value = (autocompleteIndex.value + 1 + autocompleteItems.value.length) % autocompleteItems.value.length;
+}
+
+function onPathArrowUp() {
+  if (!autocompleteItems.value.length) {
+    return;
+  }
+  autocompleteNavigated.value = true;
+  autocompleteIndex.value = (autocompleteIndex.value - 1 + autocompleteItems.value.length) % autocompleteItems.value.length;
+}
+
+function onPathEscape() {
+  autocompleteItems.value = [];
+  autocompleteIndex.value = -1;
+  autocompleteNavigated.value = false;
+}
 </script>
 
 <template>
   <div v-if="show" class="space-y-3">
-    <Input
-      v-model="pathInput"
-      data-test-id="shellman-dir-path-input"
-      placeholder="/path/to/project"
-      @keydown.enter.prevent="onPathEnter"
-    />
+    <div class="relative">
+      <Input
+        v-model="pathInput"
+        data-test-id="shellman-dir-path-input"
+        placeholder="/path/to/project"
+        @focus="pathFocused = true"
+        @blur="pathFocused = false"
+        @keydown.enter.prevent="onPathEnter"
+        @keydown.tab="onPathTab"
+        @keydown.down.prevent="onPathArrowDown"
+        @keydown.up.prevent="onPathArrowUp"
+        @keydown.esc.prevent="onPathEscape"
+      />
 
-    <Input
-      v-model="searchQ"
-      data-test-id="shellman-dir-search-input"
-      :placeholder="t('projectDirectoryPicker.searchPlaceholder')"
-    />
+      <div
+        v-if="showAutocomplete"
+        data-test-id="shellman-dir-autocomplete"
+        class="absolute left-0 right-0 top-full z-30 mt-1 max-h-44 overflow-auto rounded border border-border bg-popover p-2 shadow-lg"
+      >
+        <button
+          v-for="(item, idx) in autocompleteItems"
+          :key="`autocomplete-${item.path}`"
+          type="button"
+          :data-test-id="`shellman-dir-autocomplete-item-${item.path}`"
+          class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
+          :class="idx === autocompleteIndex ? 'bg-muted' : ''"
+          @mousedown.prevent
+          @click="onSelectAutocomplete(item)"
+        >
+          {{ item.path }}
+        </button>
+      </div>
+    </div>
 
     <div class="space-y-2">
-      <div data-test-id="shellman-dir-list" class="max-h-40 overflow-auto rounded border border-border p-2">
+      <div data-test-id="shellman-dir-list" class="h-56 overflow-auto rounded border border-border p-2">
         <button
           v-for="item in items"
           :key="item.path"
@@ -152,20 +262,11 @@ async function onSelectCurrent() {
         </button>
       </div>
 
-      <div v-if="searchItems.length" class="max-h-28 overflow-auto rounded border border-border p-2">
-        <button
-          v-for="item in searchItems"
-          :key="`search-${item.path}`"
-          type="button"
-          :data-test-id="`shellman-dir-search-item-${item.path}`"
-          class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
-          @click="onOpenSearch(item)"
-        >
-          {{ item.path }}
-        </button>
-      </div>
-
-      <div data-test-id="shellman-dir-history" class="max-h-28 overflow-auto rounded border border-border p-2">
+      <div
+        v-if="historyVisible"
+        data-test-id="shellman-dir-history"
+        class="max-h-28 overflow-auto rounded border border-border p-2"
+      >
         <button
           v-for="item in history"
           :key="`history-${item.path}`"

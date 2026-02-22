@@ -4,6 +4,7 @@ import appSource from "./App.vue?raw";
 describe("App project entry wiring", () => {
   it("opens directory picker instead of manual path form", () => {
     expect(appSource).toContain("ActiveProjectEntry");
+    expect(appSource).toContain(":get-f-s-roots=\"store.getFSRoots\"");
     expect(appSource).toContain(":list-directories=\"store.listDirectories\"");
     expect(appSource).toContain("@select-directory=\"onDirectorySelected\"");
     expect(appSource).toContain("store.recordDirectoryHistory(path)");

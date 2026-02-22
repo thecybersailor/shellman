@@ -43,8 +43,24 @@ func (s *Service) Roots() ([]string, error) {
 }
 
 func (s *Service) Resolve(path string) (string, error) {
-	if strings.TrimSpace(path) == "" {
+	path = strings.TrimSpace(path)
+	if path == "" {
 		return "", errors.New("path is required")
+	}
+	if path == "~" || strings.HasPrefix(path, "~/") || strings.HasPrefix(path, "~\\") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", err
+		}
+		if strings.TrimSpace(home) == "" {
+			return "", errors.New("home directory is unavailable")
+		}
+		if path == "~" {
+			path = home
+		} else {
+			suffix := strings.TrimPrefix(strings.TrimPrefix(path, "~/"), "~\\")
+			path = filepath.Join(home, suffix)
+		}
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {

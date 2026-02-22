@@ -56,6 +56,48 @@ func TestFSRoutes_ListAndResolve(t *testing.T) {
 	}
 }
 
+func TestFSRoutes_ResolveTildeToHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir failed: %v", err)
+	}
+	svc := fsbrowser.NewService()
+	db, err := projectstate.GlobalDBGORM()
+	if err != nil {
+		t.Fatalf("GlobalDBGORM failed: %v", err)
+	}
+	hist, err := historydb.NewStore(db)
+	if err != nil {
+		t.Fatalf("new history store failed: %v", err)
+	}
+	defer func() { _ = hist.Close() }()
+
+	srv := NewServer(Deps{ConfigStore: &fakeConfigStore{}, ProjectsStore: &fakeProjectsStore{}, FSBrowser: svc, DirHistory: hist})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	res, err := http.Post(ts.URL+"/api/v1/fs/resolve", "application/json", bytes.NewBufferString(`{"path":"~"}`))
+	if err != nil {
+		t.Fatalf("resolve request failed: %v", err)
+	}
+	defer func() { _ = res.Body.Close() }()
+	if res.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", res.StatusCode)
+	}
+	var body struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Path string `json:"path"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(res.Body).Decode(&body); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if body.Data.Path != filepath.Clean(home) {
+		t.Fatalf("expected %q, got %q", filepath.Clean(home), body.Data.Path)
+	}
+}
+
 func TestServer_FSHistory_CRUD(t *testing.T) {
 	db, err := projectstate.GlobalDBGORM()
 	if err != nil {

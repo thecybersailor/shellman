@@ -41,6 +41,9 @@ func (a *Adapter) SocketName() string {
 func (a *Adapter) ListSessions() ([]string, error) {
 	out, err := a.exec.Output("tmux", a.withSocket("list-panes", "-a", "-F", "#{pane_id}")...)
 	if err != nil {
+		if isTmuxNoServerError(err) {
+			return []string{}, nil
+		}
 		return nil, err
 	}
 	text := strings.TrimSpace(string(out))
@@ -540,6 +543,13 @@ func (a *Adapter) CreateRootPane() (string, error) {
 	}
 	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
+		if isTmuxNoServerError(err) {
+			fallbackOut, fallbackErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-P", "-F", "#{pane_id}", shellCmd)...)
+			if fallbackErr != nil {
+				return "", err
+			}
+			return strings.TrimSpace(string(fallbackOut)), nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -555,9 +565,24 @@ func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
 	}
 	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
+		if isTmuxNoServerError(err) {
+			fallbackOut, fallbackErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+			if fallbackErr != nil {
+				return "", err
+			}
+			return strings.TrimSpace(string(fallbackOut)), nil
+		}
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
+}
+
+func isTmuxNoServerError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(strings.TrimSpace(err.Error()))
+	return strings.Contains(msg, "no server running")
 }
 
 func paneBootstrapShellCommand() (string, error) {

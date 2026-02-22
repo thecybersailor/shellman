@@ -8,6 +8,7 @@ const { t } = useI18n();
 
 const props = defineProps<{
   show: boolean;
+  getFSRoots?: () => Promise<string[]>;
   listDirectories: (path: string) => Promise<DirectoryListResult>;
   resolveDirectory: (path: string) => Promise<string>;
   searchDirectories: (base: string, q: string) => Promise<DirectoryItem[]>;
@@ -51,6 +52,7 @@ function onSelectDirectory(path: string) {
     <div class="flex-1 overflow-y-auto">
       <ProjectDirectoryPicker
         :show="internalOpen"
+        :get-f-s-roots="props.getFSRoots"
         :list-directories="props.listDirectories"
         :resolve-directory="props.resolveDirectory"
         :search-directories="props.searchDirectories"

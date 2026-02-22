@@ -1,6 +1,7 @@
 package tmux
 
 import (
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,34 @@ type FakeExec struct {
 	OutputText string
 	LastArgs   string
 	RunCalls   []string
+}
+
+type outputStep struct {
+	out []byte
+	err error
+}
+
+type SequencedExec struct {
+	OutputSteps []outputStep
+	LastArgs    string
+	OutputCalls []string
+}
+
+func (s *SequencedExec) Output(name string, args ...string) ([]byte, error) {
+	cmd := strings.Join(append([]string{name}, args...), " ")
+	s.LastArgs = cmd
+	s.OutputCalls = append(s.OutputCalls, cmd)
+	if len(s.OutputSteps) == 0 {
+		return []byte{}, nil
+	}
+	step := s.OutputSteps[0]
+	s.OutputSteps = s.OutputSteps[1:]
+	return step.out, step.err
+}
+
+func (s *SequencedExec) Run(name string, args ...string) error {
+	s.LastArgs = strings.Join(append([]string{name}, args...), " ")
+	return nil
 }
 
 func (f *FakeExec) Output(name string, args ...string) ([]byte, error) {
@@ -44,6 +73,22 @@ func TestAdapter_ListSessions_WithTmuxSocket(t *testing.T) {
 	}
 	if f.LastArgs != "tmux -L tt_e2e list-panes -a -F #{pane_id}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
+	}
+}
+
+func TestAdapter_ListSessions_NoServerRunningReturnsEmpty(t *testing.T) {
+	f := &SequencedExec{
+		OutputSteps: []outputStep{
+			{out: nil, err: errors.New("exit status 1: no server running on /private/tmp/tmux-501/default")},
+		},
+	}
+	a := NewAdapter(f)
+	got, err := a.ListSessions()
+	if err != nil {
+		t.Fatalf("list failed: %v", err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("expected empty sessions, got: %#v", got)
 	}
 }
 
@@ -247,6 +292,32 @@ func TestAdapter_CreateRootPane(t *testing.T) {
 	}
 	if !strings.HasSuffix(f.LastArgs, " -i") {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
+	}
+}
+
+func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenNoServer(t *testing.T) {
+	f := &SequencedExec{
+		OutputSteps: []outputStep{
+			{out: nil, err: errors.New("exit status 1: no server running on /private/tmp/tmux-501/default")},
+			{out: []byte("%8\n"), err: nil},
+		},
+	}
+	a := NewAdapter(f)
+	pane, err := a.CreateRootPaneInDir("/tmp/repo")
+	if err != nil {
+		t.Fatalf("create root pane failed: %v", err)
+	}
+	if pane != "%8" {
+		t.Fatalf("unexpected pane id: %s", pane)
+	}
+	if len(f.OutputCalls) != 2 {
+		t.Fatalf("expected 2 output calls, got %d: %#v", len(f.OutputCalls), f.OutputCalls)
+	}
+	if !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected first command: %s", f.OutputCalls[0])
+	}
+	if !strings.HasPrefix(f.OutputCalls[1], "tmux new-session -d -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected fallback command: %s", f.OutputCalls[1])
 	}
 }
 

@@ -3,6 +3,7 @@ package fsbrowser
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -33,6 +34,46 @@ func TestService_ResolveAbsolutePath(t *testing.T) {
 		t.Fatalf("resolve failed: %v", err)
 	}
 	if abs != filepath.Clean(root) {
+		t.Fatalf("unexpected abs: %s", abs)
+	}
+}
+
+func TestService_ResolveTildeHome(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir failed: %v", err)
+	}
+	svc := NewService()
+	abs, err := svc.Resolve("~")
+	if err != nil {
+		t.Fatalf("resolve ~ failed: %v", err)
+	}
+	if abs != filepath.Clean(home) {
+		t.Fatalf("unexpected abs: %s", abs)
+	}
+}
+
+func TestService_ResolveTildeSubPath(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Fatalf("home dir failed: %v", err)
+	}
+	tmp, err := os.MkdirTemp(home, "shellman-fsbrowser-test-")
+	if err != nil {
+		t.Fatalf("mkdir temp under home failed: %v", err)
+	}
+	defer func() { _ = os.RemoveAll(tmp) }()
+
+	rel := strings.TrimPrefix(tmp, filepath.Clean(home))
+	rel = strings.TrimPrefix(rel, string(filepath.Separator))
+	input := "~/" + rel
+
+	svc := NewService()
+	abs, err := svc.Resolve(input)
+	if err != nil {
+		t.Fatalf("resolve %q failed: %v", input, err)
+	}
+	if abs != filepath.Clean(tmp) {
 		t.Fatalf("unexpected abs: %s", abs)
 	}
 }
