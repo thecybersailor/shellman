@@ -1,9 +1,8 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, useSlots, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
-import { CanvasAddon } from "@xterm/addon-canvas";
 import { Card, CardContent } from "@/components/ui/card";
 import TaskHeader from "@/components/TaskHeader.vue";
 import PaneLaunchForm from "@/components/PaneLaunchForm.vue";
@@ -33,10 +32,11 @@ const emit = defineEmits<{
   (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "open-session-detail"): void;
 }>();
+const slots = useSlots();
+const hasTerminalSlot = computed(() => Boolean(slots.terminal));
 
 const root = ref<HTMLElement | null>(null);
 const term = new Terminal({ convertEol: true, scrollback: 10000 });
-const canvasAddon = new CanvasAddon();
 const fitAddon = new FitAddon();
 const opened = ref(false);
 const lastSize = ref<{ cols: number; rows: number } | null>(null);
@@ -144,9 +144,9 @@ function readRendererState() {
   return { rendererName, canvasCount };
 }
 
-function tryEnableCanvasRenderer(addon: CanvasAddon, attempt: "initial" | "retry") {
+function tryEnableCanvasRenderer(addon: object, attempt: "initial" | "retry") {
   try {
-    term.loadAddon(addon);
+    term.loadAddon(addon as never);
   } catch (error) {
     console.warn("[shellman] failed to enable xterm canvas renderer, fallback to DOM renderer", { attempt, error });
     return false;
@@ -157,6 +157,21 @@ function tryEnableCanvasRenderer(addon: CanvasAddon, attempt: "initial" | "retry
     console.warn("[shellman] xterm canvas addon loaded but renderer is not canvas", { attempt, ...state });
   }
   return enabled;
+}
+
+async function enableCanvasRenderer() {
+  try {
+    const mod = await import("@xterm/addon-canvas");
+    const CanvasAddonCtor = mod.CanvasAddon;
+    let canvasEnabled = tryEnableCanvasRenderer(new CanvasAddonCtor(), "initial");
+    if (!canvasEnabled) {
+      canvasEnabled = tryEnableCanvasRenderer(new CanvasAddonCtor(), "retry");
+    }
+    return canvasEnabled;
+  } catch (error) {
+    console.warn("[shellman] failed to import xterm canvas addon, fallback to DOM renderer", { error });
+    return false;
+  }
 }
 
 function scheduleTerminalSizeSync(forceEmit = false) {
@@ -383,6 +398,9 @@ defineExpose({ writeOutput });
 watch(
   () => props.frame ?? null,
   (next) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
     if (!next) {
       return;
     }
@@ -424,6 +442,9 @@ watch(
 watch(
   () => props.cursor ?? null,
   (next) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
     moveCursor(next);
   }
 );
@@ -431,6 +452,9 @@ watch(
 watch(
   () => Boolean(props.isEnded),
   (next) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
     logInfo("shellman.term.view.ended.watch", { ended: next });
     syncTerminalInputDisabled();
   },
@@ -440,6 +464,9 @@ watch(
 watch(
   () => props.taskId ?? "",
   (next, prev) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
     if (!opened.value || !next || next === prev) {
       return;
     }
@@ -462,14 +489,20 @@ watch(
 watch(
   () => Boolean(props.isNoPaneTask),
   (next, prev) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
     if (prev && !next && opened.value) {
       scheduleTerminalSizeSync(true);
     }
   }
 );
 
-onMounted(() => {
+onMounted(async () => {
   logInfo("shellman.term.view.mounted.start");
+  if (hasTerminalSlot.value) {
+    return;
+  }
   if (root.value) {
     if (typeof window.matchMedia !== "function") {
       logInfo("shellman.term.view.mounted.skip", { reason: "matchMedia-missing" });
@@ -488,10 +521,7 @@ onMounted(() => {
         g.__SHELLMAN_TERM_INSTANCES__.push(term);
       }
     }
-    let canvasEnabled = tryEnableCanvasRenderer(canvasAddon, "initial");
-    if (!canvasEnabled) {
-      canvasEnabled = tryEnableCanvasRenderer(new CanvasAddon(), "retry");
-    }
+    const canvasEnabled = await enableCanvasRenderer();
     const finalRendererState = readRendererState();
     root.value.dataset.renderer = canvasEnabled ? "canvas" : "dom";
     if (!canvasEnabled) {
@@ -556,6 +586,9 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (hasTerminalSlot.value) {
+    return;
+  }
   logInfo("shellman.term.view.before_unmount");
   unbindPasteHandler();
   window.removeEventListener("resize", handleWindowResize);
@@ -590,7 +623,9 @@ onBeforeUnmount(() => {
       @open-session-detail="() => emit('open-session-detail')"
     />
     <CardContent v-show="!props.isNoPaneTask" class="p-1 flex-1 min-h-0 relative">
-       <div data-test-id="tt-terminal-root" ref="root" class="w-full h-full" />
+      <slot name="terminal">
+        <div data-test-id="tt-terminal-root" ref="root" class="w-full h-full" />
+      </slot>
     </CardContent>
     <div
       v-if="props.showReopenButton && !props.isNoPaneTask"
