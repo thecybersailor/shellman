@@ -39,9 +39,11 @@
     "talkPlaceholder": "Talk to ShellMan...",
     "sidecarMode": "Sidecar Mode",
     "sidecarModeAdvisor": "Advisor",
-    "sidecarModeObserver": "Observer (no auto-continue)",
+    "sidecarModeAdvisorDescription": "You decide when to run.",
+    "sidecarModeObserver": "Observer",
+    "sidecarModeObserverDescription": "Only update task status.",
     "sidecarModeAutopilot": "Autopilot",
-    "sidecarModeObserverHint": "Observer = no auto-continue"
+    "sidecarModeAutopilotDescription": "Handle Terminal automatically until done or paused."
   },
   "projectTaskTree": {
     "projects": "Projects",
