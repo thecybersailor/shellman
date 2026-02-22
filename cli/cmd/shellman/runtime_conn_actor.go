@@ -11,14 +11,17 @@ import (
 type ConnActor struct {
 	id string
 
-	mu       sync.RWMutex
-	selected string
-	outbound chan protocol.Message
+	mu         sync.RWMutex
+	selected   string
+	watchOrder []string
+	watchSet   map[string]struct{}
+	outbound   chan protocol.Message
 }
 
 func NewConnActor(connID string) *ConnActor {
 	return &ConnActor{
 		id:       strings.TrimSpace(connID),
+		watchSet: map[string]struct{}{},
 		outbound: make(chan protocol.Message, 128),
 	}
 }
@@ -37,6 +40,60 @@ func (c *ConnActor) Select(target string) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.selected = strings.TrimSpace(target)
+}
+
+func (c *ConnActor) SelectAndWatch(target string, limit int) (evicted string) {
+	if c == nil {
+		return ""
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ""
+	}
+	if limit <= 0 {
+		limit = 1
+	}
+
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.selected = target
+	if c.watchSet == nil {
+		c.watchSet = map[string]struct{}{}
+	}
+	if _, exists := c.watchSet[target]; exists {
+		for i, item := range c.watchOrder {
+			if item == target {
+				c.watchOrder = append(c.watchOrder[:i], c.watchOrder[i+1:]...)
+				break
+			}
+		}
+	}
+	c.watchOrder = append(c.watchOrder, target)
+	c.watchSet[target] = struct{}{}
+
+	for len(c.watchOrder) > limit {
+		dropped := c.watchOrder[0]
+		c.watchOrder = c.watchOrder[1:]
+		delete(c.watchSet, dropped)
+		if evicted == "" {
+			evicted = dropped
+		}
+	}
+	return evicted
+}
+
+func (c *ConnActor) WatchedTargets() []string {
+	if c == nil {
+		return nil
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	if len(c.watchOrder) == 0 {
+		return nil
+	}
+	out := make([]string, len(c.watchOrder))
+	copy(out, c.watchOrder)
+	return out
 }
 
 func (c *ConnActor) Selected() string {

@@ -35,6 +35,8 @@ type RegistryActor struct {
 	paneRuntimeBaseline map[string]paneRuntimeBaseline
 }
 
+const activePaneWatchLimit = 5
+
 func NewRegistryActor(logger *slog.Logger) *RegistryActor {
 	if logger == nil {
 		logger = newRuntimeLogger(io.Discard)
@@ -151,7 +153,7 @@ func (r *RegistryActor) GetOrCreatePane(target string) *PaneActor {
 	return r.getOrCreatePaneLocked(target)
 }
 
-func (r *RegistryActor) Subscribe(connID, target string) {
+func (r *RegistryActor) Subscribe(connID, target string, opts ...paneSubscribeOptions) {
 	connID = strings.TrimSpace(connID)
 	target = strings.TrimSpace(target)
 	if connID == "" || target == "" {
@@ -163,20 +165,22 @@ func (r *RegistryActor) Subscribe(connID, target string) {
 		return
 	}
 
-	prevTarget := strings.TrimSpace(conn.Selected())
-	if prevTarget != "" && prevTarget != target {
+	evictedTarget := conn.SelectAndWatch(target, activePaneWatchLimit)
+	pane := r.GetOrCreatePane(target)
+	subscribeOpt := paneSubscribeOptions{}
+	if len(opts) > 0 {
+		subscribeOpt = opts[0]
+	}
+	if pane != nil {
+		pane.Subscribe(connID, conn.Outbound(), subscribeOpt)
+	}
+	if evictedTarget != "" && evictedTarget != target {
 		r.mu.Lock()
-		oldPane := r.panes[prevTarget]
+		oldPane := r.panes[evictedTarget]
 		r.mu.Unlock()
 		if oldPane != nil {
 			oldPane.Unsubscribe(connID)
 		}
-	}
-
-	pane := r.GetOrCreatePane(target)
-	conn.Select(target)
-	if pane != nil {
-		pane.Subscribe(connID, conn.Outbound())
 	}
 }
 

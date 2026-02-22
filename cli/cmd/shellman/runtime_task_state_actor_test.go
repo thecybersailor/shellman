@@ -126,6 +126,50 @@ func TestTaskStateActor_Tick_FlushesOnlyChangedAndEmitsTmuxStatusDelta(t *testin
 	}
 }
 
+func TestTaskStateActor_Tick_TrimsSnapshotToRecentLines(t *testing.T) {
+	oldMaxLines := runtimeSnapshotMaxLines
+	runtimeSnapshotMaxLines = 3
+	defer func() { runtimeSnapshotMaxLines = oldMaxLines }()
+
+	store := &fakeTaskStateStore{
+		panesByTask: projectstate.PanesIndex{
+			"t1": {TaskID: "t1", PaneID: "e2e:0.0", PaneTarget: "e2e:0.0"},
+		},
+		tasksByProject: map[string][]projectstate.TaskRecordRow{},
+		maxByProject:   map[string]int64{"p1": 0},
+	}
+	actor := NewTaskStateActor()
+	actor.SetProjectProvider(func() ([]taskStateProject, error) {
+		return []taskStateProject{{ProjectID: "p1", RepoRoot: "/tmp/p1"}}, nil
+	})
+	actor.SetStoreFactory(func(repoRoot string) taskStateStore {
+		return store
+	})
+
+	actor.OnPaneReport(PaneStateReport{
+		PaneID:        "e2e:0.0",
+		PaneTarget:    "e2e:0.0",
+		RuntimeStatus: "running",
+		Snapshot:      "l1\nl2\nl3\nl4\nl5\nl6\n",
+		UpdatedAt:     100,
+	})
+
+	actor.Tick(context.Background())
+
+	if store.batchCalls != 1 {
+		t.Fatalf("expected one runtime batch upsert, got %d", store.batchCalls)
+	}
+	if len(store.lastBatch.Panes) != 1 {
+		t.Fatalf("expected one pane runtime row, got %d", len(store.lastBatch.Panes))
+	}
+	if got := store.lastBatch.Panes[0].Snapshot; got != "l4\nl5\nl6\n" {
+		t.Fatalf("expected trimmed snapshot, got %q", got)
+	}
+	if got := store.lastBatch.Panes[0].SnapshotHash; got != sha1Text("l4\nl5\nl6\n") {
+		t.Fatalf("unexpected snapshot hash, got %q", got)
+	}
+}
+
 func TestTaskStateActor_Tick_EmitsTreeDeltaWhenTasksChanged(t *testing.T) {
 	store := &fakeTaskStateStore{
 		panesByTask: projectstate.PanesIndex{},

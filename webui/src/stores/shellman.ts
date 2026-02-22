@@ -57,6 +57,9 @@ export type TermFrameKind = "reset" | "append_delta" | "append_ansi_repaint" | "
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
 const TERM_FRAME_PROFILE_WINDOW_MS = 1000;
 const TMUX_PANE_NOT_FOUND_CODE = "TMUX_PANE_NOT_FOUND";
+const TERMINAL_CACHE_MAX_LINES = 2000;
+const ACTIVE_PANE_CACHE_LIMIT = 5;
+const GAP_RECOVER_HISTORY_LINES = 4000;
 
 export function classifyTermFrame(mode: TerminalFrame["mode"], data: string): TermFrameKind {
   if (mode === "reset") {
@@ -469,6 +472,8 @@ export function createShellmanStore(
   const messagesRefreshTimerByTaskID: Record<string, ReturnType<typeof setTimeout> | undefined> = {};
   const messagesHydratedByTaskID: Record<string, true> = {};
   const persistedSnapshotByPaneUuid: Record<string, TerminalCacheEntry> = {};
+  const paneGapByPaneUuid: Record<string, true> = {};
+  const activePaneOrderByUuid: string[] = [];
   let latestTerminalSize: { cols: number; rows: number } | null = null;
 
   function nextID() {
@@ -487,9 +492,10 @@ export function createShellmanStore(
     if (!snapshot || typeof snapshot !== "object") {
       return null;
     }
-    const output = String(snapshot.output ?? "");
+    const output = trimToRecentLines(String(snapshot.output ?? ""), TERMINAL_CACHE_MAX_LINES);
     const frameMode = snapshot.frame?.mode === "append" ? "append" : "reset";
-    const frameData = String(snapshot.frame?.data ?? output);
+    const rawFrameData = String(snapshot.frame?.data ?? output);
+    const frameData = frameMode === "reset" ? trimToRecentLines(rawFrameData, TERMINAL_CACHE_MAX_LINES) : rawFrameData;
     const cursorRaw = snapshot.cursor;
     const cursor =
       cursorRaw && typeof cursorRaw.x === "number" && typeof cursorRaw.y === "number"
@@ -1077,29 +1083,27 @@ export function createShellmanStore(
         payloadPaneUUID ||
         (selectedTarget && target && selectedTarget === target ? selectedPaneUuid : "") ||
         findPaneUUIDByTarget(target);
-      if (selectedPaneUuid && incomingPaneUuid && selectedPaneUuid !== incomingPaneUuid) {
-        logInfo("shellman.term.output.ignore", {
-          target,
-          selectedPaneUuid,
-          incomingPaneUuid,
-          reason: "pane-uuid-mismatch"
-        });
-        return;
-      }
-      if (selectedTarget && target && selectedTarget !== target) {
-        logInfo("shellman.term.output.ignore", {
-          target,
-          selectedPaneTarget: selectedTarget,
-          reason: "target-mismatch"
-        });
-        return;
-      }
+      const isSelectedPane = Boolean(
+        (selectedPaneUuid && incomingPaneUuid && selectedPaneUuid === incomingPaneUuid) ||
+          (!selectedPaneUuid && selectedTarget && target && selectedTarget === target)
+      );
       const mode = payload.mode === "append" ? "append" : "reset";
       const text = String(payload.data ?? "");
       trackTermFrameProfile(target, mode, text);
       const outputSeq = ++termOutputSeq;
-      const beforeLen = state.terminalOutput.length;
+      const cachePaneUUID = incomingPaneUuid || findPaneUUIDByTarget(target);
+      const prevCache = cachePaneUUID ? state.terminalByPaneUuid[cachePaneUUID] ?? persistedSnapshotByPaneUuid[cachePaneUUID] : null;
+      const baseOutput = isSelectedPane ? state.terminalOutput : String(prevCache?.output ?? "");
+      const beforeLen = baseOutput.length;
       const nowMs = Date.now();
+      const nextOutputRaw = mode === "append" ? baseOutput + text : text;
+      const nextOutput = trimToRecentLines(nextOutputRaw, TERMINAL_CACHE_MAX_LINES);
+      let nextCursor: { x: number; y: number } | null = prevCache?.cursor ?? null;
+      if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {
+        nextCursor = { x: payload.cursor.x, y: payload.cursor.y };
+      } else if (mode === "reset") {
+        nextCursor = null;
+      }
       logInfo("shellman.term.output.apply", {
         outputSeq,
         target,
@@ -1107,42 +1111,44 @@ export function createShellmanStore(
         dataLen: text.length,
         dataEscaped: escapeForLog(text),
         selectedPaneTarget: selectedTarget,
+        selectedPaneUuid,
+        incomingPaneUuid,
+        cacheOnly: !isSelectedPane,
         msSinceLastInputAck: lastTermInputAckAtMs > 0 ? Math.max(0, nowMs - lastTermInputAckAtMs) : null,
         terminalOutputLenBefore: beforeLen,
-        terminalOutputLenAfter: mode === "append" ? beforeLen + text.length : text.length
+        terminalOutputLenAfter: nextOutput.length
       });
-      state.terminalOutput = mode === "append" ? state.terminalOutput + text : text;
-      state.terminalFrame = {
-        mode,
-        data: text
-      };
-      state.terminalEnded = false;
-      if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {
-        state.terminalCursor = { x: payload.cursor.x, y: payload.cursor.y };
-        logInfo("shellman.term.cursor.update", {
-          outputSeq,
-          target,
-          x: payload.cursor.x,
-          y: payload.cursor.y,
+      if (isSelectedPane) {
+        state.terminalOutput = nextOutput;
+        state.terminalFrame = {
           mode,
-          hasData: text.length > 0
-        });
-      } else if (mode === "reset") {
-        state.terminalCursor = null;
-        logInfo("shellman.term.cursor.clear", { target });
-      } else {
-        logInfo("shellman.term.cursor.keep", { target, mode, hasData: text.length > 0 });
+          data: text
+        };
+        state.terminalEnded = false;
+        state.terminalCursor = nextCursor;
+        if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {
+          logInfo("shellman.term.cursor.update", {
+            outputSeq,
+            target,
+            x: payload.cursor.x,
+            y: payload.cursor.y,
+            mode,
+            hasData: text.length > 0
+          });
+        } else if (mode === "reset") {
+          logInfo("shellman.term.cursor.clear", { target });
+        } else {
+          logInfo("shellman.term.cursor.keep", { target, mode, hasData: text.length > 0 });
+        }
       }
-      const cachePaneUUID =
-        payloadPaneUUID || findPaneUUIDByTarget(target) || selectedBinding?.paneUuid || state.selectedPaneUuid;
       if (cachePaneUUID) {
         if (endedPaneUuids[cachePaneUUID]) {
           delete endedPaneUuids[cachePaneUUID];
         }
         const cacheEntry = {
-          output: state.terminalOutput,
-          frame: state.terminalFrame,
-          cursor: state.terminalCursor,
+          output: nextOutput,
+          frame: { mode, data: text } as TerminalFrame,
+          cursor: nextCursor,
           source: "live" as const
         };
         state.terminalByPaneUuid[cachePaneUUID] = cacheEntry;
@@ -1412,6 +1418,23 @@ export function createShellmanStore(
     return text.replace(ANSI_ESCAPE_RE, "");
   }
 
+  function trimToRecentLines(text: string, maxLines: number): string {
+    if (!text || maxLines <= 0) {
+      return text;
+    }
+    const hasTrailingNewline = text.endsWith("\n");
+    const body = hasTrailingNewline ? text.slice(0, -1) : text;
+    if (!body) {
+      return text;
+    }
+    const lines = body.split("\n");
+    if (lines.length <= maxLines) {
+      return text;
+    }
+    const clipped = lines.slice(lines.length - maxLines).join("\n");
+    return hasTrailingNewline ? `${clipped}\n` : clipped;
+  }
+
   function trimTrailingBlankLines(text: string): string {
     const normalized = text.replace(/\r/g, "");
     const lines = normalized.split("\n");
@@ -1449,7 +1472,7 @@ export function createShellmanStore(
     const endedLine = buildPaneEndedMessage(reason);
     const prevCache = state.terminalByPaneUuid[paneUuid] ?? persistedCache;
     const prevOutput = String(prevCache?.output ?? "");
-    const text = toEndedDisplayText(prevOutput, endedLine);
+    const text = trimToRecentLines(toEndedDisplayText(prevOutput, endedLine), TERMINAL_CACHE_MAX_LINES);
     const cacheEntry = {
       output: text,
       frame: { mode: "reset" as const, data: text },
@@ -1495,6 +1518,26 @@ export function createShellmanStore(
       rows: size.rows,
       trigger: reason
     });
+  }
+
+  function touchActivePane(paneUuid: string) {
+    const normalized = String(paneUuid ?? "").trim();
+    if (!normalized) {
+      return "";
+    }
+    const existingIdx = activePaneOrderByUuid.indexOf(normalized);
+    if (existingIdx >= 0) {
+      activePaneOrderByUuid.splice(existingIdx, 1);
+    }
+    activePaneOrderByUuid.push(normalized);
+    if (activePaneOrderByUuid.length <= ACTIVE_PANE_CACHE_LIMIT) {
+      return "";
+    }
+    const evicted = activePaneOrderByUuid.shift() ?? "";
+    if (evicted) {
+      paneGapByPaneUuid[evicted] = true;
+    }
+    return evicted;
   }
 
   async function selectTask(taskId: string, options: { forceRefreshNotes?: boolean; skipNotesHydration?: boolean } = {}) {
@@ -1573,7 +1616,15 @@ export function createShellmanStore(
       });
       return;
     }
-    const selectPayload: { target: string; cols?: number; rows?: number } = { target };
+    if (state.selectedPaneUuid) {
+      touchActivePane(state.selectedPaneUuid);
+    }
+    const selectPayload: { target: string; cols?: number; rows?: number; gap_recover?: boolean; history_lines?: number } = { target };
+    if (state.selectedPaneUuid && paneGapByPaneUuid[state.selectedPaneUuid]) {
+      selectPayload.gap_recover = true;
+      selectPayload.history_lines = GAP_RECOVER_HISTORY_LINES;
+      delete paneGapByPaneUuid[state.selectedPaneUuid];
+    }
     if (latestTerminalSize && latestTerminalSize.cols >= 2 && latestTerminalSize.rows >= 2) {
       selectPayload.cols = latestTerminalSize.cols;
       selectPayload.rows = latestTerminalSize.rows;

@@ -243,6 +243,49 @@ func TestPaneActor_SubscribeMissingPaneEmitsPaneEndedEvenIfHistoryExists(t *test
 	}
 }
 
+func TestPaneActor_Subscribe_GapRecoverUsesHistoryLines(t *testing.T) {
+	tmuxService := &streamPumpTmux{
+		history:       "history_line_1\nhistory_line_2\n",
+		paneSnapshots: []string{"visible_line_only\n"},
+		cursors:       [][2]int{{0, 0}},
+	}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, nil, nil, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actor.Start(ctx)
+
+	out := make(chan protocol.Message, 8)
+	actor.Subscribe("conn_1", out, paneSubscribeOptions{
+		GapRecover:   true,
+		HistoryLines: 4000,
+	})
+
+	select {
+	case msg := <-out:
+		if msg.Op != "term.output" {
+			t.Fatalf("expected term.output, got %s", msg.Op)
+		}
+		var payload struct {
+			Mode string `json:"mode"`
+			Data string `json:"data"`
+		}
+		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
+			t.Fatalf("decode payload failed: %v", err)
+		}
+		if payload.Mode != "reset" {
+			t.Fatalf("expected mode reset, got %s", payload.Mode)
+		}
+		if payload.Data != "history_line_1\nhistory_line_2\n" {
+			t.Fatalf("expected reset data from capture history, got %q", payload.Data)
+		}
+		if tmuxService.historyLines != 4000 {
+			t.Fatalf("expected history lines 4000, got %d", tmuxService.historyLines)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected reset frame for gap recover subscribe")
+	}
+}
+
 func TestPaneActor_ControlModeOutputBypassesSnapshotDiff(t *testing.T) {
 	tmuxService := &streamPumpTmux{
 		history:       "hello\n",

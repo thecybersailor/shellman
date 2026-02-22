@@ -446,6 +446,129 @@ describe("shellman store", () => {
     expect(afterSelectCount).toBe(beforeSelectCount);
   });
 
+  it("caches watched pane output even when not currently selected", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: [
+                { task_id: "t1", title: "root", status: "running" },
+                { task_id: "t2", title: "sibling", status: "running" }
+              ]
+            }
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.1", pane_target: "e2e:0.1" } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t2/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t2", pane_uuid: "uuid-t2", pane_id: "e2e:0.2", pane_target: "e2e:0.2" } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+
+    await store.selectTask("t1");
+    await store.selectTask("t2");
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t2_base",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.2", mode: "reset", data: "T2_BASE\n", cursor: { x: 0, y: 0 } }
+      })
+    );
+    expect(store.state.terminalOutput).toContain("T2_BASE");
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_append",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.1", mode: "append", data: "T1_BG\n", cursor: { x: 0, y: 1 } }
+      })
+    );
+
+    expect(store.state.terminalOutput).toContain("T2_BASE");
+    expect(store.state.terminalOutput).not.toContain("T1_BG");
+    expect(store.state.terminalByPaneUuid["uuid-t1"]?.output).toContain("T1_BG");
+    expect(store.state.terminalByPaneUuid["uuid-t2"]?.output).toContain("T2_BASE");
+  });
+
+  it("marks pane as gap and sends gap_recover on next select", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: Array.from({ length: 6 }, (_, idx) => ({
+                task_id: `t${idx + 1}`,
+                title: `task-${idx + 1}`,
+                status: "running"
+              }))
+            }
+          })
+        } as Response;
+      }
+      const paneMatch = url.match(/\/api\/v1\/tasks\/(t\d+)\/pane$/);
+      if (paneMatch) {
+        const taskID = paneMatch[1];
+        const idx = Number(taskID.replace("t", ""));
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: taskID,
+              pane_uuid: `uuid-${taskID}`,
+              pane_id: `e2e:0.${idx}`,
+              pane_target: `e2e:0.${idx}`
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+
+    await store.selectTask("t1");
+    await store.selectTask("t2");
+    await store.selectTask("t3");
+    await store.selectTask("t4");
+    await store.selectTask("t5");
+    await store.selectTask("t6");
+    await store.selectTask("t1");
+
+    const selectMessages = sock.sent
+      .map((raw) => JSON.parse(raw) as { op?: string; payload?: Record<string, unknown> })
+      .filter((msg) => msg.op === "tmux.select_pane");
+    const lastSelectPayload = selectMessages[selectMessages.length - 1]?.payload ?? {};
+    expect(lastSelectPayload.gap_recover).toBe(true);
+    expect(lastSelectPayload.history_lines).toBe(4000);
+  });
+
   it("does not restore persisted snapshot for running task and does not patch pane snapshot", async () => {
     const sock = new FakeSocket();
     const calls: Array<{ url: string; method: string; body?: string }> = [];
@@ -682,6 +805,53 @@ describe("shellman store", () => {
 
     expect(store.state.terminalOutput.endsWith(" ls")).toBe(true);
     expect(store.state.terminalCursor).toEqual({ x: 6, y: 0 });
+  });
+
+  it("caps per-pane terminal cache to recent N lines", () => {
+    const sock = new FakeSocket();
+    const store = createShellmanStore(async () => ({ json: async () => ({ ok: true, data: [] }) }) as Response, () => sock as unknown as WebSocket);
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+    store.state.selectedPaneTarget = "e2e:0.0";
+    store.state.selectedPaneUuid = "uuid-t1";
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_reset",
+        type: "event",
+        op: "term.output",
+        payload: {
+          target: "e2e:0.0",
+          mode: "reset",
+          data: "line-0000\n",
+          cursor: { x: 0, y: 0 }
+        }
+      })
+    );
+
+    const longAppend = `${Array.from({ length: 2100 }, (_, idx) => `line-${String(idx + 1).padStart(4, "0")}`).join("\n")}\n`;
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_append_long",
+        type: "event",
+        op: "term.output",
+        payload: {
+          target: "e2e:0.0",
+          mode: "append",
+          data: longAppend
+        }
+      })
+    );
+
+    const cached = store.state.terminalByPaneUuid["uuid-t1"];
+    expect(cached).toBeDefined();
+    const lines = String(cached?.output ?? "")
+      .split("\n")
+      .filter((line) => line.length > 0);
+    expect(lines.length).toBeLessThanOrEqual(2000);
+    expect(lines[0]).toBe("line-0101");
+    expect(lines[lines.length - 1]).toBe("line-2100");
+    expect(store.state.terminalOutput.includes("line-0000")).toBe(false);
   });
 
   it("registers active project and loads its tree", async () => {

@@ -84,6 +84,8 @@ type TaskStateActor struct {
 	projectCache map[string]taskRowsCache
 }
 
+var runtimeSnapshotMaxLines = 2000
+
 func NewTaskStateActor() *TaskStateActor {
 	return &TaskStateActor{
 		paneLatest:   map[string]PaneStateReport{},
@@ -92,6 +94,29 @@ func NewTaskStateActor() *TaskStateActor {
 		now:          time.Now,
 		projectCache: map[string]taskRowsCache{},
 	}
+}
+
+func trimToRecentLines(text string, maxLines int) string {
+	if maxLines <= 0 || text == "" {
+		return text
+	}
+	hasTrailingNewline := strings.HasSuffix(text, "\n")
+	working := text
+	if hasTrailingNewline {
+		working = strings.TrimSuffix(working, "\n")
+	}
+	if working == "" {
+		return text
+	}
+	lines := strings.Split(working, "\n")
+	if len(lines) <= maxLines {
+		return text
+	}
+	out := strings.Join(lines[len(lines)-maxLines:], "\n")
+	if hasTrailingNewline {
+		out += "\n"
+	}
+	return out
 }
 
 func (a *TaskStateActor) SetProjectProvider(provider taskStateProjectProvider) {
@@ -288,13 +313,14 @@ func (a *TaskStateActor) flushDirtyRuntime(projects []taskStateProject) projects
 	}
 
 	for _, report := range reports {
+		trimmedSnapshot := trimToRecentLines(report.Snapshot, runtimeSnapshotMaxLines)
 		paneRecord := projectstate.PaneRuntimeRecord{
 			PaneID:         report.PaneID,
 			PaneTarget:     report.PaneTarget,
 			CurrentCommand: report.CurrentCommand,
 			RuntimeStatus:  report.RuntimeStatus,
-			Snapshot:       report.Snapshot,
-			SnapshotHash:   report.SnapshotHash,
+			Snapshot:       trimmedSnapshot,
+			SnapshotHash:   sha1Text(trimmedSnapshot),
 			CursorX:        report.CursorX,
 			CursorY:        report.CursorY,
 			HasCursor:      report.HasCursor,

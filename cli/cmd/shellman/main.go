@@ -300,9 +300,11 @@ func bindMessageLoop(
 		switch msg.Op {
 		case "tmux.select_pane", "term.input":
 			var payload struct {
-				Target string `json:"target"`
-				Cols   int    `json:"cols"`
-				Rows   int    `json:"rows"`
+				Target       string `json:"target"`
+				Cols         int    `json:"cols"`
+				Rows         int    `json:"rows"`
+				GapRecover   bool   `json:"gap_recover"`
+				HistoryLines int    `json:"history_lines"`
 			}
 			if err := json.Unmarshal(msg.Payload, &payload); err == nil {
 				payloadTarget = payload.Target
@@ -315,7 +317,21 @@ func bindMessageLoop(
 						logger.Debug("incoming ws message", "op", "term.input", "target", inputPayload.Target, "text_len", len(inputPayload.Text), "text_preview", debugPreview(inputPayload.Text, 120))
 					}
 				} else {
-					logger.Debug("incoming ws message", "op", msg.Op, "target", payload.Target, "cols", payload.Cols, "rows", payload.Rows)
+					logger.Debug(
+						"incoming ws message",
+						"op",
+						msg.Op,
+						"target",
+						payload.Target,
+						"cols",
+						payload.Cols,
+						"rows",
+						payload.Rows,
+						"gap_recover",
+						payload.GapRecover,
+						"history_lines",
+						payload.HistoryLines,
+					)
 				}
 			}
 		case "term.resize":
@@ -344,7 +360,15 @@ func bindMessageLoop(
 			switch msg.Op {
 			case "tmux.select_pane":
 				if registry != nil {
-					registry.Subscribe(connID, payloadTarget)
+					var payload struct {
+						GapRecover   bool `json:"gap_recover"`
+						HistoryLines int  `json:"history_lines"`
+					}
+					_ = json.Unmarshal(msg.Payload, &payload)
+					registry.Subscribe(connID, payloadTarget, paneSubscribeOptions{
+						GapRecover:   payload.GapRecover,
+						HistoryLines: payload.HistoryLines,
+					})
 				}
 			case "term.input":
 				if conn != nil {

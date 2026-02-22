@@ -64,6 +64,11 @@ type PaneActor struct {
 	startOnce sync.Once
 }
 
+type paneSubscribeOptions struct {
+	GapRecover   bool
+	HistoryLines int
+}
+
 func NewPaneActor(
 	target string,
 	tmuxService bridge.TmuxService,
@@ -185,7 +190,7 @@ func (p *PaneActor) loop(ctx context.Context) {
 	}
 }
 
-func (p *PaneActor) Subscribe(connID string, out chan protocol.Message) {
+func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...paneSubscribeOptions) {
 	if p == nil || out == nil {
 		return
 	}
@@ -198,7 +203,11 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message) {
 	p.subscribers[connID] = out
 	p.mu.Unlock()
 
-	snapshot, cursorX, cursorY, hasCursor, err := p.captureResetSnapshot()
+	opt := paneSubscribeOptions{}
+	if len(opts) > 0 {
+		opt = opts[0]
+	}
+	snapshot, cursorX, cursorY, hasCursor, err := p.captureResetSnapshotWithOptions(opt)
 	if err != nil {
 		if isPaneTargetMissingError(err) {
 			p.sendToConn(connID, paneEndedEventMessage(p.target, err.Error()))
@@ -219,6 +228,34 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message) {
 	p.ensureRealtimeSubscribed()
 
 	p.emitStatus(snapshot, time.Now().UTC())
+}
+
+func (p *PaneActor) captureResetSnapshotWithOptions(opt paneSubscribeOptions) (string, int, int, bool, error) {
+	if p == nil {
+		return "", 0, 0, false, nil
+	}
+	if opt.GapRecover {
+		lines := opt.HistoryLines
+		if lines <= 0 {
+			lines = streamHistoryLines
+		}
+		snapshot, err := p.tmuxService.CaptureHistory(p.target, lines)
+		if err == nil {
+			snapshot = normalizeTermSnapshot(snapshot)
+			cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
+			if cursorErr != nil {
+				if isPaneTargetMissingError(cursorErr) {
+					return "", 0, 0, false, cursorErr
+				}
+				return snapshot, 0, 0, false, nil
+			}
+			return snapshot, cursorX, cursorY, true, nil
+		}
+		if isPaneTargetMissingError(err) {
+			return "", 0, 0, false, err
+		}
+	}
+	return p.captureResetSnapshot()
 }
 
 func (p *PaneActor) Unsubscribe(connID string) {
