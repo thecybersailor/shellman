@@ -13,20 +13,17 @@ concurrency:
 jobs:
   api-types:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-          cache-dependency-path: shellman/cli/go.sum
+          cache-dependency-path: cli/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: shellman/webui/package-lock.json
+          cache-dependency-path: webui/package-lock.json
       - name: Install WebUI deps
         run: cd webui && npm ci
       - name: Validate API types
@@ -34,43 +31,34 @@ jobs:
 
   cli-lint:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-          cache-dependency-path: shellman/cli/go.sum
+          cache-dependency-path: cli/go.sum
       - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v7
         with:
           version: v2.5
           skip-cache: false
-          args: --version
       - name: Validate CLI lint
         run: make -B validate-cli-lint
 
   cli-tests:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-          cache-dependency-path: shellman/cli/go.sum
+          cache-dependency-path: cli/go.sum
       - name: Validate CLI tests
         run: make -B validate-cli-tests
 
   worker-tests:
+    if: ${{ hashFiles('edge/cloudflare/package-lock.json') != '' }}
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -79,26 +67,23 @@ jobs:
           cache: npm
           cache-dependency-path: edge/cloudflare/package-lock.json
       - name: Install worker deps
-        run: cd ../edge/cloudflare && npm ci
+        run: cd edge/cloudflare && npm ci
       - name: Validate worker tests
         run: make -B validate-worker-tests
 
   webui-types:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-          cache-dependency-path: shellman/cli/go.sum
+          cache-dependency-path: cli/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: shellman/webui/package-lock.json
+          cache-dependency-path: webui/package-lock.json
       - name: Install WebUI deps
         run: cd webui && npm ci
       - name: Validate WebUI types
@@ -106,20 +91,17 @@ jobs:
 
   webui-tests:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25.x"
-          cache-dependency-path: shellman/cli/go.sum
+          cache-dependency-path: cli/go.sum
       - uses: actions/setup-node@v4
         with:
           node-version: "20"
           cache: npm
-          cache-dependency-path: shellman/webui/package-lock.json
+          cache-dependency-path: webui/package-lock.json
       - name: Install WebUI deps
         run: cd webui && npm ci
       - name: Validate WebUI tests
@@ -128,9 +110,6 @@ jobs:
   e2e-docker:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: shellman
     steps:
       - uses: actions/checkout@v4
       - name: Run docker e2e
