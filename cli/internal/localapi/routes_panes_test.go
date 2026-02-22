@@ -957,7 +957,7 @@ func TestTaskPaneHistoryEndpoint_ReturnsSnapshotByLinesQuery(t *testing.T) {
 
 	var paneRes struct {
 		Data struct {
-			Lines int `json:"lines"`
+			Lines    int `json:"lines"`
 			Snapshot struct {
 				Output string `json:"output"`
 				Frame  struct {

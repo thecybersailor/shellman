@@ -493,11 +493,6 @@ func mergeTaskCompletionContextIntoHistory(taskContextDocs []taskCompletionConte
 	return contextBlock + "\n\n" + historyBlock
 }
 
-func (s *Server) buildUserPrompt(taskID, userInput string) string {
-	prompt, _ := s.buildUserPromptWithMeta(taskID, userInput)
-	return prompt
-}
-
 func (s *Server) buildTaskHistoryBlock(store *projectstate.Store, taskID string) (string, TaskPromptHistoryMeta) {
 	if store == nil {
 		return "", TaskPromptHistoryMeta{}

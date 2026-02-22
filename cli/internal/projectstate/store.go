@@ -236,10 +236,6 @@ func (s *Store) dbGORM() (*gorm.DB, func() error, error) {
 	return gdb, func() error { return nil }, nil
 }
 
-func openDBGORM(path string) (*gorm.DB, error) {
-	return db.OpenSQLiteGORMWithMigrations(path)
-}
-
 func openDBGORMFromDSN(dsn string) (*gorm.DB, error) {
 	return db.OpenSQLiteGORMWithMigrationsFromDSN(dsn)
 }

@@ -42,15 +42,15 @@ type PaneActor struct {
 	logger        *slog.Logger
 	onStatus      func(paneStatusUpdate)
 
-	mu          sync.RWMutex
-	subscribers map[string]chan protocol.Message
+	mu                  sync.RWMutex
+	subscribers         map[string]chan protocol.Message
 	resetPendingByConn  map[string]bool
 	pendingAppendByConn map[string][]protocol.Message
-	lastSnap    string
-	lastCursorX int
-	lastCursorY int
-	hasCursor   bool
-	statusState paneStatusState
+	lastSnap            string
+	lastCursorX         int
+	lastCursorY         int
+	hasCursor           bool
+	statusState         paneStatusState
 	// Prevent cold-start static panes from immediately triggering auto-process.
 	startupHashCaptured bool
 	startupHash         string
@@ -92,15 +92,15 @@ func NewPaneActor(
 		taskStateSink = taskStateSinkOpt[0]
 	}
 	return &PaneActor{
-		target:        strings.TrimSpace(target),
-		tmuxService:   tmuxService,
-		interval:      interval,
-		inputTracker:  inputTracker,
-		autoComplete:  autoComplete,
-		realtime:      realtime,
-		taskStateSink: taskStateSink,
-		logger:        logger,
-		subscribers:   map[string]chan protocol.Message{},
+		target:              strings.TrimSpace(target),
+		tmuxService:         tmuxService,
+		interval:            interval,
+		inputTracker:        inputTracker,
+		autoComplete:        autoComplete,
+		realtime:            realtime,
+		taskStateSink:       taskStateSink,
+		logger:              logger,
+		subscribers:         map[string]chan protocol.Message{},
 		resetPendingByConn:  map[string]bool{},
 		pendingAppendByConn: map[string][]protocol.Message{},
 	}

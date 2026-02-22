@@ -31,4 +31,3 @@ func TestConnActor_SelectAndWatch_KeepRecentLimit(t *testing.T) {
 		}
 	}
 }
-
