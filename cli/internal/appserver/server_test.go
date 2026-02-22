@@ -41,6 +41,7 @@ func (f *fakePaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string
 	return "pane-2", nil
 }
 func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) { return "pane-0", nil }
+func (f *fakePaneService) ClosePane(target string) error                   { return nil }
 
 func makeDeps() Deps {
 	return Deps{

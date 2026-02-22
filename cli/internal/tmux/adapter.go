@@ -71,6 +71,10 @@ func (a *Adapter) SelectPane(target string) error {
 	return a.exec.Run("tmux", a.withSocket("select-pane", "-t", target)...)
 }
 
+func (a *Adapter) ClosePane(target string) error {
+	return a.exec.Run("tmux", a.withSocket("kill-pane", "-t", target)...)
+}
+
 func (a *Adapter) SendInput(target, text string) error {
 	return a.exec.Run("tmux", a.withSocket("send-keys", "-l", "-t", target, text)...)
 }

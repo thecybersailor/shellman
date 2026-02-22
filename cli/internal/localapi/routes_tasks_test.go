@@ -1325,6 +1325,196 @@ func TestProjectArchiveDone_HidesArchivedTasksFromTree(t *testing.T) {
 	}
 }
 
+func TestProjectArchiveDone_ClosesBoundPaneAndRemovesBinding(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST create root failed: %v", err)
+	}
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create root failed: %v", err)
+	}
+	_ = createResp.Body.Close()
+
+	deriveResp, err := http.Post(ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/derive", "application/json", bytes.NewBufferString(`{"title":"child"}`))
+	if err != nil {
+		t.Fatalf("POST derive failed: %v", err)
+	}
+	var deriveOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(deriveResp.Body).Decode(&deriveOut); err != nil {
+		t.Fatalf("decode derive failed: %v", err)
+	}
+	_ = deriveResp.Body.Close()
+
+	store := projectstate.NewStore(repo)
+	if err := store.SavePanes(projectstate.PanesIndex{
+		deriveOut.Data.TaskID: {
+			TaskID:     deriveOut.Data.TaskID,
+			PaneUUID:   "pane-uuid-child",
+			PaneID:     "e2e:9.1",
+			PaneTarget: "e2e:9.1",
+		},
+	}); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	checkReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+deriveOut.Data.TaskID+"/check", bytes.NewBufferString(`{"checked":true}`))
+	checkReq.Header.Set("Content-Type", "application/json")
+	checkResp, err := http.DefaultClient.Do(checkReq)
+	if err != nil {
+		t.Fatalf("PATCH check failed: %v", err)
+	}
+	if checkResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH check expected 200, got %d", checkResp.StatusCode)
+	}
+	_ = checkResp.Body.Close()
+
+	archiveResp, err := http.Post(ts.URL+"/api/v1/projects/p1/archive-done", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST archive-done failed: %v", err)
+	}
+	if archiveResp.StatusCode != http.StatusOK {
+		t.Fatalf("POST archive-done expected 200, got %d", archiveResp.StatusCode)
+	}
+	var archiveOut struct {
+		Data struct {
+			ArchivedCount int64 `json:"archived_count"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(archiveResp.Body).Decode(&archiveOut); err != nil {
+		t.Fatalf("decode archive-done failed: %v", err)
+	}
+	_ = archiveResp.Body.Close()
+	if archiveOut.Data.ArchivedCount != 1 {
+		t.Fatalf("expected archived_count=1, got %d", archiveOut.Data.ArchivedCount)
+	}
+	if len(paneSvc.closedTargets) != 1 || paneSvc.closedTargets[0] != "e2e:9.1" {
+		t.Fatalf("expected close pane called with e2e:9.1, got %#v", paneSvc.closedTargets)
+	}
+	panes, err := store.LoadPanes()
+	if err != nil {
+		t.Fatalf("LoadPanes failed: %v", err)
+	}
+	if _, ok := panes[deriveOut.Data.TaskID]; ok {
+		t.Fatalf("expected pane binding removed for archived task %s", deriveOut.Data.TaskID)
+	}
+}
+
+func TestProjectArchiveDone_ClosePaneFailureBlocksArchive(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{closeErr: errors.New("close pane failed")}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST create root failed: %v", err)
+	}
+	var createOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&createOut); err != nil {
+		t.Fatalf("decode create root failed: %v", err)
+	}
+	_ = createResp.Body.Close()
+
+	deriveResp, err := http.Post(ts.URL+"/api/v1/tasks/"+createOut.Data.TaskID+"/derive", "application/json", bytes.NewBufferString(`{"title":"child"}`))
+	if err != nil {
+		t.Fatalf("POST derive failed: %v", err)
+	}
+	var deriveOut struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(deriveResp.Body).Decode(&deriveOut); err != nil {
+		t.Fatalf("decode derive failed: %v", err)
+	}
+	_ = deriveResp.Body.Close()
+
+	store := projectstate.NewStore(repo)
+	if err := store.SavePanes(projectstate.PanesIndex{
+		deriveOut.Data.TaskID: {
+			TaskID:     deriveOut.Data.TaskID,
+			PaneUUID:   "pane-uuid-child",
+			PaneID:     "e2e:9.2",
+			PaneTarget: "e2e:9.2",
+		},
+	}); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	checkReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+deriveOut.Data.TaskID+"/check", bytes.NewBufferString(`{"checked":true}`))
+	checkReq.Header.Set("Content-Type", "application/json")
+	checkResp, err := http.DefaultClient.Do(checkReq)
+	if err != nil {
+		t.Fatalf("PATCH check failed: %v", err)
+	}
+	if checkResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH check expected 200, got %d", checkResp.StatusCode)
+	}
+	_ = checkResp.Body.Close()
+
+	archiveResp, err := http.Post(ts.URL+"/api/v1/projects/p1/archive-done", "application/json", nil)
+	if err != nil {
+		t.Fatalf("POST archive-done failed: %v", err)
+	}
+	if archiveResp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("POST archive-done expected 500, got %d", archiveResp.StatusCode)
+	}
+	var archiveOut struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(archiveResp.Body).Decode(&archiveOut); err != nil {
+		t.Fatalf("decode archive-done error failed: %v", err)
+	}
+	_ = archiveResp.Body.Close()
+	if archiveOut.Error.Code != "TASK_ARCHIVE_FAILED" {
+		t.Fatalf("expected TASK_ARCHIVE_FAILED, got %q", archiveOut.Error.Code)
+	}
+
+	treeResp, err := http.Get(ts.URL + "/api/v1/projects/p1/tree")
+	if err != nil {
+		t.Fatalf("GET tree failed: %v", err)
+	}
+	defer func() { _ = treeResp.Body.Close() }()
+	var treeOut struct {
+		Data struct {
+			Nodes []struct {
+				TaskID string `json:"task_id"`
+			} `json:"nodes"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(treeResp.Body).Decode(&treeOut); err != nil {
+		t.Fatalf("decode tree failed: %v", err)
+	}
+	if len(treeOut.Data.Nodes) != 2 {
+		t.Fatalf("expected both tasks still visible after close failure, got %d", len(treeOut.Data.Nodes))
+	}
+}
+
 func TestTaskMutations_UpdateTaskRowInSQL(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}

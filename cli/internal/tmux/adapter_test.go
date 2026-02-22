@@ -71,6 +71,17 @@ func TestAdapter_SendInput_UsesLiteralMode(t *testing.T) {
 	}
 }
 
+func TestAdapter_ClosePane_UsesKillPaneCommand(t *testing.T) {
+	f := &FakeExec{}
+	a := NewAdapter(f)
+	if err := a.ClosePane("e2e:0.3"); err != nil {
+		t.Fatalf("close pane failed: %v", err)
+	}
+	if f.LastArgs != "tmux kill-pane -t e2e:0.3" {
+		t.Fatalf("unexpected command: %s", f.LastArgs)
+	}
+}
+
 func TestAdapter_Resize_ResizesWindowThenPane(t *testing.T) {
 	f := &FakeExec{}
 	a := NewAdapter(f)

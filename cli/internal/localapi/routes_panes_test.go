@@ -25,6 +25,8 @@ type fakePaneService struct {
 	lastSiblingCWD string
 	lastChildCWD   string
 	lastRootCWD    string
+	closedTargets  []string
+	closeErr       error
 }
 
 func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
@@ -45,6 +47,14 @@ func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) {
 	f.rootCount++
 	f.lastRootCWD = cwd
 	return "pane_root_1", nil
+}
+
+func (f *fakePaneService) ClosePane(target string) error {
+	if f.closeErr != nil {
+		return f.closeErr
+	}
+	f.closedTargets = append(f.closedTargets, target)
+	return nil
 }
 
 func TestPaneCreationRoutes(t *testing.T) {

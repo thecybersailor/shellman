@@ -127,13 +127,63 @@ func (s *Server) handleProjectArchiveDone(w http.ResponseWriter, _ *http.Request
 		return
 	}
 	store := projectstate.NewStore(repoRoot)
-	affected, err := store.ArchiveCheckedTasksByProject(projectID)
+	affected, err := s.archiveCheckedTasksByProject(store, projectID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "TASK_ARCHIVE_FAILED", err.Error())
 		return
 	}
 	s.publishEvent("task.tree.updated", projectID, "", map[string]any{})
 	respondOK(w, map[string]any{"project_id": projectID, "archived_count": affected})
+}
+
+func (s *Server) archiveCheckedTasksByProject(store *projectstate.Store, projectID string) (int64, error) {
+	rows, err := store.ListTasksByProject(projectID)
+	if err != nil {
+		return 0, err
+	}
+	panes, err := store.LoadPanes()
+	if err != nil {
+		return 0, err
+	}
+
+	archiveTaskIDs := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if !row.Checked || row.Archived {
+			continue
+		}
+		archiveTaskIDs = append(archiveTaskIDs, strings.TrimSpace(row.TaskID))
+		binding, ok := panes[row.TaskID]
+		if !ok {
+			continue
+		}
+		target := strings.TrimSpace(binding.PaneTarget)
+		if target == "" {
+			continue
+		}
+		if s.deps.PaneService == nil {
+			return 0, errors.New("pane service is not configured")
+		}
+		if err := s.deps.PaneService.ClosePane(target); err != nil {
+			return 0, err
+		}
+	}
+
+	if len(archiveTaskIDs) > 0 {
+		dirty := false
+		for _, taskID := range archiveTaskIDs {
+			if _, ok := panes[taskID]; ok {
+				delete(panes, taskID)
+				dirty = true
+			}
+		}
+		if dirty {
+			if err := store.SavePanes(panes); err != nil {
+				return 0, err
+			}
+		}
+	}
+
+	return store.ArchiveCheckedTasksByProject(projectID)
 }
 
 func isTaskTerminalStatus(status string) bool {

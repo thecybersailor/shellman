@@ -37,6 +37,7 @@ type PaneService interface {
 	CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error)
 	CreateChildPaneInDir(targetTaskID, cwd string) (string, error)
 	CreateRootPaneInDir(cwd string) (string, error)
+	ClosePane(target string) error
 }
 
 type FSBrowser interface {
