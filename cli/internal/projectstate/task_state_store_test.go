@@ -152,6 +152,30 @@ func TestTaskStateStore_ListTasksByProject_IncludesFlagReaded(t *testing.T) {
 	}
 }
 
+func TestTaskStateStore_ListTasksByProject_IncludesTaskRole(t *testing.T) {
+	st := newTaskStateStore(t)
+	if err := st.InsertTask(TaskRecord{
+		TaskID:    "t_role_1",
+		ProjectID: "p1",
+		Title:     "role task",
+		Status:    StatusPending,
+		TaskRole:  TaskRolePlanner,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+
+	rows, err := st.ListTasksByProject("p1")
+	if err != nil {
+		t.Fatalf("ListTasksByProject failed: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected one task row, got %d", len(rows))
+	}
+	if rows[0].TaskRole != TaskRolePlanner {
+		t.Fatalf("expected task_role=%q, got %#v", TaskRolePlanner, rows[0])
+	}
+}
+
 func newTaskStateStore(t *testing.T) *Store {
 	t.Helper()
 

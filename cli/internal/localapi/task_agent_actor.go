@@ -595,13 +595,14 @@ const (
 )
 
 func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
-	currentCommand, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
-	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode)
+	currentCommand, sidecarMode, taskRole := resolveTaskAgentModeInputs(store, projectID, taskID)
+	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode, taskRole)
 }
 
-func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID string) (string, string) {
+func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID string) (string, string, string) {
 	currentCommand := ""
 	sidecarMode := projectstate.SidecarModeAdvisor
+	taskRole := projectstate.TaskRoleFull
 	if store != nil && strings.TrimSpace(projectID) != "" && strings.TrimSpace(taskID) != "" {
 		if rows, err := store.ListTasksByProject(strings.TrimSpace(projectID)); err == nil {
 			targetTaskID := strings.TrimSpace(taskID)
@@ -611,25 +612,32 @@ func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID str
 					if validSidecarMode(row.SidecarMode) {
 						sidecarMode = normalizeSidecarMode(row.SidecarMode)
 					}
+					if validTaskRole(row.TaskRole) {
+						taskRole = normalizeTaskRole(row.TaskRole)
+					}
 					break
 				}
 			}
 		}
 	}
-	return currentCommand, sidecarMode
+	return currentCommand, sidecarMode, taskRole
 }
 
-func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode string) (string, string, []string) {
-	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, "")
+func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode, taskRole string) (string, string, []string) {
+	return resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, taskRole, "")
 }
 
-func resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source string) (string, string, []string) {
+func resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, taskRole, source string) (string, string, []string) {
 	currentCommand = strings.TrimSpace(currentCommand)
 	source = strings.TrimSpace(source)
 	if !validSidecarMode(sidecarMode) {
 		sidecarMode = projectstate.SidecarModeAdvisor
 	}
 	sidecarMode = normalizeSidecarMode(sidecarMode)
+	if !validTaskRole(taskRole) {
+		taskRole = projectstate.TaskRoleFull
+	}
+	taskRole = normalizeTaskRole(taskRole)
 	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
 	fullTools := []string{
 		"task.current.set_flag",
@@ -647,6 +655,7 @@ func resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecar
 	default:
 		fullTools = append(fullTools, "readfile", "write_stdin")
 	}
+	fullTools = applyTaskRoleToolScope(taskRole, fullTools)
 
 	if !isAutoProcessTurnSource(source) {
 		return string(mode), currentCommand, fullTools
@@ -669,21 +678,21 @@ func isAutoProcessTurnSource(source string) bool {
 }
 
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
-	_, sidecarMode := resolveTaskAgentModeInputs(store, projectID, taskID)
+	_, sidecarMode, taskRole := resolveTaskAgentModeInputs(store, projectID, taskID)
 	currentCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID))
-	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, source)
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, taskRole, source)
 	taskID = strings.TrimSpace(taskID)
 	if strings.TrimSpace(mode) == string(taskAgentToolModeDefault) && isNodeLikeCommand(currentCommand) {
 		if s.getTaskAgentMode(taskID) == taskAgentToolModeAIAgent {
 			mode = string(taskAgentToolModeAIAgent)
-			tools = buildTaskAgentToolsForResolvedMode(taskAgentToolModeAIAgent, sidecarMode, source)
+			tools = buildTaskAgentToolsForResolvedMode(taskAgentToolModeAIAgent, sidecarMode, taskRole, source)
 		}
 	}
 	s.setTaskAgentMode(taskID, taskAgentToolMode(mode))
 	return mode, gotCommand, tools
 }
 
-func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, source string) []string {
+func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, taskRole, source string) []string {
 	fullTools := []string{
 		"task.current.set_flag",
 		"task.child.get_context",
@@ -700,6 +709,7 @@ func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, sou
 	default:
 		fullTools = append(fullTools, "readfile", "write_stdin")
 	}
+	fullTools = applyTaskRoleToolScope(taskRole, fullTools)
 
 	if !isAutoProcessTurnSource(source) {
 		return fullTools
@@ -714,6 +724,54 @@ func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, sou
 	default:
 		return []string{}
 	}
+}
+
+func applyTaskRoleToolScope(taskRole string, tools []string) []string {
+	switch normalizeTaskRole(taskRole) {
+	case projectstate.TaskRolePlanner:
+		return keepTaskAgentTools(tools,
+			"task.current.set_flag",
+			"task.child.get_context",
+			"task.child.get_tty_output",
+			"task.child.spawn",
+			"task.child.send_message",
+			"task.parent.report",
+			"readfile",
+		)
+	case projectstate.TaskRoleExecutor:
+		return keepTaskAgentTools(tools,
+			"task.current.set_flag",
+			"task.parent.report",
+			"readfile",
+			"write_stdin",
+			"exec_command",
+			"task.input_prompt",
+		)
+	default:
+		return tools
+	}
+}
+
+func keepTaskAgentTools(tools []string, allowed ...string) []string {
+	allowSet := make(map[string]struct{}, len(allowed))
+	for _, name := range allowed {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		allowSet[name] = struct{}{}
+	}
+	filtered := make([]string, 0, len(tools))
+	for _, name := range tools {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		if _, ok := allowSet[name]; ok {
+			filtered = append(filtered, name)
+		}
+	}
+	return filtered
 }
 
 func isNodeLikeCommand(command string) bool {

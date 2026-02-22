@@ -83,6 +83,7 @@ func buildTreeNodesFromTaskRows(rows []projectstate.TaskRecordRow) []projectstat
 			TaskID:         row.TaskID,
 			ParentTaskID:   row.ParentTaskID,
 			Title:          row.Title,
+			TaskRole:       row.TaskRole,
 			CurrentCommand: row.CurrentCommand,
 			Description:    row.Description,
 			Flag:           row.Flag,
@@ -153,6 +154,7 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		ProjectID    string `json:"project_id"`
 		ParentTaskID string `json:"parent_task_id"`
 		Title        string `json:"title"`
+		TaskRole     string `json:"task_role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -168,8 +170,20 @@ func (s *Server) handleCreateTask(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "INVALID_TITLE", "title is too long")
 		return
 	}
-	newTaskID, err := s.createTask(projectID, req.ParentTaskID, title)
+	newTaskID, err := s.createTaskWithRole(projectID, req.ParentTaskID, title, req.TaskRole)
 	if err != nil {
+		if errors.Is(err, errInvalidTaskRole) {
+			respondError(w, http.StatusBadRequest, "INVALID_TASK_ROLE", err.Error())
+			return
+		}
+		if errors.Is(err, errExecutorCannotDelegate) {
+			respondError(w, http.StatusBadRequest, "EXECUTOR_CANNOT_DELEGATE", err.Error())
+			return
+		}
+		if errors.Is(err, errPlannerOnlySpawnExecutor) {
+			respondError(w, http.StatusBadRequest, "PLANNER_ONLY_SPAWN_EXECUTOR", err.Error())
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "TASK_CREATE_FAILED", err.Error())
 		return
 	}
@@ -875,6 +889,10 @@ func buildTaskCompletionRequestMeta(r *http.Request) map[string]any {
 }
 
 func (s *Server) createTask(projectID, parentTaskID, title string) (string, error) {
+	return s.createTaskWithRole(projectID, parentTaskID, title, "")
+}
+
+func (s *Server) createTaskWithRole(projectID, parentTaskID, title, requestedRole string) (string, error) {
 	repoRoot, err := s.findProjectRepoRoot(projectID)
 	if err != nil {
 		return "", err
@@ -882,6 +900,10 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 	store := projectstate.NewStore(repoRoot)
 	taskID := fmt.Sprintf("t_%d", time.Now().UnixNano())
 	sidecarMode := projectstate.SidecarModeAdvisor
+	taskRole := normalizeTaskRole(requestedRole)
+	if taskRole == "" {
+		return "", errInvalidTaskRole
+	}
 	parentTaskID = strings.TrimSpace(parentTaskID)
 	if parentTaskID != "" {
 		parent, ok, err := findTaskEntryInProject(store, projectID, parentTaskID)
@@ -891,6 +913,16 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 		if ok && validSidecarMode(parent.SidecarMode) {
 			sidecarMode = normalizeSidecarMode(parent.SidecarMode)
 		}
+		parentRole := normalizeTaskRole(parent.TaskRole)
+		if parentRole == "" {
+			parentRole = projectstate.TaskRoleFull
+		}
+		if parentRole == projectstate.TaskRoleExecutor {
+			return "", errExecutorCannotDelegate
+		}
+		if parentRole == projectstate.TaskRolePlanner && taskRole != projectstate.TaskRoleExecutor {
+			return "", errPlannerOnlySpawnExecutor
+		}
 	}
 	entry := projectstate.TaskRecord{
 		TaskID:       taskID,
@@ -898,6 +930,7 @@ func (s *Server) createTask(projectID, parentTaskID, title string) (string, erro
 		ParentTaskID: parentTaskID,
 		Title:        title,
 		SidecarMode:  sidecarMode,
+		TaskRole:     taskRole,
 		Description:  "",
 		Flag:         "",
 		FlagDesc:     "",
@@ -999,6 +1032,7 @@ func taskRowToTaskIndexEntry(row projectstate.TaskRecordRow) projectstate.TaskIn
 		ParentTaskID: row.ParentTaskID,
 		Title:        row.Title,
 		Description:  row.Description,
+		TaskRole:     row.TaskRole,
 		Flag:         row.Flag,
 		FlagDesc:     row.FlagDesc,
 		FlagReaded:   row.FlagReaded,

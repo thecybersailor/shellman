@@ -20,6 +20,7 @@ type TaskAgentTTYContext struct {
 type TaskAgentParentContext struct {
 	Name          string
 	Description   string
+	TaskRole      string
 	Flag          string
 	StatusMessage string
 }
@@ -28,6 +29,7 @@ type TaskAgentChildContext struct {
 	TaskID        string
 	Name          string
 	Description   string
+	TaskRole      string
 	Flag          string
 	StatusMessage string
 	ReportMessage string
@@ -131,12 +133,14 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 	parentObj := map[string]any{
 		"name":           "",
 		"description":    "",
+		"task_role":      "",
 		"flag":           "",
 		"status_message": "",
 	}
 	if parent != nil {
 		parentObj["name"] = strings.TrimSpace(parent.Name)
 		parentObj["description"] = strings.TrimSpace(parent.Description)
+		parentObj["task_role"] = strings.TrimSpace(parent.TaskRole)
 		parentObj["flag"] = strings.TrimSpace(parent.Flag)
 		parentObj["status_message"] = strings.TrimSpace(parent.StatusMessage)
 	}
@@ -146,6 +150,7 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 			"task_id":        strings.TrimSpace(child.TaskID),
 			"name":           strings.TrimSpace(child.Name),
 			"description":    strings.TrimSpace(child.Description),
+			"task_role":      strings.TrimSpace(child.TaskRole),
 			"flag":           strings.TrimSpace(child.Flag),
 			"status_message": strings.TrimSpace(child.StatusMessage),
 			"report_message": strings.TrimSpace(child.ReportMessage),

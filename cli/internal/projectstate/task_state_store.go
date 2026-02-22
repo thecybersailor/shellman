@@ -18,7 +18,7 @@ func (s *Store) ListTasksByProject(projectID string) ([]TaskRecordRow, error) {
 	defer func() { _ = release() }()
 
 	rows, err := db.Query(`
-SELECT task_id, project_id, parent_task_id, title, current_command, status, sidecar_mode, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
+SELECT task_id, project_id, parent_task_id, title, current_command, status, sidecar_mode, task_role, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
 FROM tasks
 WHERE repo_root = ? AND project_id = ? AND archived = false
 ORDER BY created_at ASC, task_id ASC
@@ -39,6 +39,7 @@ ORDER BY created_at ASC, task_id ASC
 			&row.CurrentCommand,
 			&row.Status,
 			&row.SidecarMode,
+			&row.TaskRole,
 			&row.Description,
 			&row.Flag,
 			&row.FlagDesc,
@@ -76,6 +77,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	hasCurrentCommand := input.CurrentCommand != nil
 	hasStatus := input.Status != nil
 	hasSidecarMode := input.SidecarMode != nil
+	hasTaskRole := input.TaskRole != nil
 	hasDescription := input.Description != nil
 	hasFlag := input.Flag != nil
 	hasFlagDesc := input.FlagDesc != nil
@@ -98,6 +100,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 		CurrentCommand: strPtrOrDefault(input.CurrentCommand, ""),
 		Status:         strPtrOrDefault(input.Status, ""),
 		SidecarMode:    strPtrOrDefault(input.SidecarMode, SidecarModeAdvisor),
+		TaskRole:       strPtrOrDefault(input.TaskRole, TaskRoleFull),
 		Description:    strPtrOrDefault(input.Description, ""),
 		Flag:           strPtrOrDefault(input.Flag, ""),
 		FlagDesc:       strPtrOrDefault(input.FlagDesc, ""),
@@ -126,6 +129,9 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	}
 	if hasSidecarMode {
 		assignments["sidecar_mode"] = gorm.Expr("excluded.sidecar_mode")
+	}
+	if hasTaskRole {
+		assignments["task_role"] = gorm.Expr("excluded.task_role")
 	}
 	if hasDescription {
 		assignments["description"] = gorm.Expr("excluded.description")

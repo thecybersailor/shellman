@@ -330,7 +330,7 @@ func (t *TaskChildGetTTYOutputTool) Execute(ctx context.Context, input json.RawM
 }
 
 type TaskChildSpawnTool struct {
-	Exec func(ctx context.Context, taskID, command, title, description, prompt string) (string, *ToolError)
+	Exec func(ctx context.Context, taskID, command, title, description, prompt, taskRole string) (string, *ToolError)
 }
 
 func (t *TaskChildSpawnTool) Name() string { return "task.child.spawn" }
@@ -347,8 +347,12 @@ func (t *TaskChildSpawnTool) Spec() ResponseToolSpec {
 				"title":       map[string]any{"type": "string"},
 				"description": map[string]any{"type": "string"},
 				"prompt":      map[string]any{"type": "string"},
+				"task_role": map[string]any{
+					"type": "string",
+					"enum": []string{"planner", "executor"},
+				},
 			},
-			"required": []string{"command", "title", "description", "prompt"},
+			"required": []string{"command", "title", "description", "prompt", "task_role"},
 		},
 	}
 }
@@ -367,6 +371,7 @@ func (t *TaskChildSpawnTool) Execute(ctx context.Context, input json.RawMessage,
 		Title       string `json:"title"`
 		Description string `json:"description"`
 		Prompt      string `json:"prompt"`
+		TaskRole    string `json:"task_role"`
 	}{}
 	if err := json.Unmarshal(input, &req); err != nil {
 		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.child.spawn 参数 JSON: 需要 command/title/description/prompt")
@@ -374,10 +379,15 @@ func (t *TaskChildSpawnTool) Execute(ctx context.Context, input json.RawMessage,
 	if strings.TrimSpace(req.Command) == "" ||
 		strings.TrimSpace(req.Title) == "" ||
 		strings.TrimSpace(req.Description) == "" ||
-		strings.TrimSpace(req.Prompt) == "" {
+		strings.TrimSpace(req.Prompt) == "" ||
+		strings.TrimSpace(req.TaskRole) == "" {
 		return "", NewToolError("INVALID_SPAWN_INPUT", "command、title、description、prompt 都必须非空")
 	}
-	return t.Exec(ctx, taskID, req.Command, req.Title, req.Description, req.Prompt)
+	taskRole := strings.ToLower(strings.TrimSpace(req.TaskRole))
+	if taskRole != "planner" && taskRole != "executor" {
+		return "", NewToolError("INVALID_SPAWN_INPUT", "task_role 必须是 planner 或 executor")
+	}
+	return t.Exec(ctx, taskID, req.Command, req.Title, req.Description, req.Prompt, taskRole)
 }
 
 type TaskChildSendMessageTool struct {

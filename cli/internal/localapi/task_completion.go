@@ -578,6 +578,7 @@ func (s *Server) buildTaskFamilyContext(store *projectstate.Store, projectID, ta
 			parent = &TaskAgentParentContext{
 				Name:          strings.TrimSpace(row.Title),
 				Description:   strings.TrimSpace(row.Description),
+				TaskRole:      normalizeTaskRole(row.TaskRole),
 				Flag:          strings.TrimSpace(row.Flag),
 				StatusMessage: strings.TrimSpace(row.FlagDesc),
 			}
@@ -593,6 +594,7 @@ func (s *Server) buildTaskFamilyContext(store *projectstate.Store, projectID, ta
 			TaskID:        strings.TrimSpace(row.TaskID),
 			Name:          strings.TrimSpace(row.Title),
 			Description:   strings.TrimSpace(row.Description),
+			TaskRole:      normalizeTaskRole(row.TaskRole),
 			Flag:          strings.TrimSpace(row.Flag),
 			StatusMessage: strings.TrimSpace(row.FlagDesc),
 			ReportMessage: "",

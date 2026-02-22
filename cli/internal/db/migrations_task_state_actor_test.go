@@ -14,7 +14,7 @@ func TestMigrateUp_AddsTaskRuntimeAndTaskColumns(t *testing.T) {
 	}
 
 	mustHaveColumns(t, db, "tasks", []string{
-		"task_id", "project_id", "parent_task_id", "title", "current_command", "status", "description", "flag", "flag_desc", "checked", "archived", "last_modified",
+		"task_id", "project_id", "parent_task_id", "title", "current_command", "status", "sidecar_mode", "task_role", "description", "flag", "flag_desc", "checked", "archived", "last_modified",
 	})
 	mustHaveTable(t, db, "pane_runtime")
 	mustHaveTable(t, db, "task_runtime")

@@ -4,6 +4,7 @@ type TaskNode struct {
 	TaskID               string   `json:"task_id"`
 	ParentTaskID         string   `json:"parent_task_id,omitempty"`
 	Title                string   `json:"title"`
+	TaskRole             string   `json:"task_role,omitempty"`
 	CurrentCommand       string   `json:"current_command,omitempty"`
 	Description          string   `json:"description,omitempty"`
 	Flag                 string   `json:"flag,omitempty"`
@@ -33,6 +34,12 @@ const (
 	SidecarModeAutopilot = "autopilot"
 )
 
+const (
+	TaskRoleFull     = "full"
+	TaskRolePlanner  = "planner"
+	TaskRoleExecutor = "executor"
+)
+
 type TaskTree struct {
 	ProjectID string     `json:"project_id"`
 	Nodes     []TaskNode `json:"nodes"`
@@ -44,6 +51,7 @@ type TaskIndexEntry struct {
 	ParentTaskID string `json:"parent_task_id,omitempty"`
 	Title        string `json:"title"`
 	Description  string `json:"description,omitempty"`
+	TaskRole     string `json:"task_role,omitempty"`
 	Flag         string `json:"flag,omitempty"`
 	FlagDesc     string `json:"flag_desc,omitempty"`
 	FlagReaded   bool   `json:"flag_readed,omitempty"`

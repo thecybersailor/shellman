@@ -17,11 +17,11 @@ import (
 )
 
 type fakePaneService struct {
-	siblingCount int
-	childCount   int
-	rootCount    int
-	lastSibling  string
-	lastChild    string
+	siblingCount   int
+	childCount     int
+	rootCount      int
+	lastSibling    string
+	lastChild      string
 	lastSiblingCWD string
 	lastChildCWD   string
 	lastRootCWD    string
@@ -275,6 +275,114 @@ func TestProjectRootPaneCreationRoute(t *testing.T) {
 	}
 	if len(panes) != 1 {
 		t.Fatalf("expected 1 pane binding, got %d", len(panes))
+	}
+}
+
+func TestPaneCreate_RejectsPlannerSpawnPlanner(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	store := projectstate.NewStore(repo)
+	parentTaskID := "t_parent_" + uuid.NewString()
+	if err := store.InsertTask(projectstate.TaskRecord{
+		TaskID:    parentTaskID,
+		ProjectID: "p1",
+		Title:     "planner parent",
+		Status:    projectstate.StatusRunning,
+		TaskRole:  projectstate.TaskRolePlanner,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		parentTaskID: {
+			TaskID:     parentTaskID,
+			PaneUUID:   uuid.NewString(),
+			PaneID:     "e2e:0.0",
+			PaneTarget: "e2e:0.0",
+		},
+	}); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	resp, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+parentTaskID+"/panes/child",
+		"application/json",
+		bytes.NewBufferString(`{"title":"child","task_role":"planner"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST child failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	var out struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if out.Error.Code != "PLANNER_ONLY_SPAWN_EXECUTOR" {
+		t.Fatalf("unexpected error code: %q", out.Error.Code)
+	}
+}
+
+func TestPaneCreate_RejectsExecutorDelegation(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	store := projectstate.NewStore(repo)
+	parentTaskID := "t_parent_" + uuid.NewString()
+	if err := store.InsertTask(projectstate.TaskRecord{
+		TaskID:    parentTaskID,
+		ProjectID: "p1",
+		Title:     "executor parent",
+		Status:    projectstate.StatusRunning,
+		TaskRole:  projectstate.TaskRoleExecutor,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		parentTaskID: {
+			TaskID:     parentTaskID,
+			PaneUUID:   uuid.NewString(),
+			PaneID:     "e2e:0.0",
+			PaneTarget: "e2e:0.0",
+		},
+	}); err != nil {
+		t.Fatalf("SavePanes failed: %v", err)
+	}
+
+	resp, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+parentTaskID+"/panes/child",
+		"application/json",
+		bytes.NewBufferString(`{"title":"child","task_role":"executor"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST child failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+	var out struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode failed: %v", err)
+	}
+	if out.Error.Code != "EXECUTOR_CANNOT_DELEGATE" {
+		t.Fatalf("unexpected error code: %q", out.Error.Code)
 	}
 }
 

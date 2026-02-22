@@ -89,7 +89,7 @@ func TestResolveTaskAgentToolModeAndNames_UserTurn_IgnoresSidecarMode(t *testing
 		projectstate.SidecarModeObserver,
 		projectstate.SidecarModeAutopilot,
 	} {
-		gotMode, gotCommand, gotTools := resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, mode)
+		gotMode, gotCommand, gotTools := resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, mode, projectstate.TaskRoleFull)
 		if gotMode != string(taskAgentToolModeAIAgent) {
 			t.Fatalf("mode=%q unexpected tool mode: got=%q", mode, gotMode)
 		}
@@ -124,9 +124,9 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesLivePaneCommandInAutopilot
 	}); err != nil {
 		t.Fatalf("save panes failed: %v", err)
 	}
-	gotDBCommand, gotSidecarMode := resolveTaskAgentModeInputs(store, "p1", taskID)
-	if gotDBCommand != "zsh" || gotSidecarMode != projectstate.SidecarModeAutopilot {
-		t.Fatalf("unexpected db mode inputs: command=%q sidecar=%q", gotDBCommand, gotSidecarMode)
+	gotDBCommand, gotSidecarMode, gotTaskRole := resolveTaskAgentModeInputs(store, "p1", taskID)
+	if gotDBCommand != "zsh" || gotSidecarMode != projectstate.SidecarModeAutopilot || gotTaskRole != projectstate.TaskRoleFull {
+		t.Fatalf("unexpected db mode inputs: command=%q sidecar=%q task_role=%q", gotDBCommand, gotSidecarMode, gotTaskRole)
 	}
 
 	srv := NewServer(Deps{
@@ -325,7 +325,7 @@ func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testin
 		"write_stdin",
 	}
 
-	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAdvisor, "tty_output")
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAdvisor, projectstate.TaskRoleFull, "tty_output")
 	if mode != string(taskAgentToolModeAIAgent) {
 		t.Fatalf("advisor unexpected tool mode: got=%q", mode)
 	}
@@ -336,7 +336,7 @@ func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testin
 		t.Fatalf("advisor auto turn should disable tools, got=%#v", tools)
 	}
 
-	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeObserver, "tty_output")
+	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeObserver, projectstate.TaskRoleFull, "tty_output")
 	if mode != string(taskAgentToolModeAIAgent) {
 		t.Fatalf("observer unexpected tool mode: got=%q", mode)
 	}
@@ -347,7 +347,7 @@ func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testin
 		t.Fatalf("observer auto turn unexpected tools: got=%#v", tools)
 	}
 
-	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAutopilot, "tty_output")
+	mode, gotCommand, tools = resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, projectstate.SidecarModeAutopilot, projectstate.TaskRoleFull, "tty_output")
 	if mode != string(taskAgentToolModeAIAgent) {
 		t.Fatalf("autopilot unexpected tool mode: got=%q", mode)
 	}
@@ -356,5 +356,37 @@ func TestResolveTaskAgentToolModeAndNames_AutoTurnDiffersBySidecarMode(t *testin
 	}
 	if !reflect.DeepEqual(tools, wantFullTools) {
 		t.Fatalf("autopilot auto turn unexpected tools: got=%#v want=%#v", tools, wantFullTools)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNamesFromInputs_PlannerCanSpawnButNoExec(t *testing.T) {
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputs("codex --ask", projectstate.SidecarModeAutopilot, projectstate.TaskRolePlanner)
+	if mode != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("unexpected mode: %q", mode)
+	}
+	if gotCommand != "codex --ask" {
+		t.Fatalf("unexpected command: %q", gotCommand)
+	}
+	if !containsString(tools, "task.child.spawn") {
+		t.Fatalf("planner should keep spawn, got tools=%v", tools)
+	}
+	if containsString(tools, "exec_command") || containsString(tools, "task.input_prompt") || containsString(tools, "write_stdin") {
+		t.Fatalf("planner should not have execution tools, got tools=%v", tools)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNamesFromInputs_ExecutorHasNoSpawn(t *testing.T) {
+	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputs("zsh", projectstate.SidecarModeAutopilot, projectstate.TaskRoleExecutor)
+	if mode != string(taskAgentToolModeShell) {
+		t.Fatalf("unexpected mode: %q", mode)
+	}
+	if gotCommand != "zsh" {
+		t.Fatalf("unexpected command: %q", gotCommand)
+	}
+	if containsString(tools, "task.child.spawn") || containsString(tools, "task.child.send_message") {
+		t.Fatalf("executor should not have delegation tools, got tools=%v", tools)
+	}
+	if !containsString(tools, "exec_command") || !containsString(tools, "write_stdin") {
+		t.Fatalf("executor should have execution tools, got tools=%v", tools)
 	}
 }
