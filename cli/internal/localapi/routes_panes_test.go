@@ -27,6 +27,9 @@ type fakePaneService struct {
 	lastRootCWD    string
 	closedTargets  []string
 	closeErr       error
+	history        string
+	historyLines   int
+	historyTarget  string
 }
 
 func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
@@ -55,6 +58,15 @@ func (f *fakePaneService) ClosePane(target string) error {
 	}
 	f.closedTargets = append(f.closedTargets, target)
 	return nil
+}
+
+func (f *fakePaneService) CaptureHistory(target string, lines int) (string, error) {
+	f.historyTarget = target
+	f.historyLines = lines
+	if f.history != "" {
+		return f.history, nil
+	}
+	return "history\n", nil
 }
 
 func TestPaneCreationRoutes(t *testing.T) {
@@ -907,6 +919,71 @@ func TestTaskPaneEndpoint_ReadsSnapshotFromPaneRuntime(t *testing.T) {
 	}
 	if paneRes.Data.Snapshot.UpdatedAt != 1704067200 {
 		t.Fatalf("unexpected snapshot updated_at: %d", paneRes.Data.Snapshot.UpdatedAt)
+	}
+}
+
+func TestTaskPaneHistoryEndpoint_ReturnsSnapshotByLinesQuery(t *testing.T) {
+	tid := uniqueTaskID(t, "t_hist")
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	paneSvc := &fakePaneService{history: "hist-a\nhist-b\n"}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: paneSvc})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	store := projectstate.NewStore(repo)
+	if err := store.InsertTask(projectstate.TaskRecord{
+		TaskID:    tid,
+		ProjectID: "p1",
+		Title:     "root",
+		Status:    projectstate.StatusRunning,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		tid: {TaskID: tid, PaneUUID: uuid.NewString(), PaneID: "e2e:0.0", PaneTarget: "e2e:0.0"},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/tasks/" + tid + "/pane-history?lines=4000")
+	if err != nil {
+		t.Fatalf("GET pane-history failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET pane-history expected 200, got %d", resp.StatusCode)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	var paneRes struct {
+		Data struct {
+			Lines int `json:"lines"`
+			Snapshot struct {
+				Output string `json:"output"`
+				Frame  struct {
+					Mode string `json:"mode"`
+					Data string `json:"data"`
+				} `json:"frame"`
+			} `json:"snapshot"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&paneRes); err != nil {
+		t.Fatalf("decode pane-history response failed: %v", err)
+	}
+	if paneSvc.historyTarget != "e2e:0.0" {
+		t.Fatalf("expected capture target e2e:0.0, got %q", paneSvc.historyTarget)
+	}
+	if paneSvc.historyLines != 4000 {
+		t.Fatalf("expected capture lines=4000, got %d", paneSvc.historyLines)
+	}
+	if paneRes.Data.Lines != 4000 {
+		t.Fatalf("expected response lines=4000, got %d", paneRes.Data.Lines)
+	}
+	if paneRes.Data.Snapshot.Output != "hist-a\nhist-b\n" {
+		t.Fatalf("unexpected snapshot output: %#v", paneRes.Data.Snapshot)
+	}
+	if paneRes.Data.Snapshot.Frame.Mode != "reset" || paneRes.Data.Snapshot.Frame.Data != "hist-a\nhist-b\n" {
+		t.Fatalf("unexpected snapshot frame: %#v", paneRes.Data.Snapshot.Frame)
 	}
 }
 

@@ -569,6 +569,53 @@ describe("shellman store", () => {
     expect(lastSelectPayload.history_lines).toBe(4000);
   });
 
+  it("loadMorePaneHistory requests pane-history and applies reset frame", async () => {
+    const calls: string[] = [];
+    const fakeFetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      calls.push(url);
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", nodes: [{ task_id: "t1", title: "root", status: "running" }] } })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/pane-history?lines=4000")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: "t1",
+              pane_uuid: "uuid-t1",
+              pane_id: "e2e:0.0",
+              pane_target: "e2e:0.0",
+              snapshot: {
+                output: "older-1\nolder-2\n",
+                frame: { mode: "reset", data: "older-1\nolder-2\n" },
+                cursor: null
+              }
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.selectTask("t1");
+    await store.loadMorePaneHistory("t1", 4000);
+
+    expect(calls.some((url) => url.includes("/api/v1/tasks/t1/pane-history?lines=4000"))).toBe(true);
+    expect(store.state.terminalFrame).toEqual({ mode: "reset", data: "older-1\nolder-2\n" });
+    expect(store.state.terminalOutput).toBe("older-1\nolder-2\n");
+  });
+
   it("does not restore persisted snapshot for running task and does not patch pane snapshot", async () => {
     const sock = new FakeSocket();
     const calls: Array<{ url: string; method: string; body?: string }> = [];

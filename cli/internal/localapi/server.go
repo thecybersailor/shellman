@@ -38,6 +38,7 @@ type PaneService interface {
 	CreateChildPaneInDir(targetTaskID, cwd string) (string, error)
 	CreateRootPaneInDir(cwd string) (string, error)
 	ClosePane(target string) error
+	CaptureHistory(target string, lines int) (string, error)
 }
 
 type FSBrowser interface {

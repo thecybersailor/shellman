@@ -7,6 +7,7 @@ let resized: Array<{ cols: number; rows: number }> = [];
 let resetCalls = 0;
 let scrollToBottomCalls = 0;
 let customKeyEventHandler: ((ev: KeyboardEvent) => boolean) | null = null;
+let onScrollHandler: ((y: number) => void) | null = null;
 let deferWriteCallback = false;
 
 vi.mock("@xterm/xterm", () => ({
@@ -49,6 +50,9 @@ vi.mock("@xterm/xterm", () => ({
       customKeyEventHandler = handler;
     }
     onData() {}
+    onScroll(handler: (y: number) => void) {
+      onScrollHandler = handler;
+    }
   }
 }));
 
@@ -85,6 +89,7 @@ describe("TerminalPane", () => {
     resized = [];
     resetCalls = 0;
     customKeyEventHandler = null;
+    onScrollHandler = null;
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
@@ -281,6 +286,23 @@ describe("TerminalPane", () => {
 
     const emitted = wrapper.emitted("terminal-resize") ?? [];
     expect(emitted.length).toBeGreaterThan(0);
+  });
+
+  it("emits terminal-history-more when terminal viewport reaches top", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    onScrollHandler = null;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    onScrollHandler?.(0);
+    await wrapper.vm.$nextTick();
+    const emitted = wrapper.emitted("terminal-history-more") ?? [];
+    expect(emitted.length).toBe(1);
   });
 
   it("emits terminal-image-paste when clipboard has image", async () => {

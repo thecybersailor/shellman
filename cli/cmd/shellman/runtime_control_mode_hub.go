@@ -84,9 +84,9 @@ func (h *ControlModeHub) Subscribe(target string) (<-chan string, func(), error)
 	if target == "" {
 		return nil, nil, fmt.Errorf("empty target")
 	}
-	session := sessionFromPaneTarget(target)
-	if session == "" {
-		return nil, nil, fmt.Errorf("invalid pane target: %s", target)
+	session, err := resolveSessionFromPaneTarget(h.socket, target)
+	if err != nil {
+		return nil, nil, err
 	}
 
 	h.mu.Lock()
@@ -253,6 +253,33 @@ func sessionFromPaneTarget(target string) string {
 	return target[:idx]
 }
 
+func resolveSessionFromPaneTarget(socket, target string) (string, error) {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return "", fmt.Errorf("empty pane target")
+	}
+	if session := sessionFromPaneTarget(target); session != "" {
+		return session, nil
+	}
+	if strings.HasPrefix(target, "%") {
+		args := append(tmuxArgsWithSocket(socket), "display-message", "-p", "-t", target, "#{session_name}")
+		out, err := exec.Command("tmux", args...).CombinedOutput()
+		if err != nil {
+			msg := strings.TrimSpace(string(out))
+			if msg == "" {
+				return "", err
+			}
+			return "", fmt.Errorf("%w: %s", err, msg)
+		}
+		session := strings.TrimSpace(string(out))
+		if session == "" {
+			return "", fmt.Errorf("invalid pane target: %s", target)
+		}
+		return session, nil
+	}
+	return "", fmt.Errorf("invalid pane target: %s", target)
+}
+
 type realControlSessionClient struct {
 	lines      chan string
 	paneMapMu  sync.RWMutex
@@ -369,7 +396,7 @@ func (c *realControlSessionClient) closeLines() {
 }
 
 func loadPaneIDMap(socket, session string) (map[string]string, error) {
-	args := append(tmuxArgsWithSocket(socket), "list-panes", "-s", "-t", session, "-F", "#{pane_id}\t#{session_name}:#{window_index}.#{pane_index}")
+	args := append(tmuxArgsWithSocket(socket), "list-panes", "-s", "-t", session, "-F", "#{pane_id}\t#{pane_id}")
 	out, err := exec.Command("tmux", args...).CombinedOutput()
 	if err != nil {
 		msg := strings.TrimSpace(string(out))

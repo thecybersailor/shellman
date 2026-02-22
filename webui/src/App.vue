@@ -368,6 +368,19 @@ function onTerminalResize(size: { cols: number; rows: number }) {
   store.sendTerminalResize(size);
 }
 
+async function onTerminalHistoryMore() {
+  const taskId = store.state.selectedTaskId;
+  if (!taskId) {
+    return;
+  }
+  try {
+    await store.loadMorePaneHistory(taskId);
+  } catch (err) {
+    const code = err instanceof Error ? err.message : "TASK_PANE_HISTORY_LOAD_FAILED";
+    logInfo("shellman.term.history_more.error", { taskId, code });
+  }
+}
+
 function onOpenSessionDetail() {
   projectPanelActiveTab.value = "thread";
 }
@@ -634,6 +647,7 @@ onBeforeUnmount(() => {
             @terminal-input="onTerminalInput"
             @terminal-image-paste="onTerminalImagePaste"
             @terminal-resize="onTerminalResize"
+            @terminal-history-more="onTerminalHistoryMore"
             @reopen-pane="onReopenPane"
             @open-session-detail="onOpenSessionDetail"
           />
@@ -700,6 +714,7 @@ onBeforeUnmount(() => {
       @terminal-input="onTerminalInput"
       @terminal-image-paste="onTerminalImagePaste"
       @terminal-resize="onTerminalResize"
+      @terminal-history-more="onTerminalHistoryMore"
       @reopen-pane="onReopenPane"
       @save-task-meta="onSaveTaskMeta"
       @send-message="onSendTaskMessage"

@@ -28,6 +28,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   (event: "terminal-input", text: string): void;
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
+  (event: "terminal-history-more"): void;
   (event: "terminal-image-paste", file: File): void;
   (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "open-session-detail"): void;
@@ -492,6 +493,7 @@ onMounted(() => {
     }
     const terminal = term as unknown as {
       onData?: (handler: (data: string) => void) => void;
+      onScroll?: (handler: (y: number) => void) => void;
       attachCustomKeyEventHandler?: (handler: (ev: KeyboardEvent) => boolean) => void;
     };
     terminal.attachCustomKeyEventHandler?.((ev: KeyboardEvent) => {
@@ -520,6 +522,11 @@ onMounted(() => {
         textEscaped: escapeForLog(data)
       });
       emit("terminal-input", data);
+    });
+    terminal.onScroll?.((y: number) => {
+      if (typeof y === "number" && y <= 0) {
+        emit("terminal-history-more");
+      }
     });
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", handleWindowResize);

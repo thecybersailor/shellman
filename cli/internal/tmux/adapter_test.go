@@ -30,7 +30,7 @@ func TestAdapter_ListSessions_UsesExactCommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list failed: %v", err)
 	}
-	if f.LastArgs != "tmux list-panes -a -F #{session_name}:#{window_index}.#{pane_index}" {
+	if f.LastArgs != "tmux list-panes -a -F #{pane_id}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }
@@ -42,7 +42,7 @@ func TestAdapter_ListSessions_WithTmuxSocket(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list failed: %v", err)
 	}
-	if f.LastArgs != "tmux -L tt_e2e list-panes -a -F #{session_name}:#{window_index}.#{pane_index}" {
+	if f.LastArgs != "tmux -L tt_e2e list-panes -a -F #{pane_id}" {
 		t.Fatalf("unexpected command: %s", f.LastArgs)
 	}
 }
@@ -197,16 +197,16 @@ func TestAdapter_PaneTitleAndCurrentCommand_UsesDisplayMessage(t *testing.T) {
 }
 
 func TestAdapter_CreateSiblingPane(t *testing.T) {
-	f := &FakeExec{OutputText: "e2e:0.2\n"}
+	f := &FakeExec{OutputText: "%2\n"}
 	a := NewAdapter(f)
 	pane, err := a.CreateSiblingPaneInDir("e2e:0.0", "/tmp/repo")
 	if err != nil {
 		t.Fatalf("create sibling pane failed: %v", err)
 	}
-	if pane != "e2e:0.2" {
+	if pane != "%2" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if !strings.HasPrefix(f.LastArgs, "tmux split-window -h -t e2e:0.0 -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index} bash --rcfile ") {
+	if !strings.HasPrefix(f.LastArgs, "tmux split-window -h -t e2e:0.0 -c /tmp/repo -P -F #{pane_id} bash --rcfile ") {
 		t.Fatalf("unexpected command prefix: %s", f.LastArgs)
 	}
 	if !strings.HasSuffix(f.LastArgs, " -i") {
@@ -215,16 +215,16 @@ func TestAdapter_CreateSiblingPane(t *testing.T) {
 }
 
 func TestAdapter_CreateChildPane(t *testing.T) {
-	f := &FakeExec{OutputText: "e2e:0.3\n"}
+	f := &FakeExec{OutputText: "%3\n"}
 	a := NewAdapter(f)
 	pane, err := a.CreateChildPaneInDir("e2e:0.1", "/tmp/repo")
 	if err != nil {
 		t.Fatalf("create child pane failed: %v", err)
 	}
-	if pane != "e2e:0.3" {
+	if pane != "%3" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if !strings.HasPrefix(f.LastArgs, "tmux split-window -v -t e2e:0.1 -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index} bash --rcfile ") {
+	if !strings.HasPrefix(f.LastArgs, "tmux split-window -v -t e2e:0.1 -c /tmp/repo -P -F #{pane_id} bash --rcfile ") {
 		t.Fatalf("unexpected command prefix: %s", f.LastArgs)
 	}
 	if !strings.HasSuffix(f.LastArgs, " -i") {
@@ -233,16 +233,16 @@ func TestAdapter_CreateChildPane(t *testing.T) {
 }
 
 func TestAdapter_CreateRootPane(t *testing.T) {
-	f := &FakeExec{OutputText: "e2e:5.0\n"}
+	f := &FakeExec{OutputText: "%5\n"}
 	a := NewAdapter(f)
 	pane, err := a.CreateRootPaneInDir("/tmp/repo")
 	if err != nil {
 		t.Fatalf("create root pane failed: %v", err)
 	}
-	if pane != "e2e:5.0" {
+	if pane != "%5" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if !strings.HasPrefix(f.LastArgs, "tmux new-window -c /tmp/repo -P -F #{session_name}:#{window_index}.#{pane_index} bash --rcfile ") {
+	if !strings.HasPrefix(f.LastArgs, "tmux new-window -c /tmp/repo -P -F #{pane_id} bash --rcfile ") {
 		t.Fatalf("unexpected command prefix: %s", f.LastArgs)
 	}
 	if !strings.HasSuffix(f.LastArgs, " -i") {

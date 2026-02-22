@@ -39,7 +39,7 @@ func (a *Adapter) SocketName() string {
 }
 
 func (a *Adapter) ListSessions() ([]string, error) {
-	out, err := a.exec.Output("tmux", a.withSocket("list-panes", "-a", "-F", "#{session_name}:#{window_index}.#{pane_index}")...)
+	out, err := a.exec.Output("tmux", a.withSocket("list-panes", "-a", "-F", "#{pane_id}")...)
 	if err != nil {
 		return nil, err
 	}
@@ -472,7 +472,7 @@ func (a *Adapter) CreateSiblingPane(target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -487,7 +487,7 @@ func (a *Adapter) CreateSiblingPaneInDir(target, cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -499,13 +499,13 @@ func (a *Adapter) CreateChildPane(target string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err == nil {
 		return strings.TrimSpace(string(out)), nil
 	}
 
 	// Fallback to full-window split when target pane is too small for a local vertical split.
-	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err2 != nil {
 		return "", err
 	}
@@ -520,13 +520,13 @@ func (a *Adapter) CreateChildPaneInDir(target, cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-t", target, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err == nil {
 		return strings.TrimSpace(string(out)), nil
 	}
 
 	// Fallback to full-window split when target pane is too small for a local vertical split.
-	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err2 := a.exec.Output("tmux", a.withSocket("split-window", "-v", "-f", "-t", target, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err2 != nil {
 		return "", err
 	}
@@ -538,7 +538,7 @@ func (a *Adapter) CreateRootPane() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}
@@ -553,7 +553,7 @@ func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{session_name}:#{window_index}.#{pane_index}", shellCmd)...)
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
 	if err != nil {
 		return "", err
 	}

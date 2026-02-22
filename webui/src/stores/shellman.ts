@@ -1726,6 +1726,42 @@ export function createShellmanStore(
     sendResizeToTarget(target, size, "terminal-pane");
   }
 
+  async function loadMorePaneHistory(taskId: string, lines = GAP_RECOVER_HISTORY_LINES) {
+    const nextTaskID = String(taskId ?? "").trim();
+    if (!nextTaskID) {
+      return;
+    }
+    const nextLines = Math.max(200, Math.min(10000, Math.floor(lines)));
+    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/pane-history?lines=${encodeURIComponent(String(nextLines))}`), {
+      headers: apiHeaders()
+    }).then((r) => r.json())) as APIResponse<{
+      task_id: string;
+      pane_uuid?: string;
+      pane_id?: string;
+      pane_target?: string;
+      snapshot?: PaneSnapshotPayload | null;
+    }>;
+    if (!res.ok) {
+      throw new Error(res.error?.code || "TASK_PANE_HISTORY_LOAD_FAILED");
+    }
+    const paneUuid =
+      String(res.data?.pane_uuid ?? "").trim() ||
+      String(state.paneByTaskId[nextTaskID]?.paneUuid ?? "").trim() ||
+      String(res.data?.pane_id ?? "").trim();
+    const snapshotCache = toTerminalCacheEntry(res.data?.snapshot);
+    if (!paneUuid || !snapshotCache) {
+      return;
+    }
+    state.terminalByPaneUuid[paneUuid] = snapshotCache;
+    persistedSnapshotByPaneUuid[paneUuid] = snapshotCache;
+    if (state.selectedTaskId === nextTaskID && state.selectedPaneUuid === paneUuid) {
+      state.terminalOutput = snapshotCache.output;
+      state.terminalFrame = snapshotCache.frame;
+      state.terminalCursor = snapshotCache.cursor;
+      state.terminalEnded = false;
+    }
+  }
+
   function clearPendingTermInput(reason: string) {
     const pendingCount = Object.keys(pendingTermInputByReqID).length;
     if (pendingCount <= 0) {
@@ -2665,6 +2701,7 @@ export function createShellmanStore(
     selectTask,
     sendTerminalInput,
     sendTerminalResize,
+    loadMorePaneHistory,
     sendImagePasteToTerminal,
     createRootTask,
     createRootPane,

@@ -270,6 +270,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handlePostTaskCommit(w, r, taskID)
 	case r.Method == http.MethodGet && action == "pane":
 		s.handleGetTaskPane(w, r, taskID)
+	case r.Method == http.MethodGet && action == "pane-history":
+		s.handleGetTaskPaneHistory(w, r, taskID)
 	case r.Method == http.MethodPost && action == "derive":
 		s.handleDeriveTask(w, r, taskID)
 	case r.Method == http.MethodPatch && action == "status":

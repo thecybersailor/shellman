@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -185,7 +186,7 @@ if [ "$has_s" -ne 1 ]; then
   exit 65
 fi
 
-printf "%%16\te2e:5.0\n%%17\te2e:6.0\n%%18\te2e:7.0\n"
+printf "%%16\t%%16\n%%17\t%%17\n%%18\t%%18\n"
 `
 	if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
 		t.Fatalf("write fake tmux failed: %v", err)
@@ -196,13 +197,47 @@ printf "%%16\te2e:5.0\n%%17\te2e:6.0\n%%18\te2e:7.0\n"
 	if err != nil {
 		t.Fatalf("loadPaneIDMap failed: %v", err)
 	}
-	if got := paneMap["%16"]; got != "e2e:5.0" {
+	if got := paneMap["%16"]; got != "%16" {
 		t.Fatalf("unexpected pane mapping for %%16: %q", got)
 	}
-	if got := paneMap["%17"]; got != "e2e:6.0" {
+	if got := paneMap["%17"]; got != "%17" {
 		t.Fatalf("unexpected pane mapping for %%17: %q", got)
 	}
-	if got := paneMap["%18"]; got != "e2e:7.0" {
+	if got := paneMap["%18"]; got != "%18" {
 		t.Fatalf("unexpected pane mapping for %%18: %q", got)
+	}
+}
+
+func TestResolveSessionFromPaneTarget_PaneID(t *testing.T) {
+	binDir := t.TempDir()
+	tmuxPath := filepath.Join(binDir, "tmux")
+	script := `#!/bin/sh
+if [ "$1" != "display-message" ]; then
+  echo "unexpected command" >&2
+  exit 64
+fi
+printf "e2e\n"
+`
+	if err := os.WriteFile(tmuxPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake tmux failed: %v", err)
+	}
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	session, err := resolveSessionFromPaneTarget("", "%42")
+	if err != nil {
+		t.Fatalf("resolveSessionFromPaneTarget failed: %v", err)
+	}
+	if session != "e2e" {
+		t.Fatalf("unexpected session: %q", session)
+	}
+}
+
+func TestResolveSessionFromPaneTarget_InvalidTarget(t *testing.T) {
+	_, err := resolveSessionFromPaneTarget("", "bad-target")
+	if err == nil {
+		t.Fatal("expected invalid target error")
+	}
+	if !strings.Contains(err.Error(), "invalid pane target") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

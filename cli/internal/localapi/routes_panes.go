@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -450,6 +451,75 @@ func (s *Server) handleGetTaskPane(w http.ResponseWriter, _ *http.Request, taskI
 		"pane_target":     binding.PaneTarget,
 		"current_command": currentCommand,
 		"snapshot":        snapshotPayload,
+	})
+}
+
+func parsePaneHistoryLines(raw string) int {
+	lines := 2000
+	value := strings.TrimSpace(raw)
+	if value != "" {
+		if parsed, err := strconv.Atoi(value); err == nil {
+			lines = parsed
+		}
+	}
+	if lines < 200 {
+		lines = 200
+	}
+	if lines > 10000 {
+		lines = 10000
+	}
+	return lines
+}
+
+func (s *Server) handleGetTaskPaneHistory(w http.ResponseWriter, r *http.Request, taskID string) {
+	if s.deps.PaneService == nil {
+		respondError(w, http.StatusInternalServerError, "PANE_SERVICE_UNAVAILABLE", "pane service is not configured")
+		return
+	}
+	projectID, store, _, err := s.findTask(taskID)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "TASK_NOT_FOUND", err.Error())
+		return
+	}
+	panes, err := store.LoadPanes()
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "PANES_LOAD_FAILED", err.Error())
+		return
+	}
+	binding, ok := panes[taskID]
+	if !ok {
+		respondError(w, http.StatusNotFound, "TASK_PANE_NOT_FOUND", "task pane binding not found")
+		return
+	}
+	target := strings.TrimSpace(binding.PaneTarget)
+	if target == "" {
+		target = strings.TrimSpace(binding.PaneID)
+	}
+	if target == "" {
+		respondError(w, http.StatusNotFound, "TASK_PANE_NOT_FOUND", "task pane target not found")
+		return
+	}
+	lines := parsePaneHistoryLines(r.URL.Query().Get("lines"))
+	snapshot, err := s.deps.PaneService.CaptureHistory(target, lines)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "PANE_HISTORY_CAPTURE_FAILED", err.Error())
+		return
+	}
+	respondOK(w, map[string]any{
+		"project_id":  projectID,
+		"task_id":     strings.TrimSpace(taskID),
+		"pane_uuid":   binding.PaneUUID,
+		"pane_id":     binding.PaneID,
+		"pane_target": target,
+		"lines":       lines,
+		"snapshot": map[string]any{
+			"output": snapshot,
+			"frame": map[string]any{
+				"mode": "reset",
+				"data": snapshot,
+			},
+			"cursor": nil,
+		},
 	})
 }
 

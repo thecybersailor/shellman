@@ -49,6 +49,7 @@ const emit = defineEmits<{
   (event: "terminal-input", text: string): void;
   (event: "terminal-image-paste", file: File): void;
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
+  (event: "terminal-history-more"): void;
   (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
@@ -179,6 +180,7 @@ function onProjectPanelActiveTabChange(next: string) {
             @terminal-input="(text) => emit('terminal-input', text)"
             @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
             @terminal-resize="(size) => emit('terminal-resize', size)"
+            @terminal-history-more="() => emit('terminal-history-more')"
             @reopen-pane="(payload) => emit('reopen-pane', payload)"
             @open-session-detail="openSessionDetailPanel"
           />
