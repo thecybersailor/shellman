@@ -429,11 +429,7 @@ watch(
     }
 
     if (text) {
-      writeOutput(text, () => {
-        moveCursor(props.cursor ?? null);
-      });
-    } else {
-      moveCursor(props.cursor ?? null);
+      writeOutput(text);
     }
     logInfo("shellman.term.view.frame.append", { dataLen: text.length });
   }
