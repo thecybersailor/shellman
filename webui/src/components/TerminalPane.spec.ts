@@ -263,6 +263,51 @@ describe("TerminalPane", () => {
     expect(resetCalls).toBe(1);
   });
 
+  it("trims trailing newline for ansi repaint append frame", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    const repaint = "\u001b[0m\u001b[H\u001b[2Jline-1\nline-2\n";
+    await wrapper.setProps({ frame: { mode: "append", data: repaint }, cursor: { x: 0, y: 0 } });
+    expect(writes).toContain("\u001b[0m\u001b[H\u001b[2Jline-1\nline-2");
+    expect(writes).not.toContain(repaint);
+  });
+
+  it("suppresses ansi repaint append during task switch until reset arrives", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane, {
+      props: {
+        taskId: "task-1"
+      }
+    });
+    await wrapper.setProps({ taskId: "task-2" });
+
+    const repaint = "\u001b[0m\u001b[H\u001b[2Jcodex\n";
+    const repaintNormalized = "\u001b[0m\u001b[H\u001b[2Jcodex";
+    const writesBefore = writes.length;
+    await wrapper.setProps({ frame: { mode: "append", data: repaint }, cursor: { x: 0, y: 0 } });
+    expect(writes.slice(writesBefore)).not.toContain(repaintNormalized);
+
+    await wrapper.setProps({ frame: { mode: "reset", data: "pane-ready\n" }, cursor: { x: 0, y: 0 } });
+    const writesAfterReset = writes.length;
+
+    await wrapper.setProps({ frame: { mode: "append", data: repaint }, cursor: { x: 0, y: 0 } });
+    expect(writes.slice(writesAfterReset)).toContain(repaintNormalized);
+  });
+
   it("re-applies cursor after reset even when cursor value does not change", async () => {
     terminalOptions = undefined;
     writes = [];

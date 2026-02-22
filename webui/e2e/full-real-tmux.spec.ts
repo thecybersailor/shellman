@@ -344,6 +344,8 @@ async function readCursorAlignment(page: Page) {
     })();
     const renderDims = term?._core?._renderService?.dimensions?.css ?? null;
     const cellHeight = typeof renderDims?.cell?.height === "number" ? renderDims.cell.height : null;
+    const viewportY = typeof active.viewportY === "number" ? active.viewportY : 0;
+    const promptViewportRow = promptLineIndex >= 0 ? promptLineIndex - viewportY : null;
     const visualCursorRow =
       canvasCursor && (canvasCursor as any).found && cellHeight && cellHeight > 0
         ? Math.round(((canvasCursor as any).selected.cssTop as number) / cellHeight)
@@ -352,7 +354,8 @@ async function readCursorAlignment(page: Page) {
       ok: true,
       cursorY: active.cursorY,
       promptLineIndex,
-      cursorPromptDelta: promptLineIndex >= 0 ? active.cursorY - promptLineIndex : null,
+      promptViewportRow,
+      cursorPromptDelta: promptViewportRow !== null ? active.cursorY - promptViewportRow : null,
       visualCursorRow,
       visualCursorDelta: visualCursorRow !== null ? visualCursorRow - active.cursorY : null,
       debugTail: (g.__SHELLMAN_TERM_DEBUG_LOGS__ ?? []).slice(-20)
@@ -573,6 +576,13 @@ test.describe("shellman local web full chain (docker)", () => {
           return alignment.ok ? alignment.visualCursorDelta : null;
         })
         .toBe(0);
+      const alignmentByBuffer = await readCursorAlignment(page);
+      // eslint-disable-next-line no-console
+      console.log(`[lru-gap-recover][buffer] i=${i} token=${paneToken} state=${JSON.stringify(alignmentByBuffer)}`);
+      expect(alignmentByBuffer.ok).toBe(true);
+      if (alignmentByBuffer.promptLineIndex !== -1) {
+        expect(alignmentByBuffer.cursorPromptDelta).toBe(0);
+      }
     }
 
     for (let round = 0; round < 2; round += 1) {
@@ -585,6 +595,11 @@ test.describe("shellman local web full chain (docker)", () => {
         const alignment = await readCursorAlignment(page);
         expect(alignment.ok).toBe(true);
         expect(alignment.visualCursorDelta).toBe(0);
+        // eslint-disable-next-line no-console
+        console.log(`[lru-gap-recover][round] round=${round} i=${i} state=${JSON.stringify(alignment)}`);
+        if (alignment.promptLineIndex !== -1) {
+          expect(alignment.cursorPromptDelta).toBe(0);
+        }
       }
     }
 

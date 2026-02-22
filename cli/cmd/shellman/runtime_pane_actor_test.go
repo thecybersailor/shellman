@@ -43,6 +43,21 @@ func (d *delayedCaptureTmux) CaptureHistory(target string, lines int) (string, e
 	return d.streamPumpTmux.CaptureHistory(target, lines)
 }
 
+func readNextTermOutput(t *testing.T, ch <-chan protocol.Message, timeout time.Duration) protocol.Message {
+	t.Helper()
+	deadline := time.After(timeout)
+	for {
+		select {
+		case msg := <-ch:
+			if msg.Op == "term.output" {
+				return msg
+			}
+		case <-deadline:
+			t.Fatal("timeout waiting term.output")
+		}
+	}
+}
+
 type eagerRealtimeSource struct {
 	streams map[string]chan string
 }
@@ -240,6 +255,70 @@ func TestPaneActor_SubscribeMissingPaneEmitsPaneEndedEvenIfHistoryExists(t *test
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected pane.ended event for missing pane")
+	}
+}
+
+func TestPaneActor_Subscribe_BuffersAppendUntilResetSent(t *testing.T) {
+	tmuxService := &delayedCaptureTmux{
+		streamPumpTmux: streamPumpTmux{
+			history:       "BASE\nAPPEND\n",
+			paneSnapshots: []string{"BASE\n", "BASE\nAPPEND\n", "BASE\nAPPEND\n"},
+			cursors:       [][2]int{{0, 1}, {0, 1}, {0, 1}},
+		},
+		captureDelay: 45 * time.Millisecond,
+	}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 10*time.Millisecond, nil, nil, nil, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actor.Start(ctx)
+
+	// Seed last snapshot before subscribe so tick emits append-delta during delayed capture.
+	time.Sleep(15 * time.Millisecond)
+
+	out := make(chan protocol.Message, 16)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		actor.Subscribe("conn_1", out, paneSubscribeOptions{
+			GapRecover:   true,
+			HistoryLines: 4000,
+		})
+	}()
+
+	first := readNextTermOutput(t, out, time.Second)
+	var firstPayload struct {
+		Mode string `json:"mode"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(first.Payload, &firstPayload); err != nil {
+		t.Fatalf("decode first payload failed: %v", err)
+	}
+	if firstPayload.Mode != "reset" {
+		t.Fatalf("expected first frame reset, got %s with data=%q", firstPayload.Mode, firstPayload.Data)
+	}
+	if firstPayload.Data != "BASE\nAPPEND\n" {
+		t.Fatalf("unexpected reset payload data: %q", firstPayload.Data)
+	}
+
+	second := readNextTermOutput(t, out, time.Second)
+	var secondPayload struct {
+		Mode string `json:"mode"`
+		Data string `json:"data"`
+	}
+	if err := json.Unmarshal(second.Payload, &secondPayload); err != nil {
+		t.Fatalf("decode second payload failed: %v", err)
+	}
+	if secondPayload.Mode != "append" {
+		t.Fatalf("expected buffered append after reset, got %s", secondPayload.Mode)
+	}
+	if !strings.Contains(secondPayload.Data, "APPEND") {
+		t.Fatalf("unexpected append payload data: %q", secondPayload.Data)
+	}
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("subscribe did not return in time")
 	}
 }
 

@@ -44,6 +44,8 @@ type PaneActor struct {
 
 	mu          sync.RWMutex
 	subscribers map[string]chan protocol.Message
+	resetPendingByConn  map[string]bool
+	pendingAppendByConn map[string][]protocol.Message
 	lastSnap    string
 	lastCursorX int
 	lastCursorY int
@@ -99,6 +101,8 @@ func NewPaneActor(
 		taskStateSink: taskStateSink,
 		logger:        logger,
 		subscribers:   map[string]chan protocol.Message{},
+		resetPendingByConn:  map[string]bool{},
+		pendingAppendByConn: map[string][]protocol.Message{},
 	}
 }
 
@@ -199,16 +203,24 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...
 		return
 	}
 
-	p.mu.Lock()
-	p.subscribers[connID] = out
-	p.mu.Unlock()
-
 	opt := paneSubscribeOptions{}
 	if len(opts) > 0 {
 		opt = opts[0]
 	}
+
+	p.mu.Lock()
+	p.subscribers[connID] = out
+	if opt.GapRecover {
+		p.resetPendingByConn[connID] = true
+		delete(p.pendingAppendByConn, connID)
+	}
+	p.mu.Unlock()
+
 	snapshot, cursorX, cursorY, hasCursor, err := p.captureResetSnapshotWithOptions(opt)
 	if err != nil {
+		if opt.GapRecover {
+			p.clearResetPending(connID)
+		}
 		if isPaneTargetMissingError(err) {
 			p.sendToConn(connID, paneEndedEventMessage(p.target, err.Error()))
 		}
@@ -224,6 +236,10 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...
 
 	for _, msg := range termOutputMessages(p.target, "reset", snapshot, cursorX, cursorY, hasCursor) {
 		p.sendToConn(connID, msg)
+	}
+	if opt.GapRecover {
+		p.clearResetPending(connID)
+		p.flushPendingAppends(connID)
 	}
 	p.ensureRealtimeSubscribed()
 
@@ -256,10 +272,68 @@ func (p *PaneActor) Unsubscribe(connID string) {
 	}
 	p.mu.Lock()
 	delete(p.subscribers, connID)
+	delete(p.resetPendingByConn, connID)
+	delete(p.pendingAppendByConn, connID)
 	noSubscribers := len(p.subscribers) == 0
 	p.mu.Unlock()
 	if noSubscribers {
 		p.stopRealtime()
+	}
+}
+
+func (p *PaneActor) clearResetPending(connID string) {
+	if p == nil {
+		return
+	}
+	connID = strings.TrimSpace(connID)
+	if connID == "" {
+		return
+	}
+	p.mu.Lock()
+	delete(p.resetPendingByConn, connID)
+	p.mu.Unlock()
+}
+
+func (p *PaneActor) appendPending(connID string, msg protocol.Message) bool {
+	if p == nil || !isAppendTermOutput(msg) {
+		return false
+	}
+	connID = strings.TrimSpace(connID)
+	if connID == "" {
+		return false
+	}
+	const pendingAppendLimit = 64
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if !p.resetPendingByConn[connID] {
+		return false
+	}
+	queue := p.pendingAppendByConn[connID]
+	if len(queue) >= pendingAppendLimit {
+		queue = queue[1:]
+	}
+	queue = append(queue, msg)
+	p.pendingAppendByConn[connID] = queue
+	return true
+}
+
+func (p *PaneActor) flushPendingAppends(connID string) {
+	if p == nil {
+		return
+	}
+	connID = strings.TrimSpace(connID)
+	if connID == "" {
+		return
+	}
+	p.mu.Lock()
+	queue := p.pendingAppendByConn[connID]
+	delete(p.pendingAppendByConn, connID)
+	p.mu.Unlock()
+	if len(queue) == 0 {
+		return
+	}
+	for _, msg := range queue {
+		p.sendToConn(connID, msg)
 	}
 }
 
@@ -486,6 +560,9 @@ func (p *PaneActor) broadcast(messages []protocol.Message) {
 
 	for connID, ch := range subs {
 		for _, msg := range messages {
+			if p.appendPending(connID, msg) {
+				continue
+			}
 			if enqueuePaneMessage(ch, msg) {
 				continue
 			}

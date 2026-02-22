@@ -1890,6 +1890,159 @@ describe("shellman store", () => {
     expect(store.state.terminalCursor).toEqual({ x: 0, y: 2 });
   });
 
+  it("does not let hidden pane ansi repaint append overwrite cached snapshot", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: [
+                { task_id: "t1", title: "one", status: "running" },
+                { task_id: "t2", title: "two", status: "running" }
+              ]
+            }
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t2/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t2", pane_uuid: "uuid-t2", pane_id: "e2e:0.1", pane_target: "e2e:0.1" } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+
+    await store.selectTask("t1");
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_reset",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "reset", data: "PANE_T01_LINE_05000\nroot# ", cursor: { x: 6, y: 1 } }
+      })
+    );
+
+    await store.selectTask("t2");
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_hidden_repaint",
+        type: "event",
+        op: "term.output",
+        payload: {
+          target: "e2e:0.0",
+          mode: "append",
+          data: "\u001b[0m\u001b[H\u001b[2Jroot# \n",
+          cursor: { x: 6, y: 0 }
+        }
+      })
+    );
+
+    await store.selectTask("t1");
+    expect(store.state.terminalOutput).toBe("PANE_T01_LINE_05000\nroot# ");
+    expect(store.state.terminalFrame).toEqual({ mode: "reset", data: "PANE_T01_LINE_05000\nroot# " });
+    expect(store.state.terminalCursor).toEqual({ x: 6, y: 1 });
+  });
+
+  it("skips short ansi repaint append during gap_recover and applies reset", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (url: string) => {
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              project_id: "p1",
+              nodes: Array.from({ length: 6 }).map((_, idx) => ({
+                task_id: `t${idx + 1}`,
+                title: `task-${idx + 1}`,
+                status: "running"
+              }))
+            }
+          })
+        } as Response;
+      }
+      const paneMatch = url.match(/\/api\/v1\/tasks\/(t\d+)\/pane$/);
+      if (paneMatch) {
+        const taskId = paneMatch[1];
+        const idx = Number(taskId.slice(1)) - 1;
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: taskId,
+              pane_uuid: `uuid-${taskId}`,
+              pane_id: `e2e:0.${idx}`,
+              pane_target: `e2e:0.${idx}`
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+
+    for (let i = 1; i <= 6; i += 1) {
+      await store.selectTask(`t${i}`);
+      sock.emitMessage(
+        JSON.stringify({
+          id: `evt_t${i}_reset`,
+          type: "event",
+          op: "term.output",
+          payload: { target: `e2e:0.${i - 1}`, mode: "reset", data: `pane-${i}\n`, cursor: { x: 0, y: 0 } }
+        })
+      );
+    }
+
+    await store.selectTask("t1");
+    const selectMsgs = sock.sent.map((raw) => JSON.parse(raw)).filter((msg) => msg.op === "tmux.select_pane");
+    const lastSelect = selectMsgs[selectMsgs.length - 1];
+    expect(lastSelect.payload.target).toBe("e2e:0.0");
+    expect(lastSelect.payload.gap_recover).toBe(true);
+    expect(lastSelect.payload.history_lines).toBe(4000);
+
+    expect(store.state.terminalOutput).toBe("pane-1\n");
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_append_before_reset",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "append", data: "\u001b[0m\u001b[H\u001b[2Jroot# \n", cursor: { x: 6, y: 0 } }
+      })
+    );
+    expect(store.state.terminalOutput).toBe("pane-1\n");
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_reset_after_gap",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "reset", data: "PANE_T01_LINE_05000\nroot# ", cursor: { x: 6, y: 1 } }
+      })
+    );
+    expect(store.state.terminalOutput).toBe("PANE_T01_LINE_05000\nroot# ");
+    expect(store.state.terminalCursor).toEqual({ x: 6, y: 1 });
+  });
+
   it("applies tmux.status to task runtime status via pane target mapping", async () => {
     const sock = new FakeSocket();
     const fakeFetch = async (url: string) => {

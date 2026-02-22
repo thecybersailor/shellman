@@ -60,6 +60,8 @@ const TMUX_PANE_NOT_FOUND_CODE = "TMUX_PANE_NOT_FOUND";
 const TERMINAL_CACHE_MAX_LINES = 2000;
 const ACTIVE_PANE_CACHE_LIMIT = 5;
 const GAP_RECOVER_HISTORY_LINES = 4000;
+const GAP_RECOVER_FRAME_HOLD_MS = 2000;
+const GAP_RECOVER_SHORT_REPAINT_MAX_BYTES = 256;
 
 export function classifyTermFrame(mode: TerminalFrame["mode"], data: string): TermFrameKind {
   if (mode === "reset") {
@@ -473,6 +475,7 @@ export function createShellmanStore(
   const messagesHydratedByTaskID: Record<string, true> = {};
   const persistedSnapshotByPaneUuid: Record<string, TerminalCacheEntry> = {};
   const paneGapByPaneUuid: Record<string, true> = {};
+  const pendingGapRecoverByPaneUuid: Record<string, number> = {};
   const activePaneOrderByUuid: string[] = [];
   let latestTerminalSize: { cols: number; rows: number } | null = null;
 
@@ -1089,13 +1092,38 @@ export function createShellmanStore(
       );
       const mode = payload.mode === "append" ? "append" : "reset";
       const text = String(payload.data ?? "");
+      const frameKind = classifyTermFrame(mode, text);
       trackTermFrameProfile(target, mode, text);
       const outputSeq = ++termOutputSeq;
       const cachePaneUUID = incomingPaneUuid || findPaneUUIDByTarget(target);
+      const nowMs = Date.now();
+      const pendingGapRecover =
+        isSelectedPane &&
+        selectedPaneUuid &&
+        typeof pendingGapRecoverByPaneUuid[selectedPaneUuid] === "number" &&
+        pendingGapRecoverByPaneUuid[selectedPaneUuid] > nowMs;
+      if (
+        pendingGapRecover &&
+        mode === "append" &&
+        frameKind === "append_ansi_repaint" &&
+        text.length <= GAP_RECOVER_SHORT_REPAINT_MAX_BYTES
+      ) {
+        logInfo("shellman.term.output.skip", {
+          outputSeq,
+          target,
+          mode,
+          reason: "wait-gap-recover-short-ansi-repaint",
+          dataLen: text.length,
+          paneUuid: selectedPaneUuid
+        });
+        return;
+      }
+      if (isSelectedPane && selectedPaneUuid && mode === "reset" && pendingGapRecoverByPaneUuid[selectedPaneUuid]) {
+        delete pendingGapRecoverByPaneUuid[selectedPaneUuid];
+      }
       const prevCache = cachePaneUUID ? state.terminalByPaneUuid[cachePaneUUID] ?? persistedSnapshotByPaneUuid[cachePaneUUID] : null;
       const baseOutput = isSelectedPane ? state.terminalOutput : String(prevCache?.output ?? "");
       const beforeLen = baseOutput.length;
-      const nowMs = Date.now();
       const nextOutputRaw = mode === "append" ? baseOutput + text : text;
       const nextOutput = trimToRecentLines(nextOutputRaw, TERMINAL_CACHE_MAX_LINES);
       let nextCursor: { x: number; y: number } | null = isSelectedPane ? state.terminalCursor : prevCache?.cursor ?? null;
@@ -1142,6 +1170,15 @@ export function createShellmanStore(
         }
       }
       if (cachePaneUUID) {
+        if (!isSelectedPane && frameKind === "append_ansi_repaint") {
+          logInfo("shellman.term.output.cache.skip", {
+            outputSeq,
+            target,
+            paneUuid: cachePaneUUID,
+            reason: "hidden-pane-ansi-repaint-append"
+          });
+          return;
+        }
         if (endedPaneUuids[cachePaneUUID]) {
           delete endedPaneUuids[cachePaneUUID];
         }
@@ -1584,6 +1621,10 @@ export function createShellmanStore(
       }
     }
     const cached = state.selectedPaneUuid ? state.terminalByPaneUuid[state.selectedPaneUuid] : null;
+    const shouldGapRecover = Boolean(state.selectedPaneUuid && paneGapByPaneUuid[state.selectedPaneUuid]);
+    if (shouldGapRecover && state.selectedPaneUuid) {
+      pendingGapRecoverByPaneUuid[state.selectedPaneUuid] = Date.now() + GAP_RECOVER_FRAME_HOLD_MS;
+    }
     if (cached && (cached.source !== "persisted" || paneEnded)) {
       state.terminalOutput = cached.output;
       state.terminalFrame =
