@@ -179,7 +179,7 @@ describe("ThreadPanel", () => {
     expect(wrapper.find("[data-test-id='shellman-shellman-tool-output']").exists()).toBe(true);
   });
 
-  it("shows explicit sidecar chat action buttons and emits events", async () => {
+  it("switches submit button to stop when assistant is running and prompt is empty", async () => {
     const wrapper = mount(ThreadPanel, {
       props: {
         taskId: "t1",
@@ -193,13 +193,28 @@ describe("ThreadPanel", () => {
     });
     await nextTick();
 
-    await wrapper.get("[data-test-id='shellman-sidecar-stop-chat']").trigger("click");
-    await wrapper.get("[data-test-id='shellman-sidecar-restart-context-child']").trigger("click");
-    await wrapper.get("[data-test-id='shellman-sidecar-restart-context-root']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-shellman-send']").exists()).toBe(false);
+    await wrapper.get("[data-test-id='shellman-shellman-stop']").trigger("click");
+    expect(wrapper.emitted("stop-running-assistant-message")?.length).toBe(1);
+  });
 
-    expect(wrapper.emitted("stop-sidecar-chat")?.length).toBe(1);
-    expect(wrapper.emitted("restart-sidecar-context")?.[0]?.[0]).toEqual({ strategy: "child" });
-    expect(wrapper.emitted("restart-sidecar-context")?.[1]?.[0]).toEqual({ strategy: "root" });
+  it("keeps submit button when prompt has content even if assistant is running", async () => {
+    const wrapper = mount(ThreadPanel, {
+      props: {
+        taskId: "t1",
+        taskTitle: "Task",
+        taskDescription: "",
+        taskMessages: [
+          { id: 1, task_id: "t1", role: "assistant", content: "", status: "running", created_at: 1, updated_at: 1 }
+        ]
+      }
+    });
+    await nextTick();
+    await wrapper.get("[data-test-id='shellman-shellman-input']").setValue("continue");
+    await nextTick();
+
+    expect(wrapper.find("[data-test-id='shellman-shellman-send']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-shellman-stop']").exists()).toBe(false);
   });
 
   it("uses explicit observer wording to avoid stop confusion", async () => {

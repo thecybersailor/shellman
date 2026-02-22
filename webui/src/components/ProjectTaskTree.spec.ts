@@ -68,6 +68,24 @@ describe("ProjectTaskTree", () => {
     nowSpy.mockRestore();
   });
 
+  it("renders status message on second line when flagDesc exists", () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          {
+            projectId: "p1",
+            title: "Project One",
+            tasks: [{ taskId: "t1", title: "Root", status: "completed", flagDesc: "等待人工确认" }]
+          }
+        ],
+        selectedTaskId: "t1"
+      }
+    });
+
+    expect(wrapper.get("[data-test-id='shellman-task-title-line-t1']").text()).toContain("Root");
+    expect(wrapper.get("[data-test-id='shellman-task-status-message-t1']").text()).toBe("等待人工确认");
+  });
+
   it("renders flag dot at task row right side and keeps slot width when flag is missing", () => {
     const wrapper = mount(ProjectTaskTree, {
       props: {

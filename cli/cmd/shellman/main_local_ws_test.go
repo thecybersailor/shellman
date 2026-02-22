@@ -41,6 +41,7 @@ func (s *localWSPaneService) CreateChildPaneInDir(targetTaskID, cwd string) (str
 	return "e2e:0.2", nil
 }
 func (s *localWSPaneService) CreateRootPaneInDir(cwd string) (string, error) { return "e2e:0.0", nil }
+func (s *localWSPaneService) ClosePane(target string) error                   { return nil }
 
 func TestStartLocalAgentLoop_RespondsToTmuxList(t *testing.T) {
 	srv, err := appserver.NewServer(appserver.Deps{

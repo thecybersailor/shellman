@@ -473,12 +473,24 @@ function onTaskDrop(taskId: string) {
                             @update:model-value="(checked) => onTaskCheckModelUpdate(row.task, checked)"
                           />
                         </span>
-                        <TaskTitleResolver
-                          :task-title="row.task.title"
-                          :current-command="row.task.currentCommand"
-                          data-test-id="shellman-task-row-title"
-                          class="truncate flex-1"
-                        />
+                        <div
+                          :data-test-id="`shellman-task-title-line-${row.task.taskId}`"
+                          class="min-w-0 flex-1 leading-tight"
+                        >
+                          <TaskTitleResolver
+                            :task-title="row.task.title"
+                            :current-command="row.task.currentCommand"
+                            data-test-id="shellman-task-row-title"
+                            class="block truncate"
+                          />
+                          <p
+                            v-if="row.task.flagDesc"
+                            :data-test-id="`shellman-task-status-message-${row.task.taskId}`"
+                            class="mt-0.5 truncate text-[11px] font-normal text-muted-foreground/70"
+                          >
+                            {{ row.task.flagDesc }}
+                          </p>
+                        </div>
                       </div>
                       
                       <div class="flex items-center gap-2 ml-2">

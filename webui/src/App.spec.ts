@@ -49,12 +49,9 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("helperOpenAIApiKey: payload.helperOpenAIApiKey");
   });
 
-  it("wires sidecar stop and restart context interactions", () => {
-    expect(appSource).toContain("@stop-sidecar-chat=\"onStopSidecarChat\"");
-    expect(appSource).toContain("@restart-sidecar-context=\"onRestartSidecarContext\"");
-    expect(appSource).toContain("await store.setTaskSidecarMode(taskId, \"observer\")");
-    expect(appSource).toContain("await store.createChildTask(taskId");
-    expect(appSource).toContain("await store.createRootTask(projectId");
+  it("wires running assistant stop interaction from thread panel", () => {
+    expect(appSource).toContain("@stop-running-assistant-message=\"onStopRunningAssistantMessage\"");
+    expect(appSource).toContain("await store.stopTaskMessage(taskId)");
   });
 
   it("wires mobile thread send-message passthrough", () => {
