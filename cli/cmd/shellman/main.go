@@ -743,16 +743,16 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return nil, endpoint, model
 	}
 	if err := registry.Register(&agentloop.ExecCommandTool{
-			Exec: func(_ context.Context, taskID, command string, maxOutputTokens int) (string, *agentloop.ToolError) {
-				beforeScreen, err := getTaskPaneScreen(taskID)
-				if err != nil {
-					return "", toAgentToolError(err, "获取任务 pane 状态失败")
-				}
+		Exec: func(_ context.Context, taskID, command string, maxOutputTokens int) (string, *agentloop.ToolError) {
+			beforeScreen, err := getTaskPaneScreen(taskID)
+			if err != nil {
+				return "", toAgentToolError(err, "获取任务 pane 状态失败")
+			}
 			beforeOutput := beforeScreen.Output
-				normalizedCommand := ensureCommandEndsWithEnter(command)
-				if normalizedCommand == "" {
-					return "", agentloop.NewToolError("INVALID_COMMAND", "命令不能为空")
-				}
+			normalizedCommand := ensureCommandEndsWithEnter(command)
+			if normalizedCommand == "" {
+				return "", agentloop.NewToolError("INVALID_COMMAND", "命令不能为空")
+			}
 			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
 			if _, err := callTaskTool(http.MethodPost, path, map[string]any{
 				"source": "tty_write_stdin",
@@ -761,10 +761,10 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 				return "", err
 			}
 
-				postScreen, hashChanged, err := waitTaskPaneStable(taskID, beforeOutput, 1800*time.Millisecond)
-				if err != nil {
-					return "", toAgentToolError(err, "等待命令执行后终端稳定失败")
-				}
+			postScreen, hashChanged, err := waitTaskPaneStable(taskID, beforeOutput, 1800*time.Millisecond)
+			if err != nil {
+				return "", toAgentToolError(err, "等待命令执行后终端稳定失败")
+			}
 			lastOutput := postScreen.Output
 
 			delta := lastOutput
@@ -809,9 +809,9 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 					Path    string `json:"path"`
 				} `json:"data"`
 			}
-				if err := json.Unmarshal([]byte(body), &res); err != nil {
-					return "", agentloop.NewToolError("READFILE_DECODE_FAILED", "解析文件内容响应失败")
-				}
+			if err := json.Unmarshal([]byte(body), &res); err != nil {
+				return "", agentloop.NewToolError("READFILE_DECODE_FAILED", "解析文件内容响应失败")
+			}
 			content := res.Data.Content
 			truncated := false
 			if maxChars > 0 && len(content) > maxChars {
@@ -836,29 +836,29 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	if err := registry.Register(&agentloop.TaskInputPromptTool{
 		Exec: func(_ context.Context, taskID, prompt string) (string, *agentloop.ToolError) {
 			promptText := strings.TrimRight(strings.Trim(prompt, " \t"), "\r\n")
-				if strings.TrimSpace(promptText) == "" {
-					return "", agentloop.NewToolError("INVALID_PROMPT", "prompt 不能为空")
+			if strings.TrimSpace(promptText) == "" {
+				return "", agentloop.NewToolError("INVALID_PROMPT", "prompt 不能为空")
+			}
+			beforeScreen, _ := getTaskPaneScreen(taskID)
+			steps, buildErr := buildInputPromptStepsForCommand(beforeScreen.CurrentCommand, promptText)
+			if buildErr != nil {
+				return "", toAgentToolError(buildErr, "构建输入步骤失败")
+			}
+			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
+			rawResp := ""
+			for _, step := range steps {
+				if step.Delay > 0 {
+					time.Sleep(step.Delay)
 				}
-				beforeScreen, _ := getTaskPaneScreen(taskID)
-				steps, buildErr := buildInputPromptStepsForCommand(beforeScreen.CurrentCommand, promptText)
-				if buildErr != nil {
-					return "", toAgentToolError(buildErr, "构建输入步骤失败")
+				var toolErr *agentloop.ToolError
+				rawResp, toolErr = callTaskTool(http.MethodPost, path, map[string]any{
+					"source": "tty_write_stdin",
+					"input":  step.Input,
+				})
+				if toolErr != nil {
+					return "", toolErr
 				}
-				path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
-				rawResp := ""
-				for _, step := range steps {
-					if step.Delay > 0 {
-						time.Sleep(step.Delay)
-					}
-					var toolErr *agentloop.ToolError
-					rawResp, toolErr = callTaskTool(http.MethodPost, path, map[string]any{
-						"source": "tty_write_stdin",
-						"input":  step.Input,
-					})
-					if toolErr != nil {
-						return "", toolErr
-					}
-				}
+			}
 			timeoutMs := 3000
 			waitTimeout := time.Duration(timeoutMs) * time.Millisecond
 			postScreen, hashChanged, waitErr := waitTaskPaneStable(taskID, beforeScreen.Output, waitTimeout)
@@ -888,33 +888,33 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}
 	if err := registry.Register(&agentloop.TaskChildGetContextTool{
 		Exec: func(_ context.Context, taskID, childTaskID string) (string, *agentloop.ToolError) {
-				_, nodes, err := getTaskTree(taskID)
-				if err != nil {
-					return "", toAgentToolError(err, "读取任务树失败")
-				}
+			_, nodes, err := getTaskTree(taskID)
+			if err != nil {
+				return "", toAgentToolError(err, "读取任务树失败")
+			}
 			parentID := strings.TrimSpace(taskID)
 			targetID := strings.TrimSpace(childTaskID)
 			for _, node := range nodes {
 				if strings.TrimSpace(fmt.Sprintf("%v", node["task_id"])) != targetID {
 					continue
 				}
-					if strings.TrimSpace(fmt.Sprintf("%v", node["parent_task_id"])) != parentID {
-						return "", agentloop.NewToolError("NOT_A_CHILD_TASK", "目标任务不是当前任务的子任务")
-					}
+				if strings.TrimSpace(fmt.Sprintf("%v", node["parent_task_id"])) != parentID {
+					return "", agentloop.NewToolError("NOT_A_CHILD_TASK", "目标任务不是当前任务的子任务")
+				}
 				raw, _ := json.Marshal(map[string]any{"ok": true, "data": node})
 				return string(raw), nil
 			}
-				return "", agentloop.NewToolError("CHILD_NOT_FOUND", "未找到对应子任务")
-			},
+			return "", agentloop.NewToolError("CHILD_NOT_FOUND", "未找到对应子任务")
+		},
 	}); err != nil {
 		return nil, endpoint, model
 	}
 	if err := registry.Register(&agentloop.TaskChildGetTTYOutputTool{
 		Exec: func(_ context.Context, taskID, childTaskID string, offset int) (string, *agentloop.ToolError) {
-				_, nodes, err := getTaskTree(taskID)
-				if err != nil {
-					return "", toAgentToolError(err, "读取任务树失败")
-				}
+			_, nodes, err := getTaskTree(taskID)
+			if err != nil {
+				return "", toAgentToolError(err, "读取任务树失败")
+			}
 			parentID := strings.TrimSpace(taskID)
 			targetID := strings.TrimSpace(childTaskID)
 			isChild := false
@@ -925,13 +925,13 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 					break
 				}
 			}
-				if !isChild {
-					return "", agentloop.NewToolError("NOT_A_CHILD_TASK", "目标任务不是当前任务的子任务")
-				}
-				paneTarget, currentCommand, output, err := getTaskPaneOutput(targetID)
-				if err != nil {
-					return "", toAgentToolError(err, "读取子任务终端输出失败")
-				}
+			if !isChild {
+				return "", agentloop.NewToolError("NOT_A_CHILD_TASK", "目标任务不是当前任务的子任务")
+			}
+			paneTarget, currentCommand, output, err := getTaskPaneOutput(targetID)
+			if err != nil {
+				return "", toAgentToolError(err, "读取子任务终端输出失败")
+			}
 			if offset > len(output) {
 				offset = len(output)
 			}
@@ -958,8 +958,8 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return nil, endpoint, model
 	}
 	if err := registry.Register(&agentloop.TaskChildSpawnTool{
-		Exec: func(_ context.Context, taskID, command, title, description, prompt string) (string, *agentloop.ToolError) {
-			return executeTaskChildSpawnAction(callTaskTool, taskID, command, title, description, prompt)
+		Exec: func(_ context.Context, taskID, command, title, description, prompt, taskRole string) (string, *agentloop.ToolError) {
+			return executeTaskChildSpawnAction(callTaskTool, taskID, command, title, description, prompt, taskRole)
 		},
 	}); err != nil {
 		return nil, endpoint, model
@@ -1087,14 +1087,19 @@ func snapshotHash(text string) string {
 
 func executeTaskChildSpawnAction(
 	callTaskTool func(method, path string, payload any) (string, *agentloop.ToolError),
-	taskID, command, title, description, prompt string,
+	taskID, command, title, description, prompt, taskRole string,
 ) (string, *agentloop.ToolError) {
 	parentTaskID := strings.TrimSpace(taskID)
 	command = ensureCommandEndsWithEnter(command)
 	prompt = strings.TrimSpace(prompt)
+	taskRole = strings.ToLower(strings.TrimSpace(taskRole))
+	if taskRole != projectstate.TaskRolePlanner && taskRole != projectstate.TaskRoleExecutor {
+		return "", agentloop.NewToolError("INVALID_TASK_ROLE", "task_role must be planner|executor")
+	}
 
 	body, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(parentTaskID)+"/panes/child", map[string]any{
-		"title": title,
+		"title":     title,
+		"task_role": taskRole,
 	})
 	if err != nil {
 		return "", err

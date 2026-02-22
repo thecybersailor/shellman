@@ -57,7 +57,7 @@ func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T)
 		}
 	}
 
-	out, err := executeTaskChildSpawnAction(callTaskTool, "t_parent", "echo hi", "child", "desc", "fix this")
+	out, err := executeTaskChildSpawnAction(callTaskTool, "t_parent", "echo hi", "child", "desc", "fix this", "executor")
 	if err != nil {
 		t.Fatalf("execute spawn action failed: %v", err)
 	}
@@ -68,7 +68,11 @@ func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T)
 	var sawCommandWithEnter bool
 	var sawSidecarModeCopy bool
 	var sawPromptMessage bool
+	var sawTaskRoleInCreate bool
 	for _, c := range calls {
+		if c.Method == http.MethodPost && c.Path == "/api/v1/tasks/t_parent/panes/child" && c.Body == `{"task_role":"executor","title":"child"}` {
+			sawTaskRoleInCreate = true
+		}
 		if c.Method == http.MethodPost && c.Path == "/api/v1/tasks/t_child/messages" && c.Body != "" {
 			var payload map[string]any
 			_ = json.Unmarshal([]byte(c.Body), &payload)
@@ -86,11 +90,24 @@ func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T)
 	if !sawCommandWithEnter {
 		t.Fatal("expected command auto-enter send")
 	}
+	if !sawTaskRoleInCreate {
+		t.Fatal("expected task_role passed to child pane create payload")
+	}
 	if !sawSidecarModeCopy {
 		t.Fatal("expected parent sidecar_mode copied to child")
 	}
 	if !sawPromptMessage {
 		t.Fatal("expected prompt sent to child")
+	}
+}
+
+func TestExecuteTaskChildSpawnAction_InvalidTaskRole(t *testing.T) {
+	callTaskTool := func(method, path string, payload any) (string, *agentloop.ToolError) {
+		return `{"ok":true}`, nil
+	}
+	_, err := executeTaskChildSpawnAction(callTaskTool, "t_parent", "echo hi", "child", "desc", "fix this", "full")
+	if err == nil || err.Error() != "INVALID_TASK_ROLE" {
+		t.Fatalf("expected INVALID_TASK_ROLE, got %v", err)
 	}
 }
 

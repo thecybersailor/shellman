@@ -9,6 +9,7 @@ type Task struct {
 	CurrentCommand     string `gorm:"column:current_command;not null;default:''"`
 	Status             string `gorm:"column:status;not null;default:''"`
 	SidecarMode        string `gorm:"column:sidecar_mode;not null;default:'advisor'"`
+	TaskRole           string `gorm:"column:task_role;not null;default:'full'"`
 	Description        string `gorm:"column:description;not null;default:''"`
 	Flag               string `gorm:"column:flag;not null;default:''"`
 	FlagDesc           string `gorm:"column:flag_desc;not null;default:''"`

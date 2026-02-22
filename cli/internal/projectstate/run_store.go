@@ -28,6 +28,10 @@ func (s *Store) InsertTask(task TaskRecord) error {
 	if sidecarMode == "" {
 		sidecarMode = SidecarModeAdvisor
 	}
+	taskRole := strings.TrimSpace(task.TaskRole)
+	if taskRole == "" {
+		taskRole = TaskRoleFull
+	}
 	row := dbmodel.Task{
 		TaskID:       task.TaskID,
 		RepoRoot:     s.repoRoot,
@@ -36,6 +40,7 @@ func (s *Store) InsertTask(task TaskRecord) error {
 		Title:        task.Title,
 		Status:       status,
 		SidecarMode:  sidecarMode,
+		TaskRole:     taskRole,
 		CreatedAt:    now,
 		LastModified: now,
 	}

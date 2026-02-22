@@ -2,6 +2,7 @@ package localapi
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"os"
 	"strings"
@@ -58,7 +59,8 @@ func (s *Server) persistTaskCurrentCommand(store *projectstate.Store, taskID, pr
 
 func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Request, projectID string) {
 	var req struct {
-		Title string `json:"title"`
+		Title    string `json:"title"`
+		TaskRole string `json:"task_role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -153,7 +155,8 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 		return
 	}
 	var req struct {
-		Title string `json:"title"`
+		Title    string `json:"title"`
+		TaskRole string `json:"task_role"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -193,8 +196,20 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 	if relation == "child" {
 		parentTaskID = taskID
 	}
-	newTaskID, err := s.createTask(projectID, parentTaskID, title)
+	newTaskID, err := s.createTaskWithRole(projectID, parentTaskID, title, req.TaskRole)
 	if err != nil {
+		if errors.Is(err, errInvalidTaskRole) {
+			respondError(w, http.StatusBadRequest, "INVALID_TASK_ROLE", err.Error())
+			return
+		}
+		if errors.Is(err, errExecutorCannotDelegate) {
+			respondError(w, http.StatusBadRequest, "EXECUTOR_CANNOT_DELEGATE", err.Error())
+			return
+		}
+		if errors.Is(err, errPlannerOnlySpawnExecutor) {
+			respondError(w, http.StatusBadRequest, "PLANNER_ONLY_SPAWN_EXECUTOR", err.Error())
+			return
+		}
 		respondError(w, http.StatusInternalServerError, "TASK_CREATE_FAILED", err.Error())
 		return
 	}
