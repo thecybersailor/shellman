@@ -48,7 +48,7 @@ func (c *ConnActor) Selected() string {
 	return c.selected
 }
 
-func (c *ConnActor) Outbound() chan<- protocol.Message {
+func (c *ConnActor) Outbound() chan protocol.Message {
 	if c == nil {
 		return nil
 	}
