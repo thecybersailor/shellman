@@ -25,12 +25,12 @@ type Config struct {
 }
 
 var (
-	cacheTTL   = 10 * time.Second
-	nowFunc    = time.Now
-	cacheMu    sync.RWMutex
-	cachedCfg  Config
-	cachedAt   time.Time
-	cacheValid bool
+	cacheTTL         = 10 * time.Second
+	nowFunc          = time.Now
+	cacheMu          sync.RWMutex
+	cachedCfg        Config
+	cachedAt         time.Time
+	cacheValid       bool
 	defaultWebUIMode = "dev"
 )
 
