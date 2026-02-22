@@ -41,7 +41,8 @@ import (
 	"shellman/cli/internal/turn"
 )
 
-const version = "dev"
+var version = "dev"
+var buildTime = "unknown"
 
 var streamPumpInterval = 200 * time.Millisecond
 var statusPumpInterval = 500 * time.Millisecond
@@ -177,7 +178,7 @@ func runLegacy(
 	dialer wsDialer,
 	tmuxService bridge.TmuxService,
 ) error {
-	_, _ = fmt.Fprintf(out, "shellman %s\n", version)
+	_, _ = fmt.Fprintf(out, "shellman %s (built %s)\n", version, buildTime)
 	logger := newRuntimeLogger(errOut)
 	logger.Debug("runtime config", "trace_stream", traceStreamEnabled)
 
@@ -506,7 +507,7 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 		server.PublishClientEvent("local", topic, projectID, taskID, payload)
 	})
 	addr := fmt.Sprintf("%s:%d", cfg.LocalHost, cfg.LocalPort)
-	_, _ = fmt.Fprintf(out, "shellman local web server listening at http://%s\n", addr)
+	_, _ = fmt.Fprintf(out, "shellman local web server listening at http://%s (version=%s built=%s)\n", addr, version, buildTime)
 
 	httpServer := &http.Server{
 		Addr:    addr,

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { createHash } from "node:crypto";
-import { createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
+import { chmodSync, createReadStream, createWriteStream, existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { homedir, platform, arch } from "node:os";
@@ -155,6 +155,7 @@ async function main() {
   if (!existsSync(binPath)) {
     throw new Error(`installed package missing binary: ${binPath}`);
   }
+  chmodSync(binPath, 0o755);
 
   console.log(`shellman: installed ${releaseAsset.version} (${channel}) for ${triple}`);
 }
