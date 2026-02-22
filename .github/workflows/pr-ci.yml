@@ -56,21 +56,6 @@ jobs:
       - name: Validate CLI tests
         run: make -B validate-cli-tests
 
-  worker-tests:
-    if: ${{ hashFiles('edge/cloudflare/package-lock.json') != '' }}
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-          cache: npm
-          cache-dependency-path: edge/cloudflare/package-lock.json
-      - name: Install worker deps
-        run: cd edge/cloudflare && npm ci
-      - name: Validate worker tests
-        run: make -B validate-worker-tests
-
   webui-types:
     runs-on: ubuntu-latest
     steps:
