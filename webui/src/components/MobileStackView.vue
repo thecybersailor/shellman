@@ -53,8 +53,7 @@ const emit = defineEmits<{
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
-  (event: "stop-sidecar-chat"): void;
-  (event: "restart-sidecar-context", payload: { strategy: "child" | "root" }): void;
+  (event: "stop-running-assistant-message"): void;
   (event: "add-project"): void;
   (event: "open-settings"): void;
   (event: "create-root-pane", projectId: string): void;
@@ -212,8 +211,7 @@ function onProjectPanelActiveTabChange(next: string) {
                @save-task-meta="(payload) => emit('save-task-meta', payload)"
                @send-message="(payload) => emit('send-message', payload)"
                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
-               @stop-sidecar-chat="() => emit('stop-sidecar-chat')"
-               @restart-sidecar-context="(payload) => emit('restart-sidecar-context', payload)"
+               @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
                @ai="(payload) => emit('scm-ai', payload)"
                @submit="(payload) => emit('scm-submit', payload)"
                @file-open="(path) => emit('file-open', path)"

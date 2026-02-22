@@ -4,6 +4,7 @@ import { useI18n } from "vue-i18n";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { InputGroupButton } from "@/components/ui/input-group";
 import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation";
 import { Loader } from "@/components/ai-elements/loader";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
@@ -17,6 +18,7 @@ import {
 } from "@/components/ai-elements/prompt-input";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
+import { SquareIcon } from "lucide-vue-next";
 import type { TaskMessage } from "@/stores/shellman";
 const { t } = useI18n();
 
@@ -34,8 +36,7 @@ const emit = defineEmits<{
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
-  (event: "stop-sidecar-chat"): void;
-  (event: "restart-sidecar-context", payload: { strategy: "child" | "root" }): void;
+  (event: "stop-running-assistant-message"): void;
 }>();
 
 const draftTitle = ref(String(props.taskTitle ?? ""));
@@ -152,6 +153,10 @@ function scheduleSave() {
 
 watch([draftTitle, draftDescription], scheduleSave, { deep: true });
 watch([draftTitle, draftDescription, promptDraft], persistDraftSnapshot, { deep: true });
+const hasRunningAssistantMessage = computed(() =>
+  (props.taskMessages ?? []).some((message) => message.role === "assistant" && message.status === "running")
+);
+const shouldShowStopSubmit = computed(() => hasRunningAssistantMessage.value && promptDraft.value.trim() === "");
 
 function onPromptSubmit(payload: { text?: string }) {
   const content = String(payload?.text ?? "").trim();
@@ -347,7 +352,17 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools />
-            <PromptInputSubmit data-test-id="shellman-shellman-send" />
+            <InputGroupButton
+              v-if="shouldShowStopSubmit"
+              type="button"
+              data-test-id="shellman-shellman-stop"
+              aria-label="Stop"
+              size="icon-sm"
+              @click="emit('stop-running-assistant-message')"
+            >
+              <SquareIcon class="size-4" />
+            </InputGroupButton>
+            <PromptInputSubmit v-else data-test-id="shellman-shellman-send" />
           </PromptInputFooter>
         </PromptInput>
       </div>
@@ -372,30 +387,6 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
         >
           {{ t("thread.sidecarModeObserverHint") }}
         </span>
-        <button
-          type="button"
-          data-test-id="shellman-sidecar-stop-chat"
-          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
-          @click="emit('stop-sidecar-chat')"
-        >
-          {{ t("thread.stopSidecarChat") }}
-        </button>
-        <button
-          type="button"
-          data-test-id="shellman-sidecar-restart-context-child"
-          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
-          @click="emit('restart-sidecar-context', { strategy: 'child' })"
-        >
-          {{ t("thread.restartContextChild") }}
-        </button>
-        <button
-          type="button"
-          data-test-id="shellman-sidecar-restart-context-root"
-          class="h-7 rounded-md border border-border/70 px-2 text-[11px] text-foreground/90 hover:bg-accent/40"
-          @click="emit('restart-sidecar-context', { strategy: 'root' })"
-        >
-          {{ t("thread.restartContextRoot") }}
-        </button>
       </div>
       <div>Pane: {{ props.paneUuid || "-" }}</div>
     </div>

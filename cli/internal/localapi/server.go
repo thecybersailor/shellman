@@ -84,10 +84,12 @@ type Server struct {
 	mux  *http.ServeMux
 	hub  *WSHub
 
-	taskAgentSupervisor *taskAgentLoopSupervisor
-	externalEventSink   func(topic, projectID, taskID string, payload map[string]any)
-	taskAgentModeMu     sync.Mutex
-	taskAgentModeByTask map[string]taskAgentToolMode
+	taskAgentSupervisor  *taskAgentLoopSupervisor
+	externalEventSink    func(topic, projectID, taskID string, payload map[string]any)
+	taskAgentModeMu      sync.Mutex
+	taskAgentModeByTask  map[string]taskAgentToolMode
+	taskMessageRunMu     sync.Mutex
+	taskMessageRunByTask map[string]taskMessageRunState
 
 	taskCompletionContextMu    sync.Mutex
 	taskCompletionContextCache map[string]taskCompletionContextCacheEntry
@@ -97,6 +99,7 @@ func NewServer(deps Deps) *Server {
 	s := &Server{deps: deps, mux: http.NewServeMux(), hub: NewWSHub()}
 	s.taskAgentSupervisor = newTaskAgentLoopSupervisor(nil, s.handleTaskAgentLoopEvent)
 	s.taskAgentModeByTask = map[string]taskAgentToolMode{}
+	s.taskMessageRunByTask = map[string]taskMessageRunState{}
 	s.registerConfigRoutes()
 	s.registerProjectsRoutes()
 	s.registerSystemRoutes()
