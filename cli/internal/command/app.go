@@ -126,13 +126,6 @@ func runLocalMode(ctx context.Context, deps Deps, cfg config.Config) error {
 	return deps.RunLocalMode(ctx, cfg)
 }
 
-func runTurnMode(ctx context.Context, deps Deps, cfg config.Config) error {
-	if deps.RunTurnMode == nil {
-		return errors.New("turn mode runner is not configured")
-	}
-	return deps.RunTurnMode(ctx, cfg)
-}
-
 func runMigrateUp(ctx context.Context, deps Deps, cfg config.Config) error {
 	if deps.RunMigrateUp == nil {
 		return errors.New("migrate up runner is not configured")
