@@ -55,6 +55,9 @@ jobs:
         with:
           go-version: "1.25.x"
           cache-dependency-path: cli/go.sum
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Download webui dist artifact
         uses: actions/download-artifact@v4
         with:
@@ -74,7 +77,10 @@ jobs:
           BIN_DIR="${PKG_ROOT}/bin"
           WEBUI_DIR="${PKG_ROOT}/webui"
           mkdir -p "${BIN_DIR}" "${WEBUI_DIR}"
-          CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "${BIN_DIR}/shellman" ./cli/cmd/shellman
+          (
+            cd cli
+            CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=${VERSION}" -o "../${BIN_DIR}/shellman" ./cmd/shellman
+          )
           WEBUI_SRC="tmp/release/webui/dist"
           if [ -d "tmp/release/webui/dist/dist" ]; then
             WEBUI_SRC="tmp/release/webui/dist/dist"
@@ -96,6 +102,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
       - name: Download bundle artifacts
         uses: actions/download-artifact@v4
         with:
