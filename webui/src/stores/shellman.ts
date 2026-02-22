@@ -1098,7 +1098,7 @@ export function createShellmanStore(
       const nowMs = Date.now();
       const nextOutputRaw = mode === "append" ? baseOutput + text : text;
       const nextOutput = trimToRecentLines(nextOutputRaw, TERMINAL_CACHE_MAX_LINES);
-      let nextCursor: { x: number; y: number } | null = prevCache?.cursor ?? null;
+      let nextCursor: { x: number; y: number } | null = isSelectedPane ? state.terminalCursor : prevCache?.cursor ?? null;
       if (typeof payload.cursor?.x === "number" && typeof payload.cursor?.y === "number") {
         nextCursor = { x: payload.cursor.x, y: payload.cursor.y };
       } else if (mode === "reset") {
