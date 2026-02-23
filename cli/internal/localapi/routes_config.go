@@ -98,6 +98,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			Defaults  *struct {
 				SessionProgram *string `json:"session_program"`
 				HelperProgram  *string `json:"helper_program"`
+				SidecarMode    *string `json:"sidecar_mode"`
 			} `json:"defaults"`
 			HelperOpenAI *struct {
 				Endpoint *string `json:"endpoint"`
@@ -131,6 +132,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			if req.Defaults.HelperProgram != nil {
 				cfg.Defaults.HelperProgram = strings.TrimSpace(*req.Defaults.HelperProgram)
+			}
+			if req.Defaults.SidecarMode != nil {
+				cfg.Defaults.SidecarMode = strings.TrimSpace(*req.Defaults.SidecarMode)
 			}
 		}
 		if req.TaskCompletionMode != nil {

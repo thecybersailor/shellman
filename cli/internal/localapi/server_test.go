@@ -162,6 +162,19 @@ func TestServer_ConfigAndProjectsEndpoints(t *testing.T) {
 	if cfgStore.cfg.Defaults.HelperProgram != "claude" {
 		t.Fatalf("expected defaults.helper_program=claude, got %q", cfgStore.cfg.Defaults.HelperProgram)
 	}
+	patchBody = bytes.NewBufferString(`{"defaults":{"sidecar_mode":"autopilot"}}`)
+	req, _ = http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", patchBody)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH config failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	if cfgStore.cfg.Defaults.SidecarMode != "autopilot" {
+		t.Fatalf("expected defaults.sidecar_mode=autopilot, got %q", cfgStore.cfg.Defaults.SidecarMode)
+	}
 
 	resp, err = http.Get(ts.URL + "/api/v1/projects/active")
 	if err != nil {

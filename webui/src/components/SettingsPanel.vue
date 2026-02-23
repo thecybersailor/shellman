@@ -11,6 +11,7 @@ const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
 type HelperProgram = "codex" | "claude" | "cursor";
+type SidecarMode = "advisor" | "observer" | "autopilot";
 type TaskCompletionMode = "none" | "command";
 type DelayPreset = "0" | "60" | "300";
 
@@ -18,6 +19,7 @@ const props = withDefaults(defineProps<{
   show: boolean;
   defaultLaunchProgram?: LaunchProgram;
   defaultHelperProgram?: HelperProgram;
+  defaultSidecarMode?: SidecarMode;
   providers?: Array<{ id: HelperProgram; display_name: string; command: string }>;
   taskCompletionMode?: TaskCompletionMode;
   taskCompletionCommand?: string;
@@ -29,6 +31,7 @@ const props = withDefaults(defineProps<{
 }>(), {
   defaultLaunchProgram: "shell",
   defaultHelperProgram: "codex",
+  defaultSidecarMode: "observer",
   providers: () => [],
   taskCompletionMode: "none",
   taskCompletionCommand: "",
@@ -44,6 +47,7 @@ const emit = defineEmits<{
   (event: "save", payload: {
     defaultLaunchProgram: LaunchProgram;
     defaultHelperProgram: HelperProgram;
+    defaultSidecarMode: SidecarMode;
     taskCompletionMode: TaskCompletionMode;
     taskCompletionCommand: string;
     taskCompletionIdleDuration: number;
@@ -55,6 +59,7 @@ const emit = defineEmits<{
 
 const localDefaultProgram = ref<LaunchProgram>(props.defaultLaunchProgram);
 const localDefaultHelperProgram = ref<HelperProgram>(props.defaultHelperProgram);
+const localDefaultSidecarMode = ref<SidecarMode>(props.defaultSidecarMode);
 
 const enableTaskCompletionCommand = ref(props.taskCompletionMode === "command");
 const localTaskCompletionCommand = ref(props.taskCompletionCommand);
@@ -67,6 +72,7 @@ const localHelperOpenAIApiKey = ref(props.helperOpenaiApiKey);
 function syncLocalFieldsFromProps() {
   localDefaultProgram.value = props.defaultLaunchProgram;
   localDefaultHelperProgram.value = props.defaultHelperProgram;
+  localDefaultSidecarMode.value = props.defaultSidecarMode;
   enableTaskCompletionCommand.value = props.taskCompletionMode === "command";
   localTaskCompletionCommand.value = props.taskCompletionCommand;
   const duration = Math.max(0, props.taskCompletionIdleDuration ?? 0);
@@ -113,6 +119,12 @@ watch(
   () => props.defaultHelperProgram,
   (value) => {
     localDefaultHelperProgram.value = value;
+  }
+);
+watch(
+  () => props.defaultSidecarMode,
+  (value) => {
+    localDefaultSidecarMode.value = value;
   }
 );
 watch(
@@ -198,6 +210,7 @@ function saveSettings() {
   emit("save", {
     defaultLaunchProgram: localDefaultProgram.value,
     defaultHelperProgram: localDefaultHelperProgram.value,
+    defaultSidecarMode: localDefaultSidecarMode.value,
     taskCompletionMode: mode,
     taskCompletionCommand: commandValue,
     taskCompletionIdleDuration: Number(localTaskCompletionIdleDuration.value),
@@ -233,6 +246,19 @@ function saveSettings() {
             >
               {{ item.label }}
             </SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div class="space-y-1.5">
+        <label class="text-xs font-medium text-muted-foreground">{{ t("settings.defaultSidecarModeForNewTask") }}</label>
+        <Select v-model="localDefaultSidecarMode" class="w-full">
+          <SelectTrigger data-test-id="shellman-settings-default-sidecar-mode" class="w-full">
+            <SelectValue :placeholder="t('thread.sidecarMode')" />
+          </SelectTrigger>
+          <SelectContent class="z-[130] w-full">
+            <SelectItem value="advisor">{{ t("thread.sidecarModeAdvisor") }}</SelectItem>
+            <SelectItem value="observer">{{ t("thread.sidecarModeObserver") }}</SelectItem>
+            <SelectItem value="autopilot">{{ t("thread.sidecarModeAutopilot") }}</SelectItem>
           </SelectContent>
         </Select>
       </div>

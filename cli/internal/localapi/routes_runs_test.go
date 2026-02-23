@@ -200,6 +200,16 @@ func TestRunAutoCompleteByPane_SkipsOnlyPaneActorSourceWhenSidecarModeAdvisor(t 
 	if err := json.NewDecoder(createTaskResp.Body).Decode(&created); err != nil {
 		t.Fatalf("decode create task failed: %v", err)
 	}
+	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode", bytes.NewBufferString(`{"sidecar_mode":"advisor"}`))
+	patchReq.Header.Set("Content-Type", "application/json")
+	patchResp, err := http.DefaultClient.Do(patchReq)
+	if err != nil {
+		t.Fatalf("set sidecar-mode advisor failed: %v", err)
+	}
+	defer func() { _ = patchResp.Body.Close() }()
+	if patchResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected sidecar-mode patch 200, got %d", patchResp.StatusCode)
+	}
 	store := projectstate.NewStore(filepath.Clean(repo))
 	panes, loadErr := store.LoadPanes()
 	if loadErr != nil {

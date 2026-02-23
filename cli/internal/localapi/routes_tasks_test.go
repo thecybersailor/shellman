@@ -279,8 +279,8 @@ func TestTaskSidecarModeRoutes_GetAndPatch(t *testing.T) {
 	if err := json.NewDecoder(getResp.Body).Decode(&getBody); err != nil {
 		t.Fatalf("decode get sidecar-mode failed: %v", err)
 	}
-	if getBody.Data.SidecarMode != "advisor" {
-		t.Fatalf("expected default sidecar_mode=advisor, got %q", getBody.Data.SidecarMode)
+	if getBody.Data.SidecarMode != "observer" {
+		t.Fatalf("expected default sidecar_mode=observer, got %q", getBody.Data.SidecarMode)
 	}
 
 	patchReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+created.Data.TaskID+"/sidecar-mode", bytes.NewBufferString(`{"sidecar_mode":"observer"}`))

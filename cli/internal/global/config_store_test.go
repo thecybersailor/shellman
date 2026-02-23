@@ -43,6 +43,9 @@ func TestConfigStore_LoadOrInit_CreatesDefaultFiles(t *testing.T) {
 	if !strings.Contains(text, "helper_program = 'codex'") && !strings.Contains(text, "helper_program = \"codex\"") {
 		t.Fatalf("expected defaults.helper_program in toml, got: %s", text)
 	}
+	if !strings.Contains(text, "sidecar_mode = 'observer'") && !strings.Contains(text, "sidecar_mode = \"observer\"") {
+		t.Fatalf("expected defaults.sidecar_mode in toml, got: %s", text)
+	}
 	if !strings.Contains(text, "notify_enabled = false") {
 		t.Fatalf("expected task_completion.notify_enabled=false in toml, got: %s", text)
 	}
@@ -54,5 +57,8 @@ func TestConfigStore_LoadOrInit_CreatesDefaultFiles(t *testing.T) {
 	}
 	if cfg.Defaults.HelperProgram != "codex" {
 		t.Fatalf("expected helper_program=codex, got %q", cfg.Defaults.HelperProgram)
+	}
+	if cfg.Defaults.SidecarMode != "observer" {
+		t.Fatalf("expected sidecar_mode=observer, got %q", cfg.Defaults.SidecarMode)
 	}
 }

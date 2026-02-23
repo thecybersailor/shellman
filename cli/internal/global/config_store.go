@@ -16,6 +16,7 @@ const (
 type GlobalDefaults struct {
 	SessionProgram string `json:"session_program" toml:"session_program"`
 	HelperProgram  string `json:"helper_program" toml:"helper_program"`
+	SidecarMode    string `json:"sidecar_mode" toml:"sidecar_mode"`
 }
 
 type GlobalConfig struct {
@@ -86,6 +87,7 @@ func normalizeConfig(cfg GlobalConfig) GlobalConfig {
 func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 	sessionProgram := strings.ToLower(strings.TrimSpace(defaults.SessionProgram))
 	helperProgram := strings.ToLower(strings.TrimSpace(defaults.HelperProgram))
+	sidecarMode := strings.ToLower(strings.TrimSpace(defaults.SidecarMode))
 
 	switch sessionProgram {
 	case "shell", "codex", "claude", "cursor":
@@ -99,9 +101,16 @@ func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 		helperProgram = "codex"
 	}
 
+	switch sidecarMode {
+	case "advisor", "observer", "autopilot":
+	default:
+		sidecarMode = "observer"
+	}
+
 	return GlobalDefaults{
 		SessionProgram: sessionProgram,
 		HelperProgram:  helperProgram,
+		SidecarMode:    sidecarMode,
 	}
 }
 

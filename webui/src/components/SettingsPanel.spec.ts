@@ -9,6 +9,7 @@ describe("SettingsPanel", () => {
         show: true,
         defaultLaunchProgram: "shell",
         defaultHelperProgram: "codex",
+        defaultSidecarMode: "observer",
         providers: [
           { id: "codex", display_name: "codex", command: "codex" },
           { id: "claude", display_name: "Claude", command: "claude" },
@@ -79,6 +80,7 @@ describe("SettingsPanel", () => {
       taskCompletionMode: "command",
       taskCompletionCommand: "notify --flag",
       taskCompletionIdleDuration: 60,
+      defaultSidecarMode: "observer",
       helperOpenAIEndpoint: "",
       helperOpenAIModel: "",
       helperOpenAIApiKey: ""
@@ -94,6 +96,7 @@ describe("SettingsPanel", () => {
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "shell",
       defaultHelperProgram: "codex",
+      defaultSidecarMode: "observer",
       taskCompletionMode: "none",
       taskCompletionCommand: "",
       taskCompletionIdleDuration: 10,
@@ -109,6 +112,7 @@ describe("SettingsPanel", () => {
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "shell",
       defaultHelperProgram: "codex",
+      defaultSidecarMode: "observer",
       taskCompletionMode: "none",
       taskCompletionCommand: "",
       taskCompletionIdleDuration: 10,
