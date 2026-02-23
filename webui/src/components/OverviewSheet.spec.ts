@@ -2,6 +2,12 @@ import { mount } from "@vue/test-utils";
 import { describe, expect, it } from "vitest";
 import OverviewSheet from "./OverviewSheet.vue";
 
+const globalStubs = {
+  Sheet: { template: "<div><slot /></div>" },
+  SheetContent: { template: "<div><slot /></div>" },
+  ThreadPanel: { template: "<div data-test-id='overview-thread-panel-stub' />" }
+};
+
 describe("OverviewSheet", () => {
   it("renders desktop three columns with 20/45/35 layout", () => {
     const wrapper = mount(OverviewSheet, {
@@ -19,10 +25,7 @@ describe("OverviewSheet", () => {
         selectedCurrentCommand: ""
       },
       global: {
-        stubs: {
-          Sheet: { template: "<div><slot /></div>" },
-          SheetContent: { template: "<div><slot /></div>" }
-        }
+        stubs: globalStubs
       }
     });
 
@@ -48,10 +51,7 @@ describe("OverviewSheet", () => {
         selectedCurrentCommand: ""
       },
       global: {
-        stubs: {
-          Sheet: { template: "<div><slot /></div>" },
-          SheetContent: { template: "<div><slot /></div>" }
-        }
+        stubs: globalStubs
       }
     });
 
@@ -76,10 +76,7 @@ describe("OverviewSheet", () => {
         selectedCurrentCommand: ""
       },
       global: {
-        stubs: {
-          Sheet: { template: "<div><slot /></div>" },
-          SheetContent: { template: "<div><slot /></div>" }
-        }
+        stubs: globalStubs
       }
     });
 

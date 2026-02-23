@@ -2,18 +2,13 @@
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
 import { X } from "lucide-vue-next";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
+import ThreadPanel from "./ThreadPanel.vue";
+import type { TaskMessage } from "@/stores/shellman";
 
 type SidecarMode = "advisor" | "observer" | "autopilot";
-
-type ChatItem = {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-};
 
 const mockProjects: ProjectSection[] = [
   {
@@ -50,11 +45,6 @@ const mockProjects: ProjectSection[] = [
   }
 ];
 
-const mockMessages: ChatItem[] = [
-  { id: "m1", role: "assistant", content: "Overview chat is ready." },
-  { id: "m2", role: "user", content: "Show project risks for this sprint." }
-];
-
 const props = withDefaults(
   defineProps<{
     open: boolean;
@@ -62,7 +52,7 @@ const props = withDefaults(
     projects?: ProjectSection[];
     overviewProjectId?: string;
     selectedTaskId?: string;
-    selectedTaskMessages?: Array<{ id?: string; role?: string; content?: string }>;
+    selectedTaskMessages?: TaskMessage[];
     selectedTaskTitle?: string;
     selectedTaskDescription?: string;
     selectedTaskSidecarMode?: SidecarMode;
@@ -94,7 +84,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 const mobileActiveTab = ref<"projects" | "tasks" | "chat">("tasks");
-const draft = ref("");
 const localProjectId = ref("");
 
 const effectiveProjects = computed<ProjectSection[]>(() => {
@@ -129,15 +118,18 @@ watch(
 const activeProjectId = computed(() => localProjectId.value || effectiveProjects.value[0]?.projectId || "");
 const activeProject = computed(() => effectiveProjects.value.find((item) => item.projectId === activeProjectId.value) ?? null);
 const activeTasks = computed(() => activeProject.value?.tasks ?? []);
-const chatRows = computed<ChatItem[]>(() => {
-  if ((props.selectedTaskMessages ?? []).length > 0) {
-    return (props.selectedTaskMessages ?? []).map((item, index) => ({
-      id: String(item.id ?? `msg-${index}`),
-      role: item.role === "user" ? "user" : "assistant",
-      content: String(item.content ?? "")
-    }));
+const effectiveTaskId = computed(() => {
+  const selected = String(props.selectedTaskId ?? "").trim();
+  if (selected) {
+    return selected;
   }
-  return mockMessages;
+  return activeTasks.value[0]?.taskId ?? "";
+});
+const effectiveTaskTitle = computed(() => {
+  if (props.selectedTaskTitle) {
+    return props.selectedTaskTitle;
+  }
+  return activeTasks.value.find((task) => task.taskId === effectiveTaskId.value)?.title ?? "";
 });
 
 function closeSheet() {
@@ -151,15 +143,6 @@ function selectProject(projectId: string) {
 
 function selectTask(taskId: string) {
   emit("select-task", taskId);
-}
-
-function sendDraft() {
-  const content = String(draft.value ?? "").trim();
-  if (!content) {
-    return;
-  }
-  emit("send-message", { content });
-  draft.value = "";
 }
 </script>
 
@@ -228,22 +211,20 @@ function sendDraft() {
             <section
               data-test-id="shellman-overview-col-chat"
               style="width: 35%;"
-              class="h-full min-h-0 p-2 flex flex-col"
+              class="h-full min-h-0 p-2"
             >
-              <div class="flex-1 min-h-0 overflow-y-auto space-y-2">
-                <div
-                  v-for="msg in chatRows"
-                  :key="msg.id"
-                  class="rounded-md px-2 py-1.5 text-xs"
-                  :class="msg.role === 'user' ? 'bg-primary/10' : 'bg-muted'"
-                >
-                  {{ msg.content }}
-                </div>
-              </div>
-              <div class="pt-2 flex items-center gap-2">
-                <Input v-model="draft" class="h-8 text-xs" :placeholder="t('thread.talkPlaceholder')" />
-                <Button size="sm" class="h-8 px-2" @click="sendDraft">Send</Button>
-              </div>
+              <ThreadPanel
+                :task-id="effectiveTaskId"
+                :task-title="effectiveTaskTitle"
+                :task-description="props.selectedTaskDescription"
+                :task-messages="props.selectedTaskMessages"
+                :sidecar-mode="props.selectedTaskSidecarMode"
+                :pane-uuid="props.selectedPaneUuid"
+                :current-command="props.selectedCurrentCommand"
+                @send-message="(payload) => emit('send-message', payload)"
+                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
+                @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
+              />
             </section>
           </div>
         </template>
@@ -307,20 +288,18 @@ function sendDraft() {
             </div>
 
             <div v-else data-test-id="shellman-overview-mobile-chat" class="flex-1 min-h-0 p-2 flex flex-col">
-              <div class="flex-1 min-h-0 overflow-y-auto space-y-2">
-                <div
-                  v-for="msg in chatRows"
-                  :key="msg.id"
-                  class="rounded-md px-2 py-1.5 text-xs"
-                  :class="msg.role === 'user' ? 'bg-primary/10' : 'bg-muted'"
-                >
-                  {{ msg.content }}
-                </div>
-              </div>
-              <div class="pt-2 flex items-center gap-2">
-                <Input v-model="draft" class="h-8 text-xs" :placeholder="t('thread.talkPlaceholder')" />
-                <Button size="sm" class="h-8 px-2" @click="sendDraft">Send</Button>
-              </div>
+              <ThreadPanel
+                :task-id="effectiveTaskId"
+                :task-title="effectiveTaskTitle"
+                :task-description="props.selectedTaskDescription"
+                :task-messages="props.selectedTaskMessages"
+                :sidecar-mode="props.selectedTaskSidecarMode"
+                :pane-uuid="props.selectedPaneUuid"
+                :current-command="props.selectedCurrentCommand"
+                @send-message="(payload) => emit('send-message', payload)"
+                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
+                @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
+              />
             </div>
           </div>
         </template>
