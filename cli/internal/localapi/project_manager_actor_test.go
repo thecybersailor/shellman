@@ -2,6 +2,7 @@ package localapi
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"sync/atomic"
 	"testing"
@@ -103,4 +104,26 @@ func TestProjectManagerActor_RunAndPersistAssistantMessage(t *testing.T) {
 		last := items[len(items)-1]
 		return last.Role == "assistant" && last.Status == projectstate.StatusCompleted && last.Content == "assistant-reply"
 	})
+}
+
+func TestProjectManagerActor_AgentLoopUnavailable(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
+	store := projectstate.NewStore(repo)
+	sessionID, err := store.CreatePMSession("p1", "session-a")
+	if err != nil {
+		t.Fatalf("CreatePMSession failed: %v", err)
+	}
+
+	err = srv.sendProjectManagerLoop(context.Background(), PMAgentLoopEvent{
+		SessionID:      sessionID,
+		ProjectID:      "p1",
+		Source:         "user_input",
+		DisplayContent: "hello",
+		AgentPrompt:    "hello",
+	})
+	if !errors.Is(err, ErrProjectManagerLoopUnavailable) {
+		t.Fatalf("expected ErrProjectManagerLoopUnavailable, got %v", err)
+	}
 }

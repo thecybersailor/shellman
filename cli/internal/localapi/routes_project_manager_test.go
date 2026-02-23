@@ -120,3 +120,85 @@ func TestProjectManagerRoutes_SendMessageQueued(t *testing.T) {
 		t.Fatalf("expected status queued, got %q", out.Data.Status)
 	}
 }
+
+func TestProjectManagerRoutes_InvalidProjectID(t *testing.T) {
+	projects := &memProjectsStore{projects: []global.ActiveProject{}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v1/projects/p_not_found/pm/sessions")
+	if err != nil {
+		t.Fatalf("list sessions failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", resp.StatusCode)
+	}
+}
+
+func TestProjectManagerRoutes_InvalidSessionID(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	runner := &fakeTaskMessageRunner{reply: "ok"}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, AgentLoopRunner: runner})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	reqBody := bytes.NewBufferString(`{"content":"hello pm","source":"user_input"}`)
+	msgResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions/not-exists/messages", "application/json", reqBody)
+	if err != nil {
+		t.Fatalf("send message failed: %v", err)
+	}
+	defer func() { _ = msgResp.Body.Close() }()
+	if msgResp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", msgResp.StatusCode)
+	}
+}
+
+func TestProjectManagerRoutes_AgentLoopUnavailable(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions", "application/json", bytes.NewBufferString(`{"title":"PM Session 1"}`))
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("create session expected 200, got %d", createResp.StatusCode)
+	}
+	var created struct {
+		Data struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+
+	reqBody := bytes.NewBufferString(`{"content":"hello pm","source":"user_input"}`)
+	msgResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions/"+created.Data.SessionID+"/messages", "application/json", reqBody)
+	if err != nil {
+		t.Fatalf("send message failed: %v", err)
+	}
+	defer func() { _ = msgResp.Body.Close() }()
+	if msgResp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d", msgResp.StatusCode)
+	}
+	var out struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(msgResp.Body).Decode(&out); err != nil {
+		t.Fatalf("decode response failed: %v", err)
+	}
+	if out.Error.Code != "AGENT_LOOP_UNAVAILABLE" {
+		t.Fatalf("expected AGENT_LOOP_UNAVAILABLE, got %q", out.Error.Code)
+	}
+}
