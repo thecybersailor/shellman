@@ -58,13 +58,18 @@ func (s *Server) handleProjectTree(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	projectID := parts[0]
+	includeArchived := false
+	switch strings.ToLower(strings.TrimSpace(r.URL.Query().Get("include_archived"))) {
+	case "1", "true", "yes":
+		includeArchived = true
+	}
 	repoRoot, err := s.findProjectRepoRoot(projectID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", err.Error())
 		return
 	}
 	store := projectstate.NewStore(repoRoot)
-	rows, err := store.ListTasksByProject(projectID)
+	rows, err := store.ListTasksByProjectWithArchived(projectID, includeArchived)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "TREE_LOAD_FAILED", err.Error())
 		return

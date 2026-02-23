@@ -11,18 +11,33 @@ import (
 )
 
 func (s *Store) ListTasksByProject(projectID string) ([]TaskRecordRow, error) {
+	return s.listTasksByProject(projectID, false)
+}
+
+func (s *Store) ListTasksByProjectWithArchived(projectID string, includeArchived bool) ([]TaskRecordRow, error) {
+	return s.listTasksByProject(projectID, includeArchived)
+}
+
+func (s *Store) listTasksByProject(projectID string, includeArchived bool) ([]TaskRecordRow, error) {
 	db, release, err := s.db()
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = release() }()
 
-	rows, err := db.Query(`
+	query := `
 SELECT task_id, project_id, parent_task_id, title, current_command, status, sidecar_mode, task_role, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
 FROM tasks
-WHERE repo_root = ? AND project_id = ? AND archived = false
+WHERE repo_root = ? AND project_id = ?
+`
+	args := []any{s.repoRoot, projectID}
+	if !includeArchived {
+		query += " AND archived = false"
+	}
+	query += `
 ORDER BY created_at ASC, task_id ASC
-`, s.repoRoot, projectID)
+	`
+	rows, err := db.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}

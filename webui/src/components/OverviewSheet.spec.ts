@@ -137,7 +137,7 @@ describe("OverviewSheet", () => {
     expect(wrapper.text()).toContain("codex (/repo)");
   });
 
-  it("renders Project Manager title in chat area", async () => {
+  it("renders pm topbar and session list actions in desktop and mobile chat", async () => {
     const desktop = mount(OverviewSheet, {
       props: {
         open: true,
@@ -151,7 +151,14 @@ describe("OverviewSheet", () => {
         stubs: globalStubs
       }
     });
-    expect(desktop.text()).toContain("Project Manager");
+    expect(desktop.find("[data-test-id='shellman-pm-back']").exists()).toBe(true);
+    expect(desktop.find("[data-test-id='shellman-pm-history']").exists()).toBe(true);
+    expect(desktop.find("[data-test-id='shellman-pm-new-session']").exists()).toBe(true);
+    expect(desktop.find("[data-test-id='shellman-pm-session-title']").exists()).toBe(true);
+    await desktop.get("[data-test-id='shellman-pm-back']").trigger("click");
+    expect(desktop.find("[data-test-id='shellman-pm-session-list']").exists()).toBe(true);
+    await desktop.get("[data-test-id='shellman-pm-history']").trigger("click");
+    expect(desktop.find("[data-test-id='shellman-pm-recent-sessions']").exists()).toBe(true);
 
     const mobile = mount(OverviewSheet, {
       props: {
@@ -167,6 +174,9 @@ describe("OverviewSheet", () => {
       }
     });
     await mobile.get("[data-test-id='shellman-overview-tab-chat']").trigger("click");
-    expect(mobile.text()).toContain("Project Manager");
+    expect(mobile.find("[data-test-id='shellman-pm-back-mobile']").exists()).toBe(true);
+    expect(mobile.find("[data-test-id='shellman-pm-history-mobile']").exists()).toBe(true);
+    expect(mobile.find("[data-test-id='shellman-pm-new-session-mobile']").exists()).toBe(true);
+    expect(mobile.find("[data-test-id='shellman-pm-session-title-mobile']").exists()).toBe(true);
   });
 });

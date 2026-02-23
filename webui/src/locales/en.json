@@ -67,7 +67,14 @@
     "chat": "Chat",
     "inbox": "Inbox",
     "close": "Close",
-    "projectManager": "Project Manager"
+    "projectManager": "Project Manager",
+    "pmNewSession": "New Session",
+    "pmUpdatedJustNow": "Just now",
+    "pmUpdated5m": "5m",
+    "pmUpdated15m": "15m",
+    "pmSession1": "Remove task metadata from overview panel",
+    "pmSession2": "Unify task title fallback strategy",
+    "pmSession3": "Overview multi-session UI draft"
   },
   "scm": {
     "typeCommitMessage": "Type commit message...",
