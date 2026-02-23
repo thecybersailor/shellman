@@ -16,6 +16,15 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("@terminal-image-paste=\"onTerminalImagePaste\"");
   });
 
+  it("wires terminal-link-open from terminal panes", () => {
+    expect(appSource).toContain("@terminal-link-open=\"onTerminalLinkOpen\"");
+  });
+
+  it("guards path links by selected project root", () => {
+    expect(appSource).toContain("resolvePathLinkInProject(payload.raw, projectRoot)");
+    expect(appSource).toContain("selectedTaskProjectRoot.value");
+  });
+
   it("marks task flag as read on task selection", () => {
     expect(appSource).toContain("async function onSelectTask(taskId: string)");
     expect(appSource).toContain("store.markTaskFlagReaded(taskId, true)");

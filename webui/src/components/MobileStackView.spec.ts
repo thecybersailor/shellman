@@ -178,4 +178,30 @@ describe("MobileStackView", () => {
     await wrapper.get("[data-test-id='shellman-mobile-open-overview']").trigger("click");
     expect(wrapper.emitted("open-overview")?.[0]).toEqual([]);
   });
+
+  it("forwards terminal-link-open from terminal pane", async () => {
+    const TerminalPaneStub = defineComponent({
+      name: "TerminalPane",
+      emits: ["terminal-link-open"],
+      template: "<button data-test-id='terminal-link-open-btn' @click=\"$emit('terminal-link-open', { type: 'path', raw: 'src/App.vue:12:3' })\">open</button>"
+    });
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Root", status: "running" }] }],
+        selectedTaskId: "t1",
+        darkMode: "dark"
+      } as any,
+      global: {
+        stubs: {
+          TerminalPane: TerminalPaneStub
+        }
+      }
+    });
+
+    await wrapper.get("[data-test-id='terminal-link-open-btn']").trigger("click");
+    expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
+      type: "path",
+      raw: "src/App.vue:12:3"
+    });
+  });
 });

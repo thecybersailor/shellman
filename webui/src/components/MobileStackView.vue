@@ -50,6 +50,7 @@ const emit = defineEmits<{
   (event: "toggle-task-check", payload: { taskId: string; checked: boolean }): void;
   (event: "terminal-input", text: string): void;
   (event: "terminal-image-paste", file: File): void;
+  (event: "terminal-link-open", payload: { type: "url"; raw: string } | { type: "path"; raw: string }): void;
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
   (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
@@ -202,6 +203,7 @@ function onProjectPanelActiveTabChange(next: string) {
               :app-programs="props.appPrograms ?? []"
               @terminal-input="(text) => emit('terminal-input', text)"
               @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
+              @terminal-link-open="(payload) => emit('terminal-link-open', payload)"
               @terminal-resize="(size) => emit('terminal-resize', size)"
               @terminal-history-more="() => emit('terminal-history-more')"
               @manual-launch-pane="(payload) => emit('manual-launch-pane', payload)"
