@@ -3,6 +3,7 @@ package localapi
 import (
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -47,6 +48,8 @@ type TaskAgentAutoProgressPromptInput struct {
 	TTY               TaskAgentTTYContext
 	ParentTask        *TaskAgentParentContext
 	ChildTasks        []TaskAgentChildContext
+	TaskContextDocs   []taskCompletionContextDocument
+	SkillIndex        []SkillIndexEntry
 }
 
 func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) string {
@@ -60,6 +63,9 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	if input.Summary == "" {
 		input.Summary = "tty_output detected pane idle and stable output"
 	}
+	taskContextJSON := mustBuildTaskContextJSON(input.PrevFlag, input.PrevStatusMessage, input.TTY, input.ParentTask, input.ChildTasks)
+	systemContextJSON := mustBuildTaskSystemContextJSON(input.TaskContextDocs, input.SkillIndex)
+	eventContextJSON := mustBuildTaskEventContextJSON("tty_output", "", input.Summary, input.HistoryBlock, taskContextJSON)
 
 	var b strings.Builder
 	b.WriteString("TTY_OUTPUT_EVENT\n")
@@ -80,6 +86,12 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	b.WriteString("summary: ")
 	b.WriteString(input.Summary)
 	b.WriteString("\n\n")
+	b.WriteString("system_context_json:\n")
+	b.WriteString(systemContextJSON)
+	b.WriteString("\n\n")
+	b.WriteString("event_context_json:\n")
+	b.WriteString(eventContextJSON)
+	b.WriteString("\n\n")
 	b.WriteString("conversation_history:\n")
 	if strings.TrimSpace(input.HistoryBlock) == "" {
 		b.WriteString("(none)\n\n")
@@ -88,7 +100,7 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 		b.WriteString("\n\n")
 	}
 	b.WriteString("terminal_screen_state_json:\n")
-	b.WriteString(mustBuildTaskContextJSON(input.PrevFlag, input.PrevStatusMessage, input.TTY, input.ParentTask, input.ChildTasks))
+	b.WriteString(taskContextJSON)
 	b.WriteString("\n\n")
 	b.WriteString("Rules:\n")
 	b.WriteString("- respond with short action-oriented summary after tool calls.\n")
@@ -97,11 +109,34 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 }
 
 func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessage string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext, historyBlock string) string {
+	return buildTaskAgentUserPromptWithContexts(userInput, prevFlag, prevStatusMessage, tty, parent, children, historyBlock, nil, nil)
+}
+
+func buildTaskAgentUserPromptWithContexts(
+	userInput string,
+	prevFlag string,
+	prevStatusMessage string,
+	tty TaskAgentTTYContext,
+	parent *TaskAgentParentContext,
+	children []TaskAgentChildContext,
+	historyBlock string,
+	taskContextDocs []taskCompletionContextDocument,
+	skillIndex []SkillIndexEntry,
+) string {
 	userInput = strings.TrimSpace(userInput)
+	taskContextJSON := mustBuildTaskContextJSON(prevFlag, prevStatusMessage, tty, parent, children)
+	systemContextJSON := mustBuildTaskSystemContextJSON(taskContextDocs, skillIndex)
+	eventContextJSON := mustBuildTaskEventContextJSON("user_input", userInput, "", historyBlock, taskContextJSON)
 	var b strings.Builder
 	b.WriteString("USER_INPUT_EVENT\n")
 	b.WriteString("user_input:\n")
 	b.WriteString(userInput)
+	b.WriteString("\n\n")
+	b.WriteString("system_context_json:\n")
+	b.WriteString(systemContextJSON)
+	b.WriteString("\n\n")
+	b.WriteString("event_context_json:\n")
+	b.WriteString(eventContextJSON)
 	b.WriteString("\n\n")
 	b.WriteString("conversation_history:\n")
 	if strings.TrimSpace(historyBlock) == "" {
@@ -111,12 +146,17 @@ func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessa
 		b.WriteString("\n\n")
 	}
 	b.WriteString("terminal_screen_state_json:\n")
-	b.WriteString(mustBuildTaskContextJSON(prevFlag, prevStatusMessage, tty, parent, children))
+	b.WriteString(taskContextJSON)
 	b.WriteString("\n")
 	return strings.TrimSpace(b.String())
 }
 
 func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext) string {
+	raw, _ := json.Marshal(buildTaskContextObject(prevFlag, prevStatus, tty, parent, children))
+	return string(raw)
+}
+
+func buildTaskContextObject(prevFlag string, prevStatus string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext) map[string]any {
 	prevFlag = strings.TrimSpace(prevFlag)
 	prevStatus = strings.TrimSpace(prevStatus)
 	tty.CurrentCommand = strings.TrimSpace(tty.CurrentCommand)
@@ -156,7 +196,7 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 			"report_message": strings.TrimSpace(child.ReportMessage),
 		})
 	}
-	raw, _ := json.Marshal(map[string]any{
+	return map[string]any{
 		"task_context": map[string]any{
 			"prev_flag":           prevFlag,
 			"prev_status_message": prevStatus,
@@ -175,7 +215,51 @@ func mustBuildTaskContextJSON(prevFlag string, prevStatus string, tty TaskAgentT
 		},
 		"parent_task": parentObj,
 		"child_tasks": childList,
+	}
+}
+
+func mustBuildTaskSystemContextJSON(taskContextDocs []taskCompletionContextDocument, skillIndex []SkillIndexEntry) string {
+	skills := cloneSkillEntries(skillIndex)
+	sort.Slice(skills, func(i, j int) bool {
+		if skills[i].Name == skills[j].Name {
+			return skills[i].Path < skills[j].Path
+		}
+		return skills[i].Name < skills[j].Name
 	})
+	docs := make([]taskCompletionContextDocument, 0, len(taskContextDocs))
+	for _, doc := range taskContextDocs {
+		docs = append(docs, taskCompletionContextDocument{
+			Path:    strings.TrimSpace(doc.Path),
+			Content: strings.TrimSpace(doc.Content),
+		})
+	}
+	raw, _ := json.Marshal(map[string]any{
+		"contract_version": "v2",
+		"instructions": map[string]any{
+			"skill_body_loading_policy": "inject_index_only_read_body_on_demand",
+		},
+		"task_completion_context_docs": docs,
+		"skills_index":                skills,
+	})
+	return string(raw)
+}
+
+func mustBuildTaskEventContextJSON(eventType, userInput, summary, historyBlock, taskContextJSON string) string {
+	eventType = strings.TrimSpace(eventType)
+	if eventType == "" {
+		eventType = "user_input"
+	}
+	event := map[string]any{
+		"event_type":           eventType,
+		"user_input":           strings.TrimSpace(userInput),
+		"summary":              strings.TrimSpace(summary),
+		"conversation_history": strings.TrimSpace(historyBlock),
+	}
+	var taskContext map[string]any
+	if err := json.Unmarshal([]byte(strings.TrimSpace(taskContextJSON)), &taskContext); err == nil {
+		event["task_context"] = taskContext
+	}
+	raw, _ := json.Marshal(event)
 	return string(raw)
 }
 
