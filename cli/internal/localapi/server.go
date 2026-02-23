@@ -94,6 +94,9 @@ type Server struct {
 
 	taskCompletionContextMu    sync.Mutex
 	taskCompletionContextCache map[string]taskCompletionContextCacheEntry
+
+	skillIndexMu    sync.Mutex
+	skillIndexCache map[string]skillIndexCacheEntry
 }
 
 func NewServer(deps Deps) *Server {
@@ -101,6 +104,7 @@ func NewServer(deps Deps) *Server {
 	s.taskAgentSupervisor = newTaskAgentLoopSupervisor(nil, s.handleTaskAgentLoopEvent)
 	s.taskAgentModeByTask = map[string]taskAgentToolMode{}
 	s.taskMessageRunByTask = map[string]taskMessageRunState{}
+	s.skillIndexCache = map[string]skillIndexCacheEntry{}
 	s.registerConfigRoutes()
 	s.registerProjectsRoutes()
 	s.registerSystemRoutes()
