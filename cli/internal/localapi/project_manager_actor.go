@@ -151,5 +151,6 @@ func (s *Server) resolveProjectManagerAllowedToolNames(projectID, sessionID, sou
 	_ = projectID
 	_ = sessionID
 	_ = source
-	return []string{}
+	profile := buildPMToolProfileCodexParity()
+	return profile.ResolveAllowedTools(PMToolPolicy{})
 }
