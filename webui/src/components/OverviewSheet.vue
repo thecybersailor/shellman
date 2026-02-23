@@ -3,47 +3,12 @@ import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
-import { X } from "lucide-vue-next";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
-import ThreadPanel from "./ThreadPanel.vue";
+import ConversationSession from "./ConversationSession.vue";
+import TaskTitleResolver from "./TaskTitleResolver.vue";
 import type { TaskMessage } from "@/stores/shellman";
 
 type SidecarMode = "advisor" | "observer" | "autopilot";
-
-const mockProjects: ProjectSection[] = [
-  {
-    projectId: "inbox",
-    title: "Inbox",
-    tasks: [
-      { taskId: "inbox-t1", title: "Clarify weekly goals", status: "running" },
-      { taskId: "inbox-t2", title: "Collect release checklist", status: "pending" }
-    ]
-  },
-  {
-    projectId: "project1",
-    title: "project1",
-    tasks: [
-      { taskId: "p1-t1", title: "Landing page review", status: "waiting_user" },
-      { taskId: "p1-t2", title: "Analytics sanity check", status: "completed" }
-    ]
-  },
-  {
-    projectId: "project2",
-    title: "project2",
-    tasks: [
-      { taskId: "p2-t1", title: "Define QA scope", status: "running" },
-      { taskId: "p2-t2", title: "Track blocker owners", status: "waiting_children" }
-    ]
-  },
-  {
-    projectId: "project3",
-    title: "project3",
-    tasks: [
-      { taskId: "p3-t1", title: "Prepare milestone notes", status: "pending" },
-      { taskId: "p3-t2", title: "Demo rehearsal", status: "canceled" }
-    ]
-  }
-];
 
 const props = withDefaults(
   defineProps<{
@@ -85,12 +50,10 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const mobileActiveTab = ref<"projects" | "tasks" | "chat">("tasks");
 const localProjectId = ref("");
+const promptDraft = ref("");
 
 const effectiveProjects = computed<ProjectSection[]>(() => {
-  if ((props.projects ?? []).length > 0) {
-    return props.projects;
-  }
-  return mockProjects;
+  return props.projects ?? [];
 });
 
 watch(
@@ -102,15 +65,13 @@ watch(
     const fromProp = String(props.overviewProjectId ?? "").trim();
     const first = effectiveProjects.value[0]?.projectId ?? "";
     const hasFromProp = effectiveProjects.value.some((item) => item.projectId === fromProp);
-    const hasInbox = effectiveProjects.value.some((item) => item.projectId === "inbox");
     if (fromProp && hasFromProp) {
       localProjectId.value = fromProp;
-    } else if (hasInbox) {
-      localProjectId.value = "inbox";
     } else {
       localProjectId.value = first;
     }
     mobileActiveTab.value = "tasks";
+    promptDraft.value = "";
   },
   { immediate: true }
 );
@@ -124,12 +85,6 @@ const effectiveTaskId = computed(() => {
     return selected;
   }
   return activeTasks.value[0]?.taskId ?? "";
-});
-const effectiveTaskTitle = computed(() => {
-  if (props.selectedTaskTitle) {
-    return props.selectedTaskTitle;
-  }
-  return activeTasks.value.find((task) => task.taskId === effectiveTaskId.value)?.title ?? "";
 });
 
 function closeSheet() {
@@ -150,38 +105,28 @@ function selectTask(taskId: string) {
   <Sheet :open="props.open" @update:open="(next) => emit('update:open', Boolean(next))">
     <SheetContent
       side="bottom"
-      class="h-[90vh] top-[10vh] max-w-none p-0 rounded-t-xl border-x-0 border-b-0"
+      class="h-[90vh] top-[10vh] max-w-none p-0 rounded-t-xl border-none bg-transparent outline-none"
       @escape-key-down="closeSheet"
       @pointer-down-outside="closeSheet"
     >
-      <div class="h-full flex flex-col bg-background">
+      <div class="h-full flex flex-col bg-gray-200 dark:bg-gray-800 rounded-t-xl overflow-hidden">
         <header class="h-10 border-b border-border/60 px-3 flex items-center justify-between shrink-0">
           <h2 class="text-sm font-semibold">{{ t("overview.title") }}</h2>
-          <Button
-            variant="ghost"
-            size="icon"
-            class="h-7 w-7 text-muted-foreground"
-            data-test-id="shellman-overview-close"
-            @click="closeSheet"
-          >
-            <X class="h-4 w-4" />
-          </Button>
         </header>
 
         <template v-if="!props.isMobile">
           <div data-test-id="shellman-overview-layout-desktop" class="h-full min-h-0 flex">
             <section
               data-test-id="shellman-overview-col-projects"
-              style="width: 20%;"
-              class="h-full min-h-0 border-r border-border/60 p-2 overflow-y-auto"
+              class="h-full min-h-0 w-[220px] shrink-0 border-r border-border/60 p-3 overflow-y-auto"
             >
               <div class="space-y-1">
                 <button
                   v-for="project in effectiveProjects"
                   :key="project.projectId"
                   type="button"
-                  class="w-full text-left px-2 py-1.5 rounded text-sm hover:bg-accent/60"
-                  :class="project.projectId === activeProjectId ? 'bg-accent' : ''"
+                  class="w-full text-left px-3 py-2 rounded-md text-sm transition-colors"
+                  :class="project.projectId === activeProjectId ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
                   :data-test-id="`shellman-overview-project-${project.projectId}`"
                   @click="selectProject(project.projectId)"
                 >
@@ -191,40 +136,51 @@ function selectTask(taskId: string) {
             </section>
             <section
               data-test-id="shellman-overview-col-tasks"
-              style="width: 45%;"
-              class="h-full min-h-0 border-r border-border/60 p-2 overflow-y-auto"
+              class="h-full min-h-0 flex-1 border-r border-border/60 p-4 overflow-y-auto"
             >
-              <div class="space-y-1.5">
+              <div class="space-y-2">
                 <button
                   v-for="task in activeTasks"
                   :key="task.taskId"
                   type="button"
-                  class="w-full text-left px-2 py-2 rounded border border-border/50 hover:bg-accent/40"
+                  class="w-full text-left px-4 py-3 rounded-lg border transition-all duration-200"
+                  :class="task.taskId === effectiveTaskId ? 'border-border/50 bg-primary/5' : 'border-border/50 bg-card hover:border-primary/30 hover:shadow-sm'"
                   :data-test-id="`shellman-overview-task-${task.taskId}`"
                   @click="selectTask(task.taskId)"
                 >
-                  <div class="text-sm">{{ task.title }}</div>
-                  <div class="text-[11px] text-muted-foreground mt-0.5">{{ task.status }}</div>
+                  <TaskTitleResolver
+                    :task-title="task.title"
+                    :current-command="task.currentCommand"
+                    class="text-sm font-medium block truncate"
+                    :class="task.taskId === effectiveTaskId ? 'text-primary' : 'text-foreground'"
+                  />
+                  <div class="text-[11px] mt-1.5 flex items-center gap-1.5" :class="task.taskId === effectiveTaskId ? 'text-primary/70' : 'text-muted-foreground'">
+                    <span class="w-1.5 h-1.5 rounded-full" :class="{
+                      'bg-green-500': task.status === 'completed',
+                      'bg-yellow-500': task.status === 'running',
+                      'bg-blue-500': task.status === 'waiting_user',
+                      'bg-gray-400': !['completed', 'running', 'waiting_user'].includes(task.status)
+                    }"></span>
+                    {{ task.status }}
+                  </div>
                 </button>
               </div>
             </section>
             <section
               data-test-id="shellman-overview-col-chat"
-              style="width: 35%;"
-              class="h-full min-h-0 p-2"
+              class="h-full min-h-0 w-[400px] shrink-0 p-2 bg-gray-200 dark:bg-gray-800"
             >
-              <ThreadPanel
-                :task-id="effectiveTaskId"
-                :task-title="effectiveTaskTitle"
-                :task-description="props.selectedTaskDescription"
-                :task-messages="props.selectedTaskMessages"
-                :sidecar-mode="props.selectedTaskSidecarMode"
-                :pane-uuid="props.selectedPaneUuid"
-                :current-command="props.selectedCurrentCommand"
-                @send-message="(payload) => emit('send-message', payload)"
-                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
-                @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
-              />
+              <div class="h-full min-h-0 overflow-hidden border border-border/60 rounded-md p-1.5 bg-background/40 flex flex-col">
+                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">Project Manager</div>
+                <ConversationSession
+                  :task-id="effectiveTaskId"
+                  :task-messages="props.selectedTaskMessages"
+                  :model-value="promptDraft"
+                  @update:model-value="(value) => (promptDraft = value)"
+                  @submit-message="(payload) => emit('send-message', payload)"
+                  @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
+                />
+              </div>
             </section>
           </div>
         </template>
@@ -261,45 +217,58 @@ function selectTask(taskId: string) {
               </Button>
             </div>
 
-            <div v-if="mobileActiveTab === 'projects'" data-test-id="shellman-overview-mobile-projects" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1">
+            <div v-if="mobileActiveTab === 'projects'" data-test-id="shellman-overview-mobile-projects" class="flex-1 min-h-0 overflow-y-auto p-3 space-y-1">
               <button
                 v-for="project in effectiveProjects"
                 :key="project.projectId"
                 type="button"
-                class="w-full text-left px-2 py-1.5 rounded text-sm hover:bg-accent/60"
-                :class="project.projectId === activeProjectId ? 'bg-accent' : ''"
+                class="w-full text-left px-3 py-2 rounded-md text-sm transition-colors"
+                :class="project.projectId === activeProjectId ? 'bg-primary/10 text-primary font-medium' : 'text-muted-foreground hover:bg-muted hover:text-foreground'"
                 @click="selectProject(project.projectId)"
               >
                 {{ project.title }}
               </button>
             </div>
 
-            <div v-else-if="mobileActiveTab === 'tasks'" data-test-id="shellman-overview-mobile-tasks" class="flex-1 min-h-0 overflow-y-auto p-2 space-y-1.5">
+            <div v-else-if="mobileActiveTab === 'tasks'" data-test-id="shellman-overview-mobile-tasks" class="flex-1 min-h-0 overflow-y-auto p-4 space-y-2">
               <button
                 v-for="task in activeTasks"
                 :key="task.taskId"
                 type="button"
-                class="w-full text-left px-2 py-2 rounded border border-border/50 hover:bg-accent/40"
+                class="w-full text-left px-4 py-3 rounded-lg border transition-all duration-200"
+                :class="task.taskId === effectiveTaskId ? 'border-border/50 bg-primary/5' : 'border-border/50 bg-card hover:border-primary/30 hover:shadow-sm'"
                 @click="selectTask(task.taskId)"
               >
-                <div class="text-sm">{{ task.title }}</div>
-                <div class="text-[11px] text-muted-foreground mt-0.5">{{ task.status }}</div>
+                <TaskTitleResolver
+                  :task-title="task.title"
+                  :current-command="task.currentCommand"
+                  class="text-sm font-medium block truncate"
+                  :class="task.taskId === effectiveTaskId ? 'text-primary' : 'text-foreground'"
+                />
+                <div class="text-[11px] mt-1.5 flex items-center gap-1.5" :class="task.taskId === effectiveTaskId ? 'text-primary/70' : 'text-muted-foreground'">
+                    <span class="w-1.5 h-1.5 rounded-full" :class="{
+                      'bg-green-500': task.status === 'completed',
+                      'bg-yellow-500': task.status === 'running',
+                      'bg-blue-500': task.status === 'waiting_user',
+                      'bg-gray-400': !['completed', 'running', 'waiting_user'].includes(task.status)
+                    }"></span>
+                    {{ task.status }}
+                </div>
               </button>
             </div>
 
             <div v-else data-test-id="shellman-overview-mobile-chat" class="flex-1 min-h-0 p-2 flex flex-col">
-              <ThreadPanel
-                :task-id="effectiveTaskId"
-                :task-title="effectiveTaskTitle"
-                :task-description="props.selectedTaskDescription"
-                :task-messages="props.selectedTaskMessages"
-                :sidecar-mode="props.selectedTaskSidecarMode"
-                :pane-uuid="props.selectedPaneUuid"
-                :current-command="props.selectedCurrentCommand"
-                @send-message="(payload) => emit('send-message', payload)"
-                @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"
-                @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
-              />
+              <div class="h-full min-h-0 overflow-hidden border border-border/60 rounded-md p-1.5 bg-background/40 flex flex-col">
+                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">Project Manager</div>
+                <ConversationSession
+                  :task-id="effectiveTaskId"
+                  :task-messages="props.selectedTaskMessages"
+                  :model-value="promptDraft"
+                  @update:model-value="(value) => (promptDraft = value)"
+                  @submit-message="(payload) => emit('send-message', payload)"
+                  @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
+                />
+              </div>
             </div>
           </div>
         </template>

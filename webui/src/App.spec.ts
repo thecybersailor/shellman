@@ -71,7 +71,8 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("@open-overview=\"onOpenOverview('mobile')\"");
     expect(appSource).toContain("<OverviewSheet");
     expect(appSource).toContain("v-model:open=\"showOverviewSheet\"");
+    expect(appSource).toContain(":projects=\"projects\"");
     expect(appSource).toContain("@select-task=\"onSelectTask\"");
-    expect(appSource).toContain("@send-message=\"onSendTaskMessage\"");
+    expect(appSource).toContain(":selected-task-messages=\"[]\"");
   });
 });

@@ -62,6 +62,17 @@ const isMobileLayout = ref(false);
 let mobileLayoutMediaQuery: MediaQueryList | null = null;
 let mobileLayoutListener: ((event: MediaQueryListEvent) => void) | null = null;
 
+function handleGlobalKeydown(e: KeyboardEvent) {
+  if ((e.metaKey || e.ctrlKey) && e.key === '\\') {
+    e.preventDefault();
+    if (!showOverviewSheet.value) {
+      onOpenOverview(isMobileLayout.value ? "mobile" : "desktop");
+    } else {
+      showOverviewSheet.value = false;
+    }
+  }
+}
+
 function logInfo(event: string, payload: Record<string, unknown> = {}) {
   if (import.meta.env.MODE === "test") {
     return;
@@ -605,6 +616,7 @@ onMounted(async () => {
     };
     mobileLayoutMediaQuery.addEventListener("change", mobileLayoutListener);
   }
+  window.addEventListener("keydown", handleGlobalKeydown);
   logInfo("shellman.app.mounted.start");
   const routeSessionId = Array.isArray(route.params.sessionId) ? route.params.sessionId[0] : route.params.sessionId;
   try {
@@ -652,6 +664,7 @@ onBeforeUnmount(() => {
   }
   mobileLayoutMediaQuery = null;
   mobileLayoutListener = null;
+  window.removeEventListener("keydown", handleGlobalKeydown);
   logInfo("shellman.app.before_unmount");
   store.disconnectWS();
 });
@@ -836,10 +849,10 @@ onBeforeUnmount(() => {
   <OverviewSheet
     v-model:open="showOverviewSheet"
     :is-mobile="isMobileLayout"
-    :projects="[]"
+    :projects="projects"
     :overview-project-id="overviewProjectId"
     :selected-task-id="selectedTaskId"
-    :selected-task-messages="selectedTaskMessages"
+    :selected-task-messages="[]"
     :selected-task-title="selectedTaskTitle"
     :selected-task-description="selectedTaskDescription"
     :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
@@ -847,9 +860,6 @@ onBeforeUnmount(() => {
     :selected-current-command="selectedCurrentCommand"
     @select-project="onOverviewSelectProject"
     @select-task="onSelectTask"
-    @send-message="onSendTaskMessage"
-    @set-sidecar-mode="onSetTaskSidecarMode"
-    @stop-running-assistant-message="onStopRunningAssistantMessage"
   />
 
   <Sheet v-model:open="fileViewerOpen">
