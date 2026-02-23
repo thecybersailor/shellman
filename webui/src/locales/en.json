@@ -48,6 +48,7 @@
   },
   "projectTaskTree": {
     "projects": "Projects",
+    "overview": "Overview",
     "addNewProject": "Add new project",
     "toggleTaskFilters": "Toggle task filters",
     "editName": "Edit name",
@@ -58,6 +59,14 @@
     "otherTmux": "Other Tmux",
     "noOrphanPanes": "No orphan panes",
     "settings": "Settings"
+  },
+  "overview": {
+    "title": "Overview",
+    "projects": "Projects",
+    "tasks": "Tasks",
+    "chat": "Chat",
+    "inbox": "Inbox",
+    "close": "Close"
   },
   "scm": {
     "typeCommitMessage": "Type commit message...",

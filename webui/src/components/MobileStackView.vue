@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   Info,
   Sun,
-  Moon
+  Moon,
+  LayoutDashboard
 } from "lucide-vue-next";
 import { Button } from "@/components/ui/button";
 const { t } = useI18n();
@@ -57,6 +58,7 @@ const emit = defineEmits<{
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
   (event: "stop-running-assistant-message"): void;
   (event: "add-project"): void;
+  (event: "open-overview"): void;
   (event: "open-settings"): void;
   (event: "edit-project", projectId: string): void;
   (event: "create-root-pane", projectId: string): void;
@@ -118,6 +120,15 @@ function onProjectPanelActiveTabChange(next: string) {
           <Button variant="ghost" size="icon" @click="emit('toggle-dark')" class="h-8 w-8 text-muted-foreground">
             <Sun v-if="props.darkMode === 'dark'" class="h-4 w-4" />
             <Moon v-else class="h-4 w-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-8 w-8 text-muted-foreground"
+            data-test-id="shellman-mobile-open-overview"
+            @click="emit('open-overview')"
+          >
+            <LayoutDashboard class="h-5 w-5" />
           </Button>
           <Button variant="ghost" size="icon" @click="emit('open-settings')" class="h-8 w-8 text-muted-foreground">
             <Settings class="h-5 w-5" />

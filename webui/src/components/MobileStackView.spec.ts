@@ -165,4 +165,17 @@ describe("MobileStackView", () => {
     await wrapper.get("[data-test-id='archive-project-btn']").trigger("click");
     expect(wrapper.emitted("archive-project-done")?.[0]).toEqual(["p1"]);
   });
+
+  it("forwards open-overview event from mobile header", async () => {
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [] }],
+        selectedTaskId: "",
+        darkMode: "dark"
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-mobile-open-overview']").trigger("click");
+    expect(wrapper.emitted("open-overview")?.[0]).toEqual([]);
+  });
 });

@@ -18,6 +18,7 @@ import {
   Folder, 
   Plus, 
   Settings, 
+  LayoutDashboard,
   FolderPlus, 
   ListFilter, 
   MoreHorizontal, 
@@ -84,6 +85,7 @@ const emit = defineEmits<{
   (event: "create-root-pane", projectId: string): void;
   (event: "create-child-pane", taskId: string): void;
   (event: "add-project"): void;
+  (event: "open-overview"): void;
   (event: "open-settings"): void;
   (event: "edit-project", projectId: string): void;
   (event: "archive-project-done", projectId: string): void;
@@ -579,6 +581,16 @@ function onTaskDrop(taskId: string) {
 
     <!-- Footer: Fixed Height -->
     <div v-if="!props.hideFooter" class="shrink-0 p-2 bg-sidebar/50">
+      <Button
+        variant="ghost"
+        size="sm"
+        class="w-full justify-start px-2 h-9 text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 transition-colors gap-2.5 mb-1"
+        data-test-id="shellman-open-overview"
+        @click="emit('open-overview')"
+      >
+        <LayoutDashboard class="h-4 w-4 opacity-70" />
+        <span class="text-sm font-medium">{{ t("projectTaskTree.overview") }}</span>
+      </Button>
       <Button 
         variant="ghost" 
         size="sm" 

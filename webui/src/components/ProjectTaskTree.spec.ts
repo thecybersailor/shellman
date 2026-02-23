@@ -147,6 +147,18 @@ describe("ProjectTaskTree", () => {
     expect(wrapper.emitted("create-root-pane")?.[0]).toEqual(["p1"]);
   });
 
+  it("emits open-overview from footer button", async () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [{ projectId: "p1", title: "Project One", tasks: [] }],
+        selectedTaskId: ""
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-open-overview']").trigger("click");
+    expect(wrapper.emitted("open-overview")?.[0]).toEqual([]);
+  });
+
   it("emits toggle-task-check without selecting task when checkbox is clicked", async () => {
     const wrapper = mount(ProjectTaskTree, {
       props: {
