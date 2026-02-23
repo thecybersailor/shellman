@@ -3,6 +3,7 @@ import { resolveAPIContext, type APIContext } from "@/lib/api_context";
 
 export interface ActiveProject {
   projectId: string;
+  displayName?: string;
   repoRoot: string;
   isGitRepo: boolean;
 }
@@ -741,7 +742,7 @@ export function createShellmanStore(
     const projectsRes = (await fetchImpl(apiURL("/api/v1/projects/active"), {
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<
-      Array<{ project_id: string; repo_root: string; is_git_repo?: boolean }>
+      Array<{ project_id: string; display_name?: string; repo_root: string; is_git_repo?: boolean }>
     >;
     logInfo("shellman.load.projects", {
       ok: projectsRes.ok,
@@ -749,6 +750,7 @@ export function createShellmanStore(
     });
     state.projects = projectsRes.data.map((p) => ({
       projectId: p.project_id,
+      displayName: String(p.display_name ?? "").trim() || p.project_id,
       repoRoot: p.repo_root,
       isGitRepo: p.is_git_repo !== false
     }));
@@ -2067,7 +2069,7 @@ export function createShellmanStore(
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ project_id: id, repo_root: root })
-    }).then((r) => r.json())) as APIResponse<{ project_id: string; is_git_repo?: boolean }>;
+    }).then((r) => r.json())) as APIResponse<{ project_id: string; display_name?: string; is_git_repo?: boolean }>;
 
     if (!res.ok) {
       logInfo("shellman.project.add.fail", {
@@ -2080,9 +2082,15 @@ export function createShellmanStore(
     const existing = state.projects.find((p) => p.projectId === id);
     if (existing) {
       existing.repoRoot = root;
+      existing.displayName = String(res.data?.display_name ?? "").trim() || id;
       existing.isGitRepo = res.data?.is_git_repo !== false;
     } else {
-      state.projects.push({ projectId: id, repoRoot: root, isGitRepo: res.data?.is_git_repo !== false });
+      state.projects.push({
+        projectId: id,
+        displayName: String(res.data?.display_name ?? "").trim() || id,
+        repoRoot: root,
+        isGitRepo: res.data?.is_git_repo !== false
+      });
     }
 
     const treeRes = (await fetchImpl(apiURL(`/api/v1/projects/${id}/tree`), {
@@ -2157,6 +2165,37 @@ export function createShellmanStore(
     logInfo("shellman.project.remove.done", {
       projectId: id,
       projectCount: state.projects.length
+    });
+  }
+
+  async function renameProjectDisplayName(projectId: string, displayName: string) {
+    const id = projectId.trim();
+    const nextDisplayName = displayName.trim();
+    logInfo("shellman.project.rename.start", {
+      projectIdRaw: projectId,
+      displayNameRaw: displayName,
+      projectId: id,
+      displayName: nextDisplayName
+    });
+    const res = (await fetchImpl(apiURL(`/api/v1/projects/active/${encodeURIComponent(id)}`), {
+      method: "PATCH",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ display_name: nextDisplayName })
+    }).then((r) => r.json())) as APIResponse<{ project_id: string; display_name: string }>;
+    if (!res.ok) {
+      logInfo("shellman.project.rename.fail", {
+        projectId: id,
+        code: String(res.error?.code ?? "PROJECT_RENAME_FAILED")
+      });
+      throw new Error(res.error?.code || "PROJECT_RENAME_FAILED");
+    }
+    const idx = state.projects.findIndex((project) => project.projectId === id);
+    if (idx >= 0) {
+      state.projects[idx].displayName = String(res.data?.display_name ?? "").trim() || id;
+    }
+    logInfo("shellman.project.rename.done", {
+      projectId: id,
+      displayName: state.projects[idx]?.displayName ?? ""
     });
   }
 
@@ -2782,6 +2821,7 @@ export function createShellmanStore(
     addActiveProject,
     archiveDoneTasksByProject,
     removeActiveProject,
+    renameProjectDisplayName,
     selectDirectory,
     getFSRoots,
     listDirectories,

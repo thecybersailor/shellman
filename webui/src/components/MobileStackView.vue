@@ -58,6 +58,7 @@ const emit = defineEmits<{
   (event: "stop-running-assistant-message"): void;
   (event: "add-project"): void;
   (event: "open-settings"): void;
+  (event: "edit-project", projectId: string): void;
   (event: "create-root-pane", projectId: string): void;
   (event: "create-child-pane", taskId: string): void;
   (event: "archive-project-done", projectId: string): void;
@@ -133,6 +134,7 @@ function onProjectPanelActiveTabChange(next: string) {
           @select-task="onSelectTask"
           @toggle-task-check="(payload) => emit('toggle-task-check', payload)"
           @add-project="emit('add-project')"
+          @edit-project="(id) => emit('edit-project', id)"
           @create-root-pane="(id) => emit('create-root-pane', id)"
           @create-child-pane="(id) => emit('create-child-pane', id)"
           @archive-project-done="(id) => emit('archive-project-done', id)"

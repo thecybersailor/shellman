@@ -12,6 +12,7 @@ import { createShellmanStore } from "./stores/shellman";
 import type { TerminalFrame } from "./stores/shellman";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -50,6 +51,9 @@ const fileViewerPath = ref("");
 const fileViewerContent = ref("");
 const showRemoveProjectDialog = ref(false);
 const pendingRemoveProjectId = ref("");
+const showEditProjectDialog = ref(false);
+const pendingEditProjectId = ref("");
+const pendingEditProjectName = ref("");
 const projectPanelActiveTab = ref<"diff" | "file" | "thread">("thread");
 const isMobileLayout = ref(false);
 let mobileLayoutMediaQuery: MediaQueryList | null = null;
@@ -85,7 +89,7 @@ function notifyError(message: string) {
 const projects = computed<ProjectSection[]>(() => {
   return store.state.projects.map((project) => ({
     projectId: project.projectId,
-    title: project.projectId,
+    title: String(project.displayName ?? "").trim() || project.projectId,
     tasks: (store.state.treesByProject[project.projectId] ?? []).map((node) => {
       const paneCommand = String(
         store.state.paneMetaByTarget[String(store.state.paneByTaskId[node.taskId]?.paneTarget ?? "")]?.currentCommand ?? ""
@@ -285,6 +289,17 @@ function onRequestRemoveProject(projectId: string) {
   showRemoveProjectDialog.value = Boolean(pendingRemoveProjectId.value);
 }
 
+function onRequestEditProjectName(projectId: string) {
+  const id = String(projectId ?? "").trim();
+  if (!id) {
+    return;
+  }
+  const current = store.state.projects.find((project) => project.projectId === id);
+  pendingEditProjectId.value = id;
+  pendingEditProjectName.value = String(current?.displayName ?? id).trim();
+  showEditProjectDialog.value = true;
+}
+
 async function onArchiveProjectDone(projectId: string) {
   const id = String(projectId ?? "").trim();
   if (!id) {
@@ -312,6 +327,24 @@ async function onConfirmRemoveProject() {
     pendingRemoveProjectId.value = "";
   } catch (err) {
     projectEntryError.value = err instanceof Error ? err.message : "PROJECT_REMOVE_FAILED";
+    notifyError(projectEntryError.value);
+  }
+}
+
+async function onConfirmEditProjectName() {
+  const projectId = pendingEditProjectId.value;
+  const nextDisplayName = pendingEditProjectName.value.trim();
+  if (!projectId || !nextDisplayName) {
+    return;
+  }
+  try {
+    projectEntryError.value = "";
+    await store.renameProjectDisplayName(projectId, nextDisplayName);
+    showEditProjectDialog.value = false;
+    pendingEditProjectId.value = "";
+    pendingEditProjectName.value = "";
+  } catch (err) {
+    projectEntryError.value = err instanceof Error ? err.message : "PROJECT_RENAME_FAILED";
     notifyError(projectEntryError.value);
   }
 }
@@ -639,6 +672,7 @@ onBeforeUnmount(() => {
               @create-child-pane="onCreateChild"
               @adopt-pane="onAdoptPane"
               @add-project="onOpenAddProject('desktop')"
+              @edit-project="onRequestEditProjectName"
               @archive-project-done="onArchiveProjectDone"
               @remove-project="onRequestRemoveProject"
               @open-settings="onOpenSettings('desktop')"
@@ -768,6 +802,7 @@ onBeforeUnmount(() => {
       @set-sidecar-mode="onSetTaskSidecarMode"
       @stop-running-assistant-message="onStopRunningAssistantMessage"
       @add-project="onOpenAddProject('mobile')"
+      @edit-project="onRequestEditProjectName"
       @open-settings="onOpenSettings('mobile')"
       @create-root-pane="onCreateRoot"
       @create-child-pane="onCreateChild"
@@ -831,6 +866,32 @@ onBeforeUnmount(() => {
         <AlertDialogCancel>{{ t("common.cancel") }}</AlertDialogCancel>
         <AlertDialogAction class="bg-destructive text-destructive-foreground hover:bg-destructive/90" @click="onConfirmRemoveProject">
           {{ t("common.remove") }}
+        </AlertDialogAction>
+      </AlertDialogFooter>
+    </AlertDialogContent>
+  </AlertDialog>
+
+  <AlertDialog v-model:open="showEditProjectDialog">
+    <AlertDialogContent data-test-id="shellman-edit-project-confirm">
+      <AlertDialogHeader>
+        <AlertDialogTitle>{{ t("app.editProjectTitle") }}</AlertDialogTitle>
+        <AlertDialogDescription>
+          {{ t("app.editProjectDescriptionPrefix") }} <span class="font-mono">{{ pendingEditProjectId }}</span>
+        </AlertDialogDescription>
+      </AlertDialogHeader>
+      <Input
+        v-model="pendingEditProjectName"
+        data-test-id="shellman-edit-project-input"
+        :placeholder="t('app.editProjectNamePlaceholder')"
+      />
+      <AlertDialogFooter>
+        <AlertDialogCancel>{{ t("common.cancel") }}</AlertDialogCancel>
+        <AlertDialogAction
+          data-test-id="shellman-edit-project-submit"
+          class="bg-primary text-primary-foreground hover:bg-primary/90"
+          @click="onConfirmEditProjectName"
+        >
+          {{ t("common.save") }}
         </AlertDialogAction>
       </AlertDialogFooter>
     </AlertDialogContent>

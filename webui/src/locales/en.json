@@ -93,6 +93,9 @@
   "app": {
     "sessionEndedPaneUnavailable": "Session ended. Pane is no longer available.",
     "childOfTask": "Child of {taskId}",
+    "editProjectTitle": "Edit project name",
+    "editProjectDescriptionPrefix": "Rename project display name for",
+    "editProjectNamePlaceholder": "Enter display name",
     "removeProjectTitle": "Remove project?",
     "removeProjectDescriptionPrefix": "This will remove",
     "removeProjectDescriptionSuffix": "from active projects."

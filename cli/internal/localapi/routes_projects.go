@@ -25,16 +25,22 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		type projectPayload struct {
-			ProjectID string `json:"project_id"`
-			RepoRoot  string `json:"repo_root"`
-			IsGitRepo bool   `json:"is_git_repo"`
+			ProjectID   string `json:"project_id"`
+			DisplayName string `json:"display_name"`
+			RepoRoot    string `json:"repo_root"`
+			IsGitRepo   bool   `json:"is_git_repo"`
 		}
 		payload := make([]projectPayload, 0, len(projects))
 		for _, p := range projects {
+			displayName := strings.TrimSpace(p.DisplayName)
+			if displayName == "" {
+				displayName = p.ProjectID
+			}
 			payload = append(payload, projectPayload{
-				ProjectID: p.ProjectID,
-				RepoRoot:  p.RepoRoot,
-				IsGitRepo: isGitWorkTree(p.RepoRoot),
+				ProjectID:   p.ProjectID,
+				DisplayName: displayName,
+				RepoRoot:    p.RepoRoot,
+				IsGitRepo:   isGitWorkTree(p.RepoRoot),
 			})
 		}
 		respondOK(w, payload)
@@ -56,9 +62,14 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", err.Error())
 			return
 		}
+		displayName := strings.TrimSpace(req.DisplayName)
+		if displayName == "" {
+			displayName = req.ProjectID
+		}
 		respondOK(w, map[string]any{
-			"project_id":  req.ProjectID,
-			"is_git_repo": isGitWorkTree(req.RepoRoot),
+			"project_id":   req.ProjectID,
+			"display_name": displayName,
+			"is_git_repo":  isGitWorkTree(req.RepoRoot),
 		})
 	default:
 		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
@@ -83,19 +94,59 @@ func isGitWorkTree(repoRoot string) bool {
 }
 
 func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodDelete {
-		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
-		return
-	}
 	prefix := "/api/v1/projects/active/"
 	projectID := strings.TrimPrefix(r.URL.Path, prefix)
 	if projectID == "" || strings.Contains(projectID, "/") {
 		respondError(w, http.StatusBadRequest, "INVALID_PROJECT_ID", "invalid project id")
 		return
 	}
-	if err := s.deps.ProjectsStore.RemoveProject(projectID); err != nil {
-		respondError(w, http.StatusInternalServerError, "PROJECT_REMOVE_FAILED", err.Error())
-		return
+
+	switch r.Method {
+	case http.MethodDelete:
+		if err := s.deps.ProjectsStore.RemoveProject(projectID); err != nil {
+			respondError(w, http.StatusInternalServerError, "PROJECT_REMOVE_FAILED", err.Error())
+			return
+		}
+		respondOK(w, map[string]any{"project_id": projectID})
+	case http.MethodPatch:
+		var req struct {
+			DisplayName string `json:"display_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+			return
+		}
+		displayName := strings.TrimSpace(req.DisplayName)
+		if displayName == "" {
+			respondError(w, http.StatusBadRequest, "INVALID_DISPLAY_NAME", "display_name is required")
+			return
+		}
+		projects, err := s.deps.ProjectsStore.ListProjects()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "PROJECTS_LIST_FAILED", err.Error())
+			return
+		}
+		var target *global.ActiveProject
+		for i := range projects {
+			if projects[i].ProjectID == projectID {
+				target = &projects[i]
+				break
+			}
+		}
+		if target == nil {
+			respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "project not found")
+			return
+		}
+		if err := s.deps.ProjectsStore.AddProject(global.ActiveProject{
+			ProjectID:   projectID,
+			RepoRoot:    target.RepoRoot,
+			DisplayName: displayName,
+		}); err != nil {
+			respondError(w, http.StatusInternalServerError, "PROJECT_RENAME_FAILED", err.Error())
+			return
+		}
+		respondOK(w, map[string]any{"project_id": projectID, "display_name": displayName})
+	default:
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
-	respondOK(w, map[string]any{"project_id": projectID})
 }

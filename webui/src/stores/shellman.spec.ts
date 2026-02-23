@@ -989,6 +989,35 @@ describe("shellman store", () => {
     expect(store.state.projects.map((p) => p.projectId)).toEqual(["p1"]);
   });
 
+  it("renames project display name via PATCH and keeps project id unchanged", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method, body: String(init?.body ?? "") });
+      if (url.endsWith("/api/v1/projects/active") && method === "GET") {
+        return {
+          json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1", display_name: "Old Name" }] })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree") && method === "GET") {
+        return { json: async () => ({ ok: true, data: { project_id: "p1", nodes: [] } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/active/p1") && method === "PATCH") {
+        return { json: async () => ({ ok: true, data: { project_id: "p1", display_name: "New Name" } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.renameProjectDisplayName("p1", "New Name");
+
+    expect(calls.some((c) => c.url.endsWith("/api/v1/projects/active/p1") && c.method === "PATCH")).toBe(true);
+    expect(store.state.projects[0]?.projectId).toBe("p1");
+    expect(store.state.projects[0]?.displayName).toBe("New Name");
+  });
+
   it("archives done tasks by project and refreshes tree", async () => {
     const calls: Array<{ url: string; method: string }> = [];
     const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
