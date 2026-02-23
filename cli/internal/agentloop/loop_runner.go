@@ -76,6 +76,9 @@ func (r *LoopRunner) run(
 	fullContextRoundtrip := true
 	userPrompt = strings.TrimSpace(userPrompt)
 	historyInputItems := make([]map[string]any, 0, 8)
+	if systemContextText, ok := extractPromptSystemContextJSON(userPrompt); ok {
+		historyInputItems = append(historyInputItems, buildSystemMessageInputItem(systemContextText))
+	}
 	historyInputItems = append(historyInputItems, buildUserMessageInputItem(userPrompt))
 	req := CreateResponseRequest{Store: boolPtr(storeEnabled)}
 	if fullContextRoundtrip {
@@ -585,10 +588,29 @@ func clearCurrentCommandInPromptText(prompt string) (string, bool) {
 }
 
 func extractPromptTaskContextJSON(prompt string) (map[string]any, int, int, bool) {
-	const marker = "terminal_screen_state_json:"
+	start, end, ok := extractPromptJSONObjectRange(prompt, "terminal_screen_state_json:")
+	if !ok {
+		return nil, 0, 0, false
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal([]byte(prompt[start:end]), &decoded); err != nil {
+		return nil, 0, 0, false
+	}
+	return decoded, start, end, true
+}
+
+func extractPromptSystemContextJSON(prompt string) (string, bool) {
+	start, end, ok := extractPromptJSONObjectRange(prompt, "system_context_json:")
+	if !ok {
+		return "", false
+	}
+	return strings.TrimSpace(prompt[start:end]), true
+}
+
+func extractPromptJSONObjectRange(prompt string, marker string) (int, int, bool) {
 	idx := strings.Index(prompt, marker)
 	if idx < 0 {
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
 	start := idx + len(marker)
 	for start < len(prompt) {
@@ -600,17 +622,13 @@ func extractPromptTaskContextJSON(prompt string) (map[string]any, int, int, bool
 		break
 	}
 	if start >= len(prompt) || prompt[start] != '{' {
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
 	end, ok := findJSONObjectEnd(prompt, start)
 	if !ok {
-		return nil, 0, 0, false
+		return 0, 0, false
 	}
-	var decoded map[string]any
-	if err := json.Unmarshal([]byte(prompt[start:end]), &decoded); err != nil {
-		return nil, 0, 0, false
-	}
-	return decoded, start, end, true
+	return start, end, true
 }
 
 func findJSONObjectEnd(input string, start int) (int, bool) {
@@ -898,6 +916,19 @@ func buildUserMessageInputItem(text string) map[string]any {
 	return map[string]any{
 		"type": "message",
 		"role": "user",
+		"content": []map[string]any{
+			{
+				"type": "input_text",
+				"text": strings.TrimSpace(text),
+			},
+		},
+	}
+}
+
+func buildSystemMessageInputItem(text string) map[string]any {
+	return map[string]any{
+		"type": "message",
+		"role": "system",
 		"content": []map[string]any{
 			{
 				"type": "input_text",
