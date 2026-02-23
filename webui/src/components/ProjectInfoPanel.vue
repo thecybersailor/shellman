@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import SCMPanel from "./SCMPanel.vue";
 import FilePanel from "./FilePanel.vue";
@@ -27,6 +28,7 @@ const props = withDefaults(
     taskId?: string;
     projectId?: string;
     repoRoot?: string;
+    projectIsGitRepo?: boolean;
     activeTab?: ProjectPanelTab;
     taskTitle?: string;
     taskDescription?: string;
@@ -41,6 +43,7 @@ const props = withDefaults(
     taskId: "",
     projectId: "",
     repoRoot: "",
+    projectIsGitRepo: true,
     activeTab: "thread",
     taskTitle: "",
     taskDescription: "",
@@ -66,18 +69,40 @@ const emit = defineEmits<{
 
 function onTabChange(next: string | number) {
   const value = String(next);
+  if (value === "diff" && !canShowDiff.value) {
+    emit("update:active-tab", "thread");
+    return;
+  }
   if (value === "diff" || value === "file" || value === "thread") {
     emit("update:active-tab", value);
   }
 }
+
+const canShowDiff = computed(() => props.projectIsGitRepo !== false);
+const effectiveTab = computed<ProjectPanelTab>(() => {
+  if (!canShowDiff.value && props.activeTab === "diff") {
+    return "thread";
+  }
+  return props.activeTab;
+});
+
+watch(
+  () => [canShowDiff.value, props.activeTab] as const,
+  ([showDiff, activeTab]) => {
+    if (!showDiff && activeTab === "diff") {
+      emit("update:active-tab", "thread");
+    }
+  },
+  { immediate: true }
+);
 </script>
 
 <template>
   <div class="h-full p-2">
-    <Tabs :model-value="props.activeTab" class="h-full flex flex-col" @update:model-value="onTabChange">
-      <TabsList class="w-full grid grid-cols-3">
+    <Tabs :model-value="effectiveTab" class="h-full flex flex-col" @update:model-value="onTabChange">
+      <TabsList class="w-full grid" :class="canShowDiff ? 'grid-cols-3' : 'grid-cols-2'">
         <TabsTrigger value="thread" class="text-xs">{{ t("projectInfo.thread") }}</TabsTrigger>
-        <TabsTrigger value="diff" class="text-xs">{{ t("projectInfo.diff") }}</TabsTrigger>
+        <TabsTrigger v-if="canShowDiff" value="diff" class="text-xs">{{ t("projectInfo.diff") }}</TabsTrigger>
         <TabsTrigger value="file" class="text-xs">{{ t("projectInfo.file") }}</TabsTrigger>
       </TabsList>
       <TabsContent value="thread" force-mount class="flex-1 min-h-0 mt-2">
@@ -102,7 +127,7 @@ function onTabChange(next: string | number) {
           />
         </div>
       </TabsContent>
-      <TabsContent value="diff" force-mount class="flex-1 min-h-0 mt-2">
+      <TabsContent v-if="canShowDiff" value="diff" force-mount class="flex-1 min-h-0 mt-2">
         <div
           :key="`project:${props.projectId || ''}`"
           data-test-id="shellman-project-tab-diff-body"

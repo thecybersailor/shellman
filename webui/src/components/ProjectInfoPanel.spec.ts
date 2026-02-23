@@ -95,4 +95,21 @@ describe("ProjectInfoPanel", () => {
 
     expect(threadWrapper.get("[data-test-id='shellman-project-tab-thread-body']").attributes("data-scope-key")).toBe("task:t2");
   });
+
+  it("hides diff tab for non-git project and falls back to thread tab", async () => {
+    const wrapper = mount(ProjectInfoPanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        activeTab: "diff",
+        projectIsGitRepo: false
+      }
+    });
+
+    await flushPromises();
+
+    expect(wrapper.text()).not.toContain("Diff");
+    expect(wrapper.find("[data-test-id='shellman-project-tab-diff-body']").exists()).toBe(false);
+    expect(wrapper.emitted("update:active-tab")?.[0]?.[0]).toBe("thread");
+  });
 });

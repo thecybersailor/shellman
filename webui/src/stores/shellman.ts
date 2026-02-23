@@ -4,6 +4,7 @@ import { resolveAPIContext, type APIContext } from "@/lib/api_context";
 export interface ActiveProject {
   projectId: string;
   repoRoot: string;
+  isGitRepo: boolean;
 }
 
 export interface TaskNode {
@@ -740,13 +741,17 @@ export function createShellmanStore(
     const projectsRes = (await fetchImpl(apiURL("/api/v1/projects/active"), {
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<
-      Array<{ project_id: string; repo_root: string }>
+      Array<{ project_id: string; repo_root: string; is_git_repo?: boolean }>
     >;
     logInfo("shellman.load.projects", {
       ok: projectsRes.ok,
       count: projectsRes.data?.length ?? 0
     });
-    state.projects = projectsRes.data.map((p) => ({ projectId: p.project_id, repoRoot: p.repo_root }));
+    state.projects = projectsRes.data.map((p) => ({
+      projectId: p.project_id,
+      repoRoot: p.repo_root,
+      isGitRepo: p.is_git_repo !== false
+    }));
 
     for (const project of state.projects) {
       logInfo("shellman.load.project_tree.start", { projectId: project.projectId });
@@ -2062,7 +2067,7 @@ export function createShellmanStore(
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ project_id: id, repo_root: root })
-    }).then((r) => r.json())) as APIResponse<{ project_id: string }>;
+    }).then((r) => r.json())) as APIResponse<{ project_id: string; is_git_repo?: boolean }>;
 
     if (!res.ok) {
       logInfo("shellman.project.add.fail", {
@@ -2075,8 +2080,9 @@ export function createShellmanStore(
     const existing = state.projects.find((p) => p.projectId === id);
     if (existing) {
       existing.repoRoot = root;
+      existing.isGitRepo = res.data?.is_git_repo !== false;
     } else {
-      state.projects.push({ projectId: id, repoRoot: root });
+      state.projects.push({ projectId: id, repoRoot: root, isGitRepo: res.data?.is_git_repo !== false });
     }
 
     const treeRes = (await fetchImpl(apiURL(`/api/v1/projects/${id}/tree`), {

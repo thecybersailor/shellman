@@ -31,6 +31,7 @@ const props = defineProps<{
   selectedTaskSidecarMode?: "advisor" | "observer" | "autopilot";
   selectedTaskProjectId?: string;
   selectedTaskRepoRoot?: string;
+  selectedTaskProjectIsGitRepo?: boolean;
   darkMode: "light" | "dark" | "auto";
   frame?: TerminalFrame | null;
   cursor?: { x: number; y: number } | null;
@@ -210,6 +211,7 @@ function onProjectPanelActiveTabChange(next: string) {
                :task-id="props.selectedTaskId"
                :project-id="props.selectedTaskProjectId ?? ''"
                :repo-root="props.selectedTaskRepoRoot ?? ''"
+               :project-is-git-repo="props.selectedTaskProjectIsGitRepo !== false"
                :active-tab="projectPanelActiveTab"
                :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
                :task-description="props.selectedTaskDescription ?? ''"

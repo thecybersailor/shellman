@@ -24,7 +24,20 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "PROJECTS_LIST_FAILED", err.Error())
 			return
 		}
-		respondOK(w, projects)
+		type projectPayload struct {
+			ProjectID string `json:"project_id"`
+			RepoRoot  string `json:"repo_root"`
+			IsGitRepo bool   `json:"is_git_repo"`
+		}
+		payload := make([]projectPayload, 0, len(projects))
+		for _, p := range projects {
+			payload = append(payload, projectPayload{
+				ProjectID: p.ProjectID,
+				RepoRoot:  p.RepoRoot,
+				IsGitRepo: isGitWorkTree(p.RepoRoot),
+			})
+		}
+		respondOK(w, payload)
 	case http.MethodPost:
 		var req global.ActiveProject
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -43,7 +56,10 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", err.Error())
 			return
 		}
-		respondOK(w, map[string]any{"project_id": req.ProjectID})
+		respondOK(w, map[string]any{
+			"project_id":  req.ProjectID,
+			"is_git_repo": isGitWorkTree(req.RepoRoot),
+		})
 	default:
 		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}
@@ -57,12 +73,13 @@ func validateRepoRoot(repoRoot string) error {
 	if !info.IsDir() {
 		return errors.New("repo_root must be a directory")
 	}
+	return nil
+}
+
+func isGitWorkTree(repoRoot string) bool {
 	cmd := exec.Command("git", "-C", repoRoot, "rev-parse", "--is-inside-work-tree")
 	out, err := cmd.CombinedOutput()
-	if err != nil || strings.TrimSpace(string(out)) != "true" {
-		return errors.New("repo_root is not a git work tree")
-	}
-	return nil
+	return err == nil && strings.TrimSpace(string(out)) == "true"
 }
 
 func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request) {

@@ -353,6 +353,75 @@ func TestServer_AddActiveProject_AcceptsRealGitRepo(t *testing.T) {
 	}
 }
 
+func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
+	repo := t.TempDir()
+
+	cfgStore := &fakeConfigStore{cfg: global.GlobalConfig{LocalPort: 4621}}
+	projStore := &fakeProjectsStore{}
+	srv := NewServer(Deps{ConfigStore: cfgStore, ProjectsStore: projStore})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	body := bytes.NewBufferString(fmt.Sprintf(`{"project_id":"p_plain","repo_root":"%s"}`, repo))
+	resp, err := http.Post(ts.URL+"/api/v1/projects/active", "application/json", body)
+	if err != nil {
+		t.Fatalf("POST projects failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+
+	var createBody struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			ProjectID string `json:"project_id"`
+			IsGitRepo bool   `json:"is_git_repo"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&createBody); err != nil {
+		t.Fatalf("decode add project response failed: %v", err)
+	}
+	if !createBody.OK {
+		t.Fatalf("expected ok=true")
+	}
+	if createBody.Data.ProjectID != "p_plain" {
+		t.Fatalf("unexpected project_id: %q", createBody.Data.ProjectID)
+	}
+	if createBody.Data.IsGitRepo {
+		t.Fatalf("expected non-git directory to return is_git_repo=false")
+	}
+
+	listResp, err := http.Get(ts.URL + "/api/v1/projects/active")
+	if err != nil {
+		t.Fatalf("GET projects failed: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listResp.StatusCode)
+	}
+	var listBody struct {
+		OK   bool `json:"ok"`
+		Data []struct {
+			ProjectID string `json:"project_id"`
+			RepoRoot  string `json:"repo_root"`
+			IsGitRepo bool   `json:"is_git_repo"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list projects response failed: %v", err)
+	}
+	if !listBody.OK || len(listBody.Data) != 1 {
+		t.Fatalf("unexpected list payload: ok=%v len=%d", listBody.OK, len(listBody.Data))
+	}
+	if listBody.Data[0].ProjectID != "p_plain" || listBody.Data[0].RepoRoot != repo {
+		t.Fatalf("unexpected project payload: %#v", listBody.Data[0])
+	}
+	if listBody.Data[0].IsGitRepo {
+		t.Fatalf("expected listed project is_git_repo=false")
+	}
+}
+
 func TestServer_SystemCapabilities_DefaultFalse(t *testing.T) {
 	srv := NewServer(Deps{ConfigStore: &fakeConfigStore{}, ProjectsStore: &fakeProjectsStore{}, HelperConfigStore: &fakeHelperConfigStore{}})
 	ts := httptest.NewServer(srv.Handler())

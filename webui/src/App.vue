@@ -163,6 +163,19 @@ const selectedTaskProjectRoot = computed(() => {
   }
   return "";
 });
+const selectedTaskProjectIsGitRepo = computed(() => {
+  const taskId = store.state.selectedTaskId;
+  if (!taskId) {
+    return true;
+  }
+  for (const [projectId, nodes] of Object.entries(store.state.treesByProject)) {
+    if (nodes.some((node) => node.taskId === taskId)) {
+      const project = store.state.projects.find((item) => item.projectId === projectId);
+      return project?.isGitRepo !== false;
+    }
+  }
+  return true;
+});
 const selectedTaskTitle = computed(() => String(selectedTaskNode.value?.title ?? ""));
 const selectedTaskDescription = computed(() => String(selectedTaskNode.value?.description ?? ""));
 const selectedTaskMessages = computed(() => store.state.taskMessagesByTaskId[store.state.selectedTaskId] ?? []);
@@ -695,6 +708,7 @@ onBeforeUnmount(() => {
             :task-id="selectedTaskId"
             :project-id="findProjectIdByTask(selectedTaskId)"
             :repo-root="selectedTaskProjectRoot"
+            :project-is-git-repo="selectedTaskProjectIsGitRepo"
             :active-tab="projectPanelActiveTab"
             :task-title="selectedTaskTitle"
             :task-description="selectedTaskDescription"
@@ -731,6 +745,7 @@ onBeforeUnmount(() => {
       :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
       :selected-task-project-id="findProjectIdByTask(selectedTaskId)"
       :selected-task-repo-root="selectedTaskProjectRoot"
+      :selected-task-project-is-git-repo="selectedTaskProjectIsGitRepo"
       :dark-mode="mode"
       :frame="selectedTaskFrame"
       :cursor="selectedTaskCursor"
