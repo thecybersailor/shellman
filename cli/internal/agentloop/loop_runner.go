@@ -75,11 +75,15 @@ func (r *LoopRunner) run(
 	// provider and avoids the 400 error entirely.
 	fullContextRoundtrip := true
 	userPrompt = strings.TrimSpace(userPrompt)
+	userPromptForUserMessage := userPrompt
 	historyInputItems := make([]map[string]any, 0, 8)
 	if systemContextText, ok := extractPromptSystemContextJSON(userPrompt); ok {
 		historyInputItems = append(historyInputItems, buildSystemMessageInputItem(systemContextText))
+		if stripped, ok := stripPromptSystemContextSection(userPrompt); ok {
+			userPromptForUserMessage = stripped
+		}
 	}
-	historyInputItems = append(historyInputItems, buildUserMessageInputItem(userPrompt))
+	historyInputItems = append(historyInputItems, buildUserMessageInputItem(userPromptForUserMessage))
 	req := CreateResponseRequest{Store: boolPtr(storeEnabled)}
 	if fullContextRoundtrip {
 		req.Input = cloneResponseInputItems(historyInputItems)
@@ -600,11 +604,57 @@ func extractPromptTaskContextJSON(prompt string) (map[string]any, int, int, bool
 }
 
 func extractPromptSystemContextJSON(prompt string) (string, bool) {
-	start, end, ok := extractPromptJSONObjectRange(prompt, "system_context_json:")
+	start, end, _, _, ok := extractPromptSystemAndEventSectionRanges(prompt)
 	if !ok {
 		return "", false
 	}
 	return strings.TrimSpace(prompt[start:end]), true
+}
+
+func stripPromptSystemContextSection(prompt string) (string, bool) {
+	_, _, systemSectionStart, eventSectionStart, ok := extractPromptSystemAndEventSectionRanges(prompt)
+	if !ok {
+		return prompt, false
+	}
+	next := prompt[:systemSectionStart] + prompt[eventSectionStart:]
+	return strings.TrimSpace(next), true
+}
+
+func extractPromptSystemAndEventSectionRanges(prompt string) (systemJSONStart, systemJSONEnd, systemSectionStart, eventSectionStart int, ok bool) {
+	const (
+		systemMarker       = "\n\nsystem_context_json:"
+		eventMarker        = "\n\nevent_context_json:"
+		conversationMarker = "\n\nconversation_history:"
+	)
+	convIdx := strings.Index(prompt, conversationMarker)
+	if convIdx < 0 {
+		return 0, 0, 0, 0, false
+	}
+	eventIdx := strings.LastIndex(prompt[:convIdx], eventMarker)
+	if eventIdx < 0 {
+		return 0, 0, 0, 0, false
+	}
+	systemIdx := strings.LastIndex(prompt[:eventIdx], systemMarker)
+	if systemIdx < 0 {
+		return 0, 0, 0, 0, false
+	}
+	start := systemIdx + len(systemMarker)
+	for start < len(prompt) {
+		ch := prompt[start]
+		if ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r' {
+			start++
+			continue
+		}
+		break
+	}
+	if start >= len(prompt) || prompt[start] != '{' {
+		return 0, 0, 0, 0, false
+	}
+	end, found := findJSONObjectEnd(prompt, start)
+	if !found || end > eventIdx {
+		return 0, 0, 0, 0, false
+	}
+	return start, end, systemIdx, eventIdx, true
 }
 
 func extractPromptJSONObjectRange(prompt string, marker string) (int, int, bool) {

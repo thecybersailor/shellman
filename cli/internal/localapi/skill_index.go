@@ -51,7 +51,7 @@ func scanSkillBase(index map[string]SkillIndexEntry, basePath, source string) er
 		return err
 	}
 	if !info.IsDir() {
-		return nil
+		return fmt.Errorf("skill base path is not a directory: %s", basePath)
 	}
 	return filepath.WalkDir(basePath, func(path string, d os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -126,7 +126,7 @@ func readSkillFrontMatter(path string) (map[string]string, error) {
 	return meta, nil
 }
 
-func (s *Server) loadSkillIndex(projectID string) []SkillIndexEntry {
+func (s *Server) loadSkillIndex(projectID string) ([]SkillIndexEntry, error) {
 	systemBase := ""
 	if configDir, err := global.DefaultConfigDir(); err == nil {
 		systemBase = filepath.Join(strings.TrimSpace(configDir), "skills")
@@ -139,7 +139,7 @@ func (s *Server) loadSkillIndex(projectID string) []SkillIndexEntry {
 	}
 	fingerprint, err := buildSkillIndexFingerprint(systemBase, projectBase)
 	if err != nil {
-		return []SkillIndexEntry{}
+		return []SkillIndexEntry{}, err
 	}
 	cacheKey := systemBase + "|" + projectBase
 
@@ -147,13 +147,13 @@ func (s *Server) loadSkillIndex(projectID string) []SkillIndexEntry {
 	if cached, ok := s.skillIndexCache[cacheKey]; ok && strings.TrimSpace(cached.Fingerprint) == strings.TrimSpace(fingerprint) {
 		out := cloneSkillEntries(cached.Entries)
 		s.skillIndexMu.Unlock()
-		return out
+		return out, nil
 	}
 	s.skillIndexMu.Unlock()
 
 	indexMap, err := BuildSkillIndex(systemBase, projectBase)
 	if err != nil {
-		return []SkillIndexEntry{}
+		return []SkillIndexEntry{}, err
 	}
 	entries := make([]SkillIndexEntry, 0, len(indexMap))
 	for _, item := range indexMap {
@@ -174,7 +174,7 @@ func (s *Server) loadSkillIndex(projectID string) []SkillIndexEntry {
 		Entries:     cloneSkillEntries(entries),
 	}
 	s.skillIndexMu.Unlock()
-	return entries
+	return entries, nil
 }
 
 func buildSkillIndexFingerprint(systemBase, projectBase string) (string, error) {
@@ -225,7 +225,7 @@ func collectSkillFiles(basePath string) ([]string, error) {
 		return nil, err
 	}
 	if !info.IsDir() {
-		return []string{}, nil
+		return nil, fmt.Errorf("skill base path is not a directory: %s", basePath)
 	}
 	files := make([]string, 0, 16)
 	err = filepath.WalkDir(basePath, func(path string, d os.DirEntry, walkErr error) error {

@@ -307,3 +307,33 @@ func TestPromptInjectsOnlySkillIndexNotSkillBody(t *testing.T) {
 		t.Fatalf("expected prompt not contains skill body token, got %q", prompt)
 	}
 }
+
+func TestBuildUserPromptWithMeta_IncludesSkillIndexErrorWhenLoadFails(t *testing.T) {
+	repo := t.TempDir()
+	configDir := t.TempDir()
+	t.Setenv("SHELLMAN_CONFIG_DIR", configDir)
+	if err := os.MkdirAll(filepath.Join(repo, ".shellman"), 0o755); err != nil {
+		t.Fatalf("mkdir .shellman failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, ".shellman", "skills"), []byte("not-dir"), 0o644); err != nil {
+		t.Fatalf("write .shellman/skills file failed: %v", err)
+	}
+	projects := &memProjectsStore{
+		projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
+	}
+	srv := NewServer(Deps{
+		ConfigStore:   &staticConfigStore{},
+		ProjectsStore: projects,
+	})
+	taskID, err := srv.createTask("p1", "", "root")
+	if err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+	prompt, _ := srv.buildUserPromptWithMeta(taskID, "next")
+	if !strings.Contains(prompt, "\"skills_index_error\"") {
+		t.Fatalf("expected prompt contains skills_index_error, got %q", prompt)
+	}
+	if !strings.Contains(prompt, "not a directory") {
+		t.Fatalf("expected prompt contains load error details, got %q", prompt)
+	}
+}

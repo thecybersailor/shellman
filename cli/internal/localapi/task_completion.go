@@ -382,7 +382,11 @@ func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID 
 	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
 	input.HistoryBlock = strings.TrimSpace(historyBlock)
 	input.TaskContextDocs = taskContext
-	input.SkillIndex = s.loadSkillIndex(strings.TrimSpace(projectID))
+	skillIndex, skillErr := s.loadSkillIndex(strings.TrimSpace(projectID))
+	input.SkillIndex = skillIndex
+	if skillErr != nil {
+		input.SkillIndexError = skillErr.Error()
+	}
 	return input
 }
 
@@ -395,6 +399,11 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 	parent, children := s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), strings.TrimSpace(taskID))
 	historyBlock, historyMeta := s.buildTaskHistoryBlock(store, strings.TrimSpace(taskID))
 	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
+	skillIndex, skillErr := s.loadSkillIndex(strings.TrimSpace(projectID))
+	skillErrText := ""
+	if skillErr != nil {
+		skillErrText = skillErr.Error()
+	}
 	return buildTaskAgentUserPromptWithContexts(
 		userInput,
 		strings.TrimSpace(entry.Flag),
@@ -404,7 +413,8 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 		children,
 		strings.TrimSpace(historyBlock),
 		taskContext,
-		s.loadSkillIndex(strings.TrimSpace(projectID)),
+		skillIndex,
+		skillErrText,
 	), historyMeta
 }
 
