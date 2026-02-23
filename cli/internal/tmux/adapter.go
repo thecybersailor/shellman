@@ -582,7 +582,11 @@ func isTmuxNoServerError(err error) bool {
 		return false
 	}
 	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	return strings.Contains(msg, "no server running")
+	if strings.Contains(msg, "no server running") {
+		return true
+	}
+	// tmux 3.6+ can report missing server socket in this form.
+	return strings.Contains(msg, "error connecting to") && strings.Contains(msg, "no such file or directory")
 }
 
 func paneBootstrapShellCommand() (string, error) {

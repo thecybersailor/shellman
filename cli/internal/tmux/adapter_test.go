@@ -321,6 +321,32 @@ func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenNoServer(t *testing
 	}
 }
 
+func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenSocketMissing(t *testing.T) {
+	f := &SequencedExec{
+		OutputSteps: []outputStep{
+			{out: nil, err: errors.New("exit status 1: error connecting to /tmp/tmux-0/default (No such file or directory)")},
+			{out: []byte("%9\n"), err: nil},
+		},
+	}
+	a := NewAdapter(f)
+	pane, err := a.CreateRootPaneInDir("/tmp/repo")
+	if err != nil {
+		t.Fatalf("create root pane failed: %v", err)
+	}
+	if pane != "%9" {
+		t.Fatalf("unexpected pane id: %s", pane)
+	}
+	if len(f.OutputCalls) != 2 {
+		t.Fatalf("expected 2 output calls, got %d: %#v", len(f.OutputCalls), f.OutputCalls)
+	}
+	if !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected first command: %s", f.OutputCalls[0])
+	}
+	if !strings.HasPrefix(f.OutputCalls[1], "tmux new-session -d -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected fallback command: %s", f.OutputCalls[1])
+	}
+}
+
 func TestAdapter_CreateSiblingPaneInDir_RejectsEmptyCWD(t *testing.T) {
 	f := &FakeExec{}
 	a := NewAdapter(f)
