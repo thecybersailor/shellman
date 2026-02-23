@@ -2,14 +2,51 @@ package localapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
+
+type pmPromptCaptureRunner struct {
+	mu      sync.Mutex
+	calls   []string
+	replies []string
+}
+
+func (r *pmPromptCaptureRunner) Run(_ context.Context, userPrompt string) (string, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.calls = append(r.calls, userPrompt)
+	idx := len(r.calls) - 1
+	if idx >= 0 && idx < len(r.replies) {
+		return r.replies[idx], nil
+	}
+	return "ok", nil
+}
+
+func (r *pmPromptCaptureRunner) callCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.calls)
+}
+
+func (r *pmPromptCaptureRunner) promptAt(index int) string {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if index < 0 || index >= len(r.calls) {
+		return ""
+	}
+	return r.calls[index]
+}
 
 func TestProjectManagerRoutes_CreateAndListSessions(t *testing.T) {
 	repo := t.TempDir()
@@ -121,6 +158,69 @@ func TestProjectManagerRoutes_SendMessageQueued(t *testing.T) {
 	}
 }
 
+func TestProjectManagerRoutes_ListMessages(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	runner := &fakeTaskMessageRunner{reply: "assistant-ok"}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, AgentLoopRunner: runner})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions", "application/json", bytes.NewBufferString(`{"title":"PM Session 1"}`))
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	var created struct {
+		Data struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+
+	reqBody := bytes.NewBufferString(`{"content":"hello pm","source":"user_input"}`)
+	msgResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions/"+created.Data.SessionID+"/messages", "application/json", reqBody)
+	if err != nil {
+		t.Fatalf("send message failed: %v", err)
+	}
+	_ = msgResp.Body.Close()
+
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		listResp, err := http.Get(ts.URL + "/api/v1/projects/p1/pm/sessions/" + created.Data.SessionID + "/messages")
+		if err != nil {
+			t.Fatalf("list messages failed: %v", err)
+		}
+		var out struct {
+			OK   bool `json:"ok"`
+			Data struct {
+				Messages []struct {
+					Role    string `json:"role"`
+					Content string `json:"content"`
+				} `json:"messages"`
+			} `json:"data"`
+		}
+		if err := json.NewDecoder(listResp.Body).Decode(&out); err != nil {
+			_ = listResp.Body.Close()
+			t.Fatalf("decode list messages response failed: %v", err)
+		}
+		_ = listResp.Body.Close()
+		if len(out.Data.Messages) >= 2 {
+			last := out.Data.Messages[len(out.Data.Messages)-1]
+			if last.Role != "assistant" {
+				t.Fatalf("expected last role assistant, got %q", last.Role)
+			}
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("timeout waiting pm messages, got %d", len(out.Data.Messages))
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
 func TestProjectManagerRoutes_InvalidProjectID(t *testing.T) {
 	projects := &memProjectsStore{projects: []global.ActiveProject{}}
 	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
@@ -200,5 +300,78 @@ func TestProjectManagerRoutes_AgentLoopUnavailable(t *testing.T) {
 	}
 	if out.Error.Code != "AGENT_LOOP_UNAVAILABLE" {
 		t.Fatalf("expected AGENT_LOOP_UNAVAILABLE, got %q", out.Error.Code)
+	}
+}
+
+func TestProjectManagerRoutes_SecondMessagePromptIncludesHistory(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	runner := &pmPromptCaptureRunner{replies: []string{"ack-first", "ack-second"}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, AgentLoopRunner: runner})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions", "application/json", bytes.NewBufferString(`{"title":"PM Session 1"}`))
+	if err != nil {
+		t.Fatalf("create session failed: %v", err)
+	}
+	defer func() { _ = createResp.Body.Close() }()
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("create session expected 200, got %d", createResp.StatusCode)
+	}
+	var created struct {
+		Data struct {
+			SessionID string `json:"session_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(createResp.Body).Decode(&created); err != nil {
+		t.Fatalf("decode create response failed: %v", err)
+	}
+
+	firstReqBody := bytes.NewBufferString(`{"content":"first sentence","source":"user_input"}`)
+	firstResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions/"+created.Data.SessionID+"/messages", "application/json", firstReqBody)
+	if err != nil {
+		t.Fatalf("send first message failed: %v", err)
+	}
+	defer func() { _ = firstResp.Body.Close() }()
+	if firstResp.StatusCode != http.StatusOK {
+		t.Fatalf("first message expected 200, got %d", firstResp.StatusCode)
+	}
+
+	waitUntil(t, 3*time.Second, func() bool {
+		if runner.callCount() < 1 {
+			return false
+		}
+		store := projectstate.NewStore(repo)
+		items, listErr := store.ListPMMessages(created.Data.SessionID, 10)
+		if listErr != nil || len(items) < 2 {
+			return false
+		}
+		last := items[len(items)-1]
+		return last.Role == "assistant" && last.Status == projectstate.StatusCompleted
+	})
+
+	secondReqBody := bytes.NewBufferString(`{"content":"second sentence","source":"user_input"}`)
+	secondResp, err := http.Post(ts.URL+"/api/v1/projects/p1/pm/sessions/"+created.Data.SessionID+"/messages", "application/json", secondReqBody)
+	if err != nil {
+		t.Fatalf("send second message failed: %v", err)
+	}
+	defer func() { _ = secondResp.Body.Close() }()
+	if secondResp.StatusCode != http.StatusOK {
+		t.Fatalf("second message expected 200, got %d", secondResp.StatusCode)
+	}
+
+	waitUntil(t, 3*time.Second, func() bool {
+		return runner.callCount() >= 2
+	})
+	secondPrompt := runner.promptAt(1)
+	if !strings.Contains(secondPrompt, "conversation_history:") {
+		t.Fatalf("expected second prompt contains conversation_history, got %q", secondPrompt)
+	}
+	if !strings.Contains(secondPrompt, "first sentence") {
+		t.Fatalf("expected second prompt contains first user content, got %q", secondPrompt)
+	}
+	if !strings.Contains(secondPrompt, "ack-first") {
+		t.Fatalf("expected second prompt contains first assistant content, got %q", secondPrompt)
 	}
 }

@@ -118,6 +118,9 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 		return errors.New("agent_prompt is required")
 	}
 
+	logger := newPMMessagesAuditLogger()
+	defer logger.Close()
+
 	if _, err := store.InsertPMMessage(sessionID, "user", displayContent, projectstate.StatusCompleted, ""); err != nil {
 		return err
 	}
@@ -125,6 +128,18 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 	if err != nil {
 		return err
 	}
+	startedFields := map[string]any{
+		"project_id":           projectID,
+		"session_id":           sessionID,
+		"source":               source,
+		"assistant_message_id": assistantMessageID,
+		"user_content_preview": clipTaskAuditText(displayContent, 400),
+		"agent_prompt_preview": clipTaskAuditText(agentPrompt, 200),
+	}
+	for k, v := range evt.TriggerMeta {
+		startedFields[k] = v
+	}
+	logger.Log("pm.message.send.started", startedFields)
 	s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source})
 
 	runCtx := agentloop.WithPMScope(ctx, agentloop.PMScope{
@@ -134,15 +149,39 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 	})
 	runCtx = agentloop.WithAllowedToolNames(runCtx, s.resolveProjectManagerAllowedToolNames(projectID, sessionID, source))
 
+	invokeFields := map[string]any{
+		"project_id":           projectID,
+		"session_id":           sessionID,
+		"source":               source,
+		"assistant_message_id": assistantMessageID,
+		"mode":                 "run",
+	}
+	for k, v := range evt.TriggerMeta {
+		invokeFields[k] = v
+	}
+	logger.Log("pm.message.send.agentloop.invoke", invokeFields)
+
 	reply, runErr := s.deps.AgentLoopRunner.Run(runCtx, agentPrompt)
 	if runErr != nil {
 		_ = store.UpdatePMMessage(assistantMessageID, "", projectstate.StatusFailed, runErr.Error())
+		logger.Log("pm.message.send.failed", map[string]any{
+			"project_id": projectID,
+			"session_id": sessionID,
+			"source":     source,
+			"error":      runErr.Error(),
+		})
 		s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source, "error": runErr.Error()})
 		return runErr
 	}
 	if err := store.UpdatePMMessage(assistantMessageID, strings.TrimSpace(reply), projectstate.StatusCompleted, ""); err != nil {
 		return err
 	}
+	logger.Log("pm.message.send.completed", map[string]any{
+		"project_id":           projectID,
+		"session_id":           sessionID,
+		"source":               source,
+		"assistant_message_id": assistantMessageID,
+	})
 	s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source})
 	return nil
 }

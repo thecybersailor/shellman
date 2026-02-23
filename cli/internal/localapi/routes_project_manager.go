@@ -37,14 +37,49 @@ func (s *Server) handleProjectManagerRoutes(w http.ResponseWriter, r *http.Reque
 		return true
 	}
 
-	if len(parts) == 5 && r.Method == http.MethodPost && strings.TrimSpace(parts[4]) == "messages" {
+	if len(parts) == 5 && strings.TrimSpace(parts[4]) == "messages" {
 		sessionID := strings.TrimSpace(parts[3])
-		s.handleProjectManagerSendMessage(w, r, store, projectID, sessionID)
+		if r.Method == http.MethodGet {
+			s.handleProjectManagerListMessages(w, store, projectID, sessionID)
+			return true
+		}
+		if r.Method == http.MethodPost {
+			s.handleProjectManagerSendMessage(w, r, store, projectID, sessionID)
+			return true
+		}
+		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 		return true
 	}
 
 	respondError(w, http.StatusNotFound, "NOT_FOUND", "route not found")
 	return true
+}
+
+func (s *Server) handleProjectManagerListMessages(w http.ResponseWriter, store *projectstate.Store, projectID, sessionID string) {
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		respondError(w, http.StatusBadRequest, "INVALID_SESSION_ID", "session_id is required")
+		return
+	}
+	session, ok, err := store.GetPMSession(sessionID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "PM_SESSION_LOAD_FAILED", err.Error())
+		return
+	}
+	if !ok || strings.TrimSpace(session.ProjectID) != strings.TrimSpace(projectID) {
+		respondError(w, http.StatusNotFound, "PM_SESSION_NOT_FOUND", "project manager session not found")
+		return
+	}
+	items, err := store.ListPMMessages(sessionID, 300)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "PM_MESSAGES_LOAD_FAILED", err.Error())
+		return
+	}
+	respondOK(w, map[string]any{
+		"project_id": projectID,
+		"session_id": sessionID,
+		"messages":   items,
+	})
 }
 
 func (s *Server) handleProjectManagerListSessions(w http.ResponseWriter, store *projectstate.Store, projectID string) {
@@ -113,14 +148,19 @@ func (s *Server) handleProjectManagerSendMessage(w http.ResponseWriter, r *http.
 	if source == "" {
 		source = "user_input"
 	}
+	agentPrompt, promptMeta := s.buildPMUserPromptWithMeta(store, sessionID, content)
 	if err := s.sendProjectManagerLoop(r.Context(), PMAgentLoopEvent{
 		SessionID:      sessionID,
 		ProjectID:      strings.TrimSpace(projectID),
 		Source:         source,
 		DisplayContent: content,
-		AgentPrompt:    content,
+		AgentPrompt:    agentPrompt,
 		TriggerMeta: map[string]any{
-			"op": "project.pm.messages.send",
+			"op":               "project.pm.messages.send",
+			"history_total":    promptMeta.TotalMessages,
+			"history_included": promptMeta.Included,
+			"history_dropped":  promptMeta.Dropped,
+			"history_chars":    promptMeta.OutputChars,
 		},
 	}); err != nil {
 		if errors.Is(err, ErrProjectManagerLoopUnavailable) {

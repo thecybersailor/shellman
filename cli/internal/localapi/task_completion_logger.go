@@ -24,6 +24,10 @@ func newTaskMessagesAuditLogger() *taskCompletionAuditLogger {
 	return newAuditLogger("task-messages.log", "task_messages")
 }
 
+func newPMMessagesAuditLogger() *taskCompletionAuditLogger {
+	return newAuditLogger("pm-messages.log", "project_manager_messages")
+}
+
 func newAuditLogger(fileName, component string) *taskCompletionAuditLogger {
 	configDir, err := global.DefaultConfigDir()
 	if err != nil {
