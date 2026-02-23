@@ -3,7 +3,9 @@ package localapi
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+	"time"
 
 	"shellman/cli/internal/agentloop"
 	"shellman/cli/internal/projectstate"
@@ -132,9 +134,81 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 		ProjectID: projectID,
 		Source:    source,
 	})
-	runCtx = agentloop.WithAllowedToolNames(runCtx, s.resolveProjectManagerAllowedToolNames(projectID, sessionID, source))
+	runCtx = agentloop.WithAllowedToolNamesResolver(runCtx, func() []string {
+		return s.resolveProjectManagerAllowedToolNames(projectID, sessionID, source)
+	})
 
-	reply, runErr := s.deps.AgentLoopRunner.Run(runCtx, agentPrompt)
+	reply := ""
+	runErr := error(nil)
+	if streamRunner, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithToolsRunner); ok {
+		var (
+			streamState   = assistantStructuredContent{Text: "", Tools: []map[string]any{}}
+			lastPublishAt time.Time
+			toolIndexByID = map[string]int{}
+		)
+		flushRunning := func(force bool) {
+			now := time.Now()
+			if !force && !lastPublishAt.IsZero() && now.Sub(lastPublishAt) < 120*time.Millisecond {
+				return
+			}
+			next := marshalAssistantStructuredContent(streamState)
+			if err := store.UpdatePMMessage(assistantMessageID, next, projectstate.StatusRunning, ""); err != nil {
+				return
+			}
+			lastPublishAt = now
+			s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source})
+		}
+		reply, runErr = streamRunner.RunStreamWithTools(runCtx, agentPrompt, func(delta string) {
+			if delta == "" {
+				return
+			}
+			streamState.Text += delta
+			flushRunning(false)
+		}, func(event map[string]any) {
+			callID := strings.TrimSpace(fmt.Sprint(event["call_id"]))
+			toolName := strings.TrimSpace(fmt.Sprint(event["tool_name"]))
+			toolState := strings.TrimSpace(fmt.Sprint(event["state"]))
+			next := map[string]any{
+				"type":      event["type"],
+				"tool_name": toolName,
+				"state":     toolState,
+			}
+			if input, ok := event["input"]; ok {
+				next["input"] = input
+			}
+			if output, ok := event["output"]; ok {
+				next["output"] = output
+			}
+			if errText, ok := event["error_text"]; ok {
+				next["error_text"] = errText
+			}
+			if idx, ok := toolIndexByID[callID]; ok && idx >= 0 && idx < len(streamState.Tools) {
+				current := streamState.Tools[idx]
+				for k, v := range next {
+					if v != nil && fmt.Sprint(v) != "" {
+						current[k] = v
+					}
+				}
+				streamState.Tools[idx] = current
+			} else {
+				streamState.Tools = append(streamState.Tools, next)
+				if callID != "" {
+					toolIndexByID[callID] = len(streamState.Tools) - 1
+				}
+			}
+			flushRunning(false)
+		})
+		if runErr == nil {
+			if strings.TrimSpace(reply) == "" {
+				reply = streamState.Text
+			}
+			streamState.Text = strings.TrimSpace(reply)
+			reply = marshalAssistantStructuredContent(streamState)
+		}
+	} else {
+		reply, runErr = s.deps.AgentLoopRunner.Run(runCtx, agentPrompt)
+	}
+
 	if runErr != nil {
 		_ = store.UpdatePMMessage(assistantMessageID, "", projectstate.StatusFailed, runErr.Error())
 		s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source, "error": runErr.Error()})
