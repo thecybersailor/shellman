@@ -59,4 +59,31 @@ describe("OverviewSheet", () => {
     await wrapper.get("[data-test-id='shellman-overview-tab-projects']").trigger("click");
     expect(wrapper.get("[data-test-id='shellman-overview-mobile-projects']").exists()).toBe(true);
   });
+
+  it("falls back to inbox when overviewProjectId is not in mock projects", () => {
+    const wrapper = mount(OverviewSheet, {
+      props: {
+        open: true,
+        isMobile: false,
+        projects: [],
+        overviewProjectId: "not-exists",
+        selectedTaskId: "",
+        selectedTaskMessages: [],
+        selectedTaskTitle: "",
+        selectedTaskDescription: "",
+        selectedTaskSidecarMode: "advisor",
+        selectedPaneUuid: "",
+        selectedCurrentCommand: ""
+      },
+      global: {
+        stubs: {
+          Sheet: { template: "<div><slot /></div>" },
+          SheetContent: { template: "<div><slot /></div>" }
+        }
+      }
+    });
+
+    expect(wrapper.get("[data-test-id='shellman-overview-project-inbox']").classes()).toContain("bg-accent");
+    expect(wrapper.findAll("[data-test-id^='shellman-overview-task-']").length).toBeGreaterThan(0);
+  });
 });

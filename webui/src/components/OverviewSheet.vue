@@ -112,7 +112,15 @@ watch(
     }
     const fromProp = String(props.overviewProjectId ?? "").trim();
     const first = effectiveProjects.value[0]?.projectId ?? "";
-    localProjectId.value = fromProp || first;
+    const hasFromProp = effectiveProjects.value.some((item) => item.projectId === fromProp);
+    const hasInbox = effectiveProjects.value.some((item) => item.projectId === "inbox");
+    if (fromProp && hasFromProp) {
+      localProjectId.value = fromProp;
+    } else if (hasInbox) {
+      localProjectId.value = "inbox";
+    } else {
+      localProjectId.value = first;
+    }
     mobileActiveTab.value = "tasks";
   },
   { immediate: true }
