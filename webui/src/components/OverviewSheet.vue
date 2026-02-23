@@ -171,7 +171,7 @@ function selectTask(taskId: string) {
               class="h-full min-h-0 w-[400px] shrink-0 p-2 bg-gray-200 dark:bg-gray-800"
             >
               <div class="h-full min-h-0 overflow-hidden border border-border/60 rounded-md p-1.5 bg-background/40 flex flex-col">
-                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">Project Manager</div>
+                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">{{ t("overview.projectManager") }}</div>
                 <ConversationSession
                   :task-id="effectiveTaskId"
                   :task-messages="props.selectedTaskMessages"
@@ -259,7 +259,7 @@ function selectTask(taskId: string) {
 
             <div v-else data-test-id="shellman-overview-mobile-chat" class="flex-1 min-h-0 p-2 flex flex-col">
               <div class="h-full min-h-0 overflow-hidden border border-border/60 rounded-md p-1.5 bg-background/40 flex flex-col">
-                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">Project Manager</div>
+                <div class="px-1.5 pb-1 text-xs font-semibold text-muted-foreground">{{ t("overview.projectManager") }}</div>
                 <ConversationSession
                   :task-id="effectiveTaskId"
                   :task-messages="props.selectedTaskMessages"

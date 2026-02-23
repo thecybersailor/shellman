@@ -66,7 +66,8 @@
     "tasks": "Tasks",
     "chat": "Chat",
     "inbox": "Inbox",
-    "close": "Close"
+    "close": "Close",
+    "projectManager": "Project Manager"
   },
   "scm": {
     "typeCommitMessage": "Type commit message...",
