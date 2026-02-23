@@ -1,8 +1,8 @@
 package localapi
 
 import (
-	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -113,14 +113,23 @@ func (s *Server) handleProjectManagerSendMessage(w http.ResponseWriter, r *http.
 	if source == "" {
 		source = "user_input"
 	}
-
-	if _, err := store.InsertPMMessage(sessionID, "user", content, projectstate.StatusCompleted, ""); err != nil {
-		respondError(w, http.StatusInternalServerError, "PM_MESSAGE_INSERT_FAILED", err.Error())
+	if err := s.sendProjectManagerLoop(r.Context(), PMAgentLoopEvent{
+		SessionID:      sessionID,
+		ProjectID:      strings.TrimSpace(projectID),
+		Source:         source,
+		DisplayContent: content,
+		AgentPrompt:    content,
+		TriggerMeta: map[string]any{
+			"op": "project.pm.messages.send",
+		},
+	}); err != nil {
+		if errors.Is(err, ErrProjectManagerLoopUnavailable) {
+			respondError(w, http.StatusInternalServerError, "AGENT_LOOP_UNAVAILABLE", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "PM_MESSAGE_ENQUEUE_FAILED", err.Error())
 		return
 	}
-	s.publishEvent("project.pm.messages.updated", strings.TrimSpace(projectID), "", map[string]any{"session_id": sessionID})
-
-	go s.runProjectManagerReply(context.Background(), store, strings.TrimSpace(projectID), sessionID, content, source)
 
 	respondOK(w, map[string]any{
 		"project_id": projectID,
@@ -128,27 +137,4 @@ func (s *Server) handleProjectManagerSendMessage(w http.ResponseWriter, r *http.
 		"status":     "queued",
 		"source":     source,
 	})
-}
-
-func (s *Server) runProjectManagerReply(ctx context.Context, store *projectstate.Store, projectID, sessionID, content, source string) {
-	if s == nil || store == nil {
-		return
-	}
-	if s.deps.AgentLoopRunner == nil {
-		return
-	}
-	assistantID, err := store.InsertPMMessage(sessionID, "assistant", "", projectstate.StatusRunning, "")
-	if err != nil {
-		return
-	}
-	reply, runErr := s.deps.AgentLoopRunner.Run(ctx, content)
-	if runErr != nil {
-		_ = store.UpdatePMMessage(assistantID, "", projectstate.StatusFailed, runErr.Error())
-		s.publishEvent("project.pm.messages.updated", strings.TrimSpace(projectID), "", map[string]any{"session_id": sessionID, "error": runErr.Error(), "source": source})
-		return
-	}
-	if err := store.UpdatePMMessage(assistantID, strings.TrimSpace(reply), projectstate.StatusCompleted, ""); err != nil {
-		return
-	}
-	s.publishEvent("project.pm.messages.updated", strings.TrimSpace(projectID), "", map[string]any{"session_id": sessionID, "source": source})
 }
