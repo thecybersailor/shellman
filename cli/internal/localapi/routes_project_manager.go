@@ -113,14 +113,19 @@ func (s *Server) handleProjectManagerSendMessage(w http.ResponseWriter, r *http.
 	if source == "" {
 		source = "user_input"
 	}
+	agentPrompt, promptMeta := s.buildPMUserPromptWithMeta(store, sessionID, content)
 	if err := s.sendProjectManagerLoop(r.Context(), PMAgentLoopEvent{
 		SessionID:      sessionID,
 		ProjectID:      strings.TrimSpace(projectID),
 		Source:         source,
 		DisplayContent: content,
-		AgentPrompt:    content,
+		AgentPrompt:    agentPrompt,
 		TriggerMeta: map[string]any{
-			"op": "project.pm.messages.send",
+			"op":               "project.pm.messages.send",
+			"history_total":    promptMeta.TotalMessages,
+			"history_included": promptMeta.Included,
+			"history_dropped":  promptMeta.Dropped,
+			"history_chars":    promptMeta.OutputChars,
 		},
 	}); err != nil {
 		if errors.Is(err, ErrProjectManagerLoopUnavailable) {
