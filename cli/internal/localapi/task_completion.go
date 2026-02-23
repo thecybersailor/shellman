@@ -2,7 +2,6 @@ package localapi
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -489,22 +488,6 @@ func (s *Server) readTaskCompletionContextFile(path string) string {
 		s.taskCompletionContextMu.Unlock()
 	}
 	return content
-}
-
-func mergeTaskCompletionContextIntoHistory(taskContextDocs []taskCompletionContextDocument, historyBlock string) string {
-	historyBlock = strings.TrimSpace(historyBlock)
-	if len(taskContextDocs) == 0 {
-		return historyBlock
-	}
-	raw, err := json.Marshal(taskContextDocs)
-	if err != nil {
-		return historyBlock
-	}
-	contextBlock := string(raw)
-	if historyBlock == "" {
-		return contextBlock
-	}
-	return contextBlock + "\n\n" + historyBlock
 }
 
 func (s *Server) buildTaskHistoryBlock(store *projectstate.Store, taskID string) (string, TaskPromptHistoryMeta) {

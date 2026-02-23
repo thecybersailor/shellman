@@ -88,7 +88,7 @@ func readSkillFrontMatter(path string) (map[string]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }()
 
 	scanner := bufio.NewScanner(file)
 	if !scanner.Scan() {

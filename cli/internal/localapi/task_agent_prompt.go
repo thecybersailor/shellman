@@ -241,8 +241,8 @@ func mustBuildTaskSystemContextJSON(taskContextDocs []taskCompletionContextDocum
 			"skill_body_loading_policy": "inject_index_only_read_body_on_demand",
 		},
 		"task_completion_context_docs": docs,
-		"skills_index":                skills,
-		"skills_index_error":          strings.TrimSpace(skillIndexError),
+		"skills_index":                 skills,
+		"skills_index_error":           strings.TrimSpace(skillIndexError),
 	})
 	return string(raw)
 }
