@@ -48,3 +48,13 @@ Continue task coordination from anywhere on PC or mobile, with the same operatio
 Align team behavior with `AGENTS-SIDECAR.md`.
 
 Use the file as your operational contract for sidecar collaboration: role boundaries, control-plane discipline, and coordination rules across Codex processes.
+
+### Skill Index Context
+
+- Task-agent prompts now separate stable and runtime context:
+  - `system_context_json`: static rules, sidecar context docs, `skills_index`
+  - `event_context_json`: current turn signal and timeline snapshot
+- Skill discovery uses two base paths with project override:
+  - `~/.config/shellman/skills`
+  - `<repo>/.shellman/skills`
+- Prompt injection is metadata-only (`name/description/path/source`); `SKILL.md` body is loaded lazily through `readfile`.

@@ -13,10 +13,20 @@ This document defines the task-agent context contract used by localapi and agent
 ## Prompt Composition
 
 - `USER_INPUT_EVENT` and `TTY_OUTPUT_EVENT` prompts both include:
+  - `system_context_json`
+  - `event_context_json`
   - `conversation_history`
-  - `context_json`
+  - `terminal_screen_state_json`
+- `system_context_json` includes:
+  - task completion context docs (repo/config `AGENTS-SIDECAR.md`)
+  - `skills_index` (name/description/path/source only)
+- `event_context_json` includes:
+  - event metadata (`user_input` or `tty_output`)
+  - local `conversation_history`
+  - parsed task context snapshot
 - `conversation_history` comes from local timeline (`ListTaskMessages(task_id, limit)`).
 - Assistant structured message content is normalized before it is injected to history.
+- Skill body is **not** injected into prompt; full `SKILL.md` is loaded on demand via `readfile(path=<skills_index.path>)`.
 
 ## Overflow Strategy
 
