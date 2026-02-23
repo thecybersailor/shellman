@@ -104,3 +104,24 @@ type TaskMessageRecord struct {
 	CreatedAt int64  `json:"created_at"`
 	UpdatedAt int64  `json:"updated_at"`
 }
+
+type PMSessionRecord struct {
+	SessionID     string `json:"session_id"`
+	ProjectID     string `json:"project_id"`
+	Title         string `json:"title"`
+	Archived      bool   `json:"archived"`
+	LastMessageAt int64  `json:"last_message_at"`
+	CreatedAt     int64  `json:"created_at"`
+	UpdatedAt     int64  `json:"updated_at"`
+}
+
+type PMMessageRecord struct {
+	ID        int64  `json:"id"`
+	SessionID string `json:"session_id"`
+	Role      string `json:"role"`
+	Content   string `json:"content"`
+	Status    string `json:"status"`
+	ErrorText string `json:"error_text,omitempty"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
