@@ -405,27 +405,8 @@ function readBufferLine(y: number) {
 }
 
 function bindTerminalLinkProvider() {
-  const terminal = term as unknown as {
-    registerLinkProvider?: (provider: {
-      provideLinks: (
-        y: number,
-        callback: (
-          links: Array<{
-            range: {
-              start: { x: number; y: number };
-              end: { x: number; y: number };
-            };
-            activate: () => void;
-          }>
-        ) => void
-      ) => void;
-    }) => { dispose?: () => void };
-  };
-  if (!terminal.registerLinkProvider) {
-    return;
-  }
-  terminalLinkProviderDisposable = terminal.registerLinkProvider({
-    provideLinks(y, callback) {
+  const provider = {
+    provideLinks(y: number, callback: (links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: () => void }>) => void) {
       const text = readBufferLine(y);
       if (!text) {
         callback([]);
@@ -436,6 +417,7 @@ function bindTerminalLinkProvider() {
         const endX = Math.max(startX, item.end);
         const payload = item.type === "url" ? { type: "url" as const, raw: item.text } : { type: "path" as const, raw: item.text };
         return {
+          text: item.text,
           range: {
             start: { x: startX, y },
             end: { x: endX, y }
@@ -445,7 +427,38 @@ function bindTerminalLinkProvider() {
       });
       callback(links);
     }
-  });
+  };
+  const terminal = term as unknown as {
+    registerLinkProvider?: (provider: {
+      provideLinks: (
+        y: number,
+        callback: (
+          links: Array<{
+            range: {
+              start: { x: number; y: number };
+              end: { x: number; y: number };
+            };
+            text?: string;
+            activate: () => void;
+          }>
+        ) => void
+      ) => void;
+    }) => { dispose?: () => void };
+  };
+  if (!terminal.registerLinkProvider) {
+    return;
+  }
+  terminalLinkProviderDisposable = terminal.registerLinkProvider(provider);
+  const g = globalThis as typeof globalThis & {
+    __SHELLMAN_TERM_DEBUG__?: boolean;
+    __SHELLMAN_TERM_LINK_PROVIDERS__?: Array<{ term: unknown; provider: unknown }>;
+  };
+  if (g.__SHELLMAN_TERM_DEBUG__ === true) {
+    if (!Array.isArray(g.__SHELLMAN_TERM_LINK_PROVIDERS__)) {
+      g.__SHELLMAN_TERM_LINK_PROVIDERS__ = [];
+    }
+    g.__SHELLMAN_TERM_LINK_PROVIDERS__.push({ term, provider });
+  }
 }
 
 function syncTerminalInputDisabled() {
@@ -690,6 +703,14 @@ onBeforeUnmount(() => {
   }
   terminalLinkProviderDisposable?.dispose?.();
   terminalLinkProviderDisposable = null;
+  {
+    const g = globalThis as typeof globalThis & {
+      __SHELLMAN_TERM_LINK_PROVIDERS__?: Array<{ term: unknown; provider: unknown }>;
+    };
+    if (Array.isArray(g.__SHELLMAN_TERM_LINK_PROVIDERS__)) {
+      g.__SHELLMAN_TERM_LINK_PROVIDERS__ = g.__SHELLMAN_TERM_LINK_PROVIDERS__.filter((item) => item.term !== term);
+    }
+  }
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
