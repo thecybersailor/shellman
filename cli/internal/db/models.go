@@ -91,6 +91,32 @@ type TaskMessage struct {
 
 func (TaskMessage) TableName() string { return "task_messages" }
 
+type PMSession struct {
+	SessionID     string `gorm:"column:session_id;primaryKey"`
+	RepoRoot      string `gorm:"column:repo_root;not null;default:'';index"`
+	ProjectID     string `gorm:"column:project_id;not null;default:'';index"`
+	Title         string `gorm:"column:title;not null;default:''"`
+	Archived      bool   `gorm:"column:archived;not null;default:false"`
+	LastMessageAt int64  `gorm:"column:last_message_at;not null;default:0"`
+	CreatedAt     int64  `gorm:"column:created_at;not null;default:0"`
+	UpdatedAt     int64  `gorm:"column:updated_at;not null;default:0"`
+}
+
+func (PMSession) TableName() string { return "pm_sessions" }
+
+type PMMessage struct {
+	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	SessionID string `gorm:"column:session_id;not null;index"`
+	Role      string `gorm:"column:role;not null;default:''"`
+	Content   string `gorm:"column:content;not null;default:''"`
+	Status    string `gorm:"column:status;not null;default:'completed'"`
+	ErrorText string `gorm:"column:error_text;not null;default:''"`
+	CreatedAt int64  `gorm:"column:created_at;not null;default:0"`
+	UpdatedAt int64  `gorm:"column:updated_at;not null;default:0"`
+}
+
+func (PMMessage) TableName() string { return "pm_messages" }
+
 type ActionOutbox struct {
 	ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	RunID       string `gorm:"column:run_id;not null"`

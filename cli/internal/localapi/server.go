@@ -88,6 +88,7 @@ type Server struct {
 	hub  *WSHub
 
 	taskAgentSupervisor  *taskAgentLoopSupervisor
+	pmAgentSupervisor    *projectManagerLoopSupervisor
 	externalEventSink    func(topic, projectID, taskID string, payload map[string]any)
 	taskAgentModeMu      sync.Mutex
 	taskAgentModeByTask  map[string]taskAgentToolMode
@@ -104,6 +105,7 @@ type Server struct {
 func NewServer(deps Deps) *Server {
 	s := &Server{deps: deps, mux: http.NewServeMux(), hub: NewWSHub()}
 	s.taskAgentSupervisor = newTaskAgentLoopSupervisor(nil, s.handleTaskAgentLoopEvent)
+	s.pmAgentSupervisor = newProjectManagerLoopSupervisor(s.handleProjectManagerLoopEvent)
 	s.taskAgentModeByTask = map[string]taskAgentToolMode{}
 	s.taskMessageRunByTask = map[string]taskMessageRunState{}
 	s.skillIndexCache = map[string]skillIndexCacheEntry{}

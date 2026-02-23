@@ -21,6 +21,8 @@ func SyncSchema(db *gorm.DB) error {
 		&CompletionInbox{},
 		&Note{},
 		&TaskMessage{},
+		&PMSession{},
+		&PMMessage{},
 		&ActionOutbox{},
 		&TmuxServer{},
 		&LegacyState{},
@@ -36,6 +38,8 @@ func SyncSchema(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_outbox_status_retry ON action_outbox(status, next_retry_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_notes_task_created_at ON notes(task_id, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_messages_task_created_at ON task_messages(task_id, created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_pm_sessions_repo_project_updated ON pm_sessions(repo_root, project_id, updated_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_pm_messages_session_created_at ON pm_messages(session_id, created_at DESC);`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return err

@@ -42,14 +42,12 @@ type taskAgentLoopSupervisor struct {
 	mu     sync.Mutex
 	actors map[string]*taskAgentLoopActor
 
+	runtime *ConversationRuntime
 	handler func(context.Context, TaskAgentLoopEvent) error
 }
 
 type taskAgentLoopActor struct {
 	taskID        string
-	queue         chan TaskAgentLoopEvent
-	handler       func(context.Context, TaskAgentLoopEvent) error
-	logger        *slog.Logger
 	sessionConfig TaskAgentSessionConfig
 	sidecarMode   string
 }
@@ -65,6 +63,16 @@ func newTaskAgentLoopSupervisor(
 		logger:  logger,
 		actors:  map[string]*taskAgentLoopActor{},
 		handler: handler,
+		runtime: NewConversationRuntime(func(ctx context.Context, evt ConversationEvent) error {
+			if handler == nil {
+				return errors.New("task agent loop handler is unavailable")
+			}
+			payload, ok := evt.Payload.(TaskAgentLoopEvent)
+			if !ok {
+				return errors.New("invalid task agent loop payload")
+			}
+			return handler(ctx, payload)
+		}),
 	}
 }
 
@@ -77,38 +85,47 @@ func (s *taskAgentLoopSupervisor) Enqueue(ctx context.Context, evt TaskAgentLoop
 		return errors.New("task_id is required")
 	}
 	actor := s.getOrCreateActor(taskID)
+	if evt.SessionConfig == nil {
+		cfg := actor.sessionConfig
+		evt.SessionConfig = &cfg
+	}
 	if s.logger != nil {
 		s.logger.Info("task agent loop enqueue attempt",
 			"module", "task_agent_actor",
 			"task_id", taskID,
 			"source", strings.TrimSpace(evt.Source),
-			"queue_len", len(actor.queue),
-			"queue_cap", cap(actor.queue),
+			"queue_len", s.runtime.QueueLen(taskID),
+			"queue_cap", taskAgentLoopQueueSize,
 		)
 	}
-	select {
-	case <-ctx.Done():
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := s.runtime.Enqueue(ctx, ConversationEvent{
+		Key:     taskID,
+		Payload: evt,
+	}); err != nil {
 		if s.logger != nil {
 			s.logger.Warn("task agent loop enqueue canceled",
 				"module", "task_agent_actor",
 				"task_id", taskID,
 				"source", strings.TrimSpace(evt.Source),
-				"err", ctx.Err(),
+				"err", err,
 			)
 		}
-		return ctx.Err()
-	case actor.queue <- evt:
-		if s.logger != nil {
-			s.logger.Info("task agent loop enqueued",
-				"module", "task_agent_actor",
-				"task_id", taskID,
-				"source", strings.TrimSpace(evt.Source),
-				"queue_len", len(actor.queue),
-				"queue_cap", cap(actor.queue),
-			)
-		}
-		return nil
+		return err
 	}
+	if s.logger != nil {
+		s.logger.Info("task agent loop enqueued",
+			"module", "task_agent_actor",
+			"task_id", taskID,
+			"source", strings.TrimSpace(evt.Source),
+			"queue_len", s.runtime.QueueLen(taskID),
+			"queue_cap", taskAgentLoopQueueSize,
+		)
+	}
+	_ = actor
+	return nil
 }
 
 func (s *taskAgentLoopSupervisor) getOrCreateActor(taskID string) *taskAgentLoopActor {
@@ -119,16 +136,12 @@ func (s *taskAgentLoopSupervisor) getOrCreateActor(taskID string) *taskAgentLoop
 	}
 	actor := &taskAgentLoopActor{
 		taskID:  taskID,
-		queue:   make(chan TaskAgentLoopEvent, taskAgentLoopQueueSize),
-		handler: s.handler,
-		logger:  s.logger.With("module", "task_agent_actor", "task_id", taskID),
 		sessionConfig: TaskAgentSessionConfig{
 			ResponsesStore:      false,
 			DisableStoreContext: true,
 		},
 		sidecarMode: projectstate.SidecarModeAdvisor,
 	}
-	actor.start()
 	s.actors[taskID] = actor
 	return actor
 }
@@ -151,16 +164,12 @@ func (s *taskAgentLoopSupervisor) SetSidecarMode(taskID, mode string) error {
 	if !ok {
 		actor = &taskAgentLoopActor{
 			taskID:  taskID,
-			queue:   make(chan TaskAgentLoopEvent, taskAgentLoopQueueSize),
-			handler: s.handler,
-			logger:  s.logger.With("module", "task_agent_actor", "task_id", taskID),
 			sessionConfig: TaskAgentSessionConfig{
 				ResponsesStore:      false,
 				DisableStoreContext: true,
 			},
 			sidecarMode: projectstate.SidecarModeAdvisor,
 		}
-		actor.start()
 		s.actors[taskID] = actor
 	}
 	actor.sidecarMode = mode
@@ -182,42 +191,6 @@ func (s *taskAgentLoopSupervisor) GetSidecarMode(taskID string) string {
 		return projectstate.SidecarModeAdvisor
 	}
 	return normalizeSidecarMode(actor.sidecarMode)
-}
-
-func (a *taskAgentLoopActor) start() {
-	go func() {
-		for evt := range a.queue {
-			startAt := time.Now()
-			a.logger.Info("task agent loop dequeued",
-				"source", strings.TrimSpace(evt.Source),
-				"queue_len", len(a.queue),
-				"queue_cap", cap(a.queue),
-			)
-			if a.handler == nil {
-				a.logger.Warn("task agent loop handler missing",
-					"source", strings.TrimSpace(evt.Source),
-				)
-				continue
-			}
-			if evt.SessionConfig == nil {
-				cfg := a.sessionConfig
-				evt.SessionConfig = &cfg
-			}
-			a.logger.Info("task agent loop processing",
-				"source", strings.TrimSpace(evt.Source),
-				"responses_store", evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
-				"disable_store_context", evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
-			)
-			if err := a.handler(context.Background(), evt); err != nil {
-				a.logger.Warn("task agent loop event failed", "source", strings.TrimSpace(evt.Source), "err", err)
-				continue
-			}
-			a.logger.Info("task agent loop processed",
-				"source", strings.TrimSpace(evt.Source),
-				"duration_ms", time.Since(startAt).Milliseconds(),
-			)
-		}
-	}()
 }
 
 func (s *Server) sendTaskAgentLoop(ctx context.Context, evt TaskAgentLoopEvent) error {

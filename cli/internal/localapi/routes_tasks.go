@@ -33,6 +33,11 @@ func (s *Server) registerTaskRoutes() {
 
 func (s *Server) handleProjectTree(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(strings.TrimPrefix(r.URL.Path, "/api/v1/projects/"), "/")
+	if len(parts) > 0 && strings.TrimSpace(parts[0]) != "" {
+		if s.handleProjectManagerRoutes(w, r, parts[0], parts) {
+			return
+		}
+	}
 	if len(parts) == 3 && parts[0] != "" && parts[1] == "panes" && parts[2] == "root" {
 		if r.Method != http.MethodPost {
 			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
