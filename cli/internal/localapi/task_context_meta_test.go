@@ -262,3 +262,48 @@ func TestBuildUserPromptWithMeta_TaskCompletionContextCache_RefreshWhenModTimeCh
 		t.Fatalf("expected refreshed prompt use repo-v2 when modTime changed, got %q", secondPrompt)
 	}
 }
+
+func TestPromptInjectsOnlySkillIndexNotSkillBody(t *testing.T) {
+	repo := t.TempDir()
+	configDir := t.TempDir()
+	t.Setenv("SHELLMAN_CONFIG_DIR", configDir)
+	skillDir := filepath.Join(repo, ".shellman", "skills", "writing-plans")
+	if err := os.MkdirAll(skillDir, 0o755); err != nil {
+		t.Fatalf("mkdir skill dir failed: %v", err)
+	}
+	const bodyToken = "BODY_UNIQUE_TOKEN_SHOULD_NOT_BE_INJECTED"
+	skillPath := filepath.Join(skillDir, "SKILL.md")
+	skillBody := "---\nname: writing-plans\ndescription: skill-desc\n---\n# body\n" + bodyToken + "\n"
+	if err := os.WriteFile(skillPath, []byte(skillBody), 0o644); err != nil {
+		t.Fatalf("write skill failed: %v", err)
+	}
+
+	projects := &memProjectsStore{
+		projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
+	}
+	srv := NewServer(Deps{
+		ConfigStore:   &staticConfigStore{},
+		ProjectsStore: projects,
+	})
+	taskID, err := srv.createTask("p1", "", "root")
+	if err != nil {
+		t.Fatalf("create task failed: %v", err)
+	}
+
+	prompt, _ := srv.buildUserPromptWithMeta(taskID, "next")
+	if !strings.Contains(prompt, `"skills_index"`) {
+		t.Fatalf("expected prompt contains skills_index, got %q", prompt)
+	}
+	if !strings.Contains(prompt, `"name":"writing-plans"`) {
+		t.Fatalf("expected prompt contains skill name, got %q", prompt)
+	}
+	if !strings.Contains(prompt, `"description":"skill-desc"`) {
+		t.Fatalf("expected prompt contains skill description, got %q", prompt)
+	}
+	if !strings.Contains(prompt, `"path":"`+filepath.ToSlash(skillPath)+`"`) {
+		t.Fatalf("expected prompt contains skill path, got %q", prompt)
+	}
+	if strings.Contains(prompt, bodyToken) {
+		t.Fatalf("expected prompt not contains skill body token, got %q", prompt)
+	}
+}
