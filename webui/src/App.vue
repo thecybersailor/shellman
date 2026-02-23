@@ -6,6 +6,7 @@ import TerminalPane from "./components/TerminalPane.vue";
 import ProjectInfoPanel from "./components/ProjectInfoPanel.vue";
 import ProjectTaskTree, { type ProjectSection } from "./components/ProjectTaskTree.vue";
 import MobileStackView from "./components/MobileStackView.vue";
+import OverviewSheet from "./components/OverviewSheet.vue";
 import ActiveProjectEntry from "./components/ActiveProjectEntry.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import { createShellmanStore } from "./stores/shellman";
@@ -42,6 +43,8 @@ const mode = useColorMode();
 
 const showAddProjectDialog = ref(false);
 const showSettingsPanel = ref(false);
+const showOverviewSheet = ref(false);
+const overviewProjectId = ref("");
 const settingsSaving = ref(false);
 const scmAiLoading = ref(false);
 const scmSubmitLoading = ref(false);
@@ -282,6 +285,17 @@ async function onDirectorySelected(path: string) {
 function onOpenAddProject(source: "desktop" | "mobile") {
   logInfo("shellman.add_project.open.request", { source, selectedTaskId: store.state.selectedTaskId });
   showAddProjectDialog.value = true;
+}
+
+function onOpenOverview(source: "desktop" | "mobile") {
+  const selectedProjectId = findProjectIdByTask(store.state.selectedTaskId);
+  overviewProjectId.value = selectedProjectId || projects.value[0]?.projectId || "";
+  logInfo("shellman.overview.open.request", { source, projectId: overviewProjectId.value });
+  showOverviewSheet.value = true;
+}
+
+function onOverviewSelectProject(projectId: string) {
+  overviewProjectId.value = String(projectId ?? "").trim();
 }
 
 function onRequestRemoveProject(projectId: string) {
@@ -677,6 +691,7 @@ onBeforeUnmount(() => {
               @edit-project="onRequestEditProjectName"
               @archive-project-done="onArchiveProjectDone"
               @remove-project="onRequestRemoveProject"
+              @open-overview="onOpenOverview('desktop')"
               @open-settings="onOpenSettings('desktop')"
             />
           </div>
@@ -804,6 +819,7 @@ onBeforeUnmount(() => {
       @set-sidecar-mode="onSetTaskSidecarMode"
       @stop-running-assistant-message="onStopRunningAssistantMessage"
       @add-project="onOpenAddProject('mobile')"
+      @open-overview="onOpenOverview('mobile')"
       @edit-project="onRequestEditProjectName"
       @open-settings="onOpenSettings('mobile')"
       @create-root-pane="onCreateRoot"
@@ -816,6 +832,25 @@ onBeforeUnmount(() => {
       @file-open="onFileOpen"
     />
   </main>
+
+  <OverviewSheet
+    v-model:open="showOverviewSheet"
+    :is-mobile="isMobileLayout"
+    :projects="[]"
+    :overview-project-id="overviewProjectId"
+    :selected-task-id="selectedTaskId"
+    :selected-task-messages="selectedTaskMessages"
+    :selected-task-title="selectedTaskTitle"
+    :selected-task-description="selectedTaskDescription"
+    :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
+    :selected-pane-uuid="selectedPaneUuid"
+    :selected-current-command="selectedCurrentCommand"
+    @select-project="onOverviewSelectProject"
+    @select-task="onSelectTask"
+    @send-message="onSendTaskMessage"
+    @set-sidecar-mode="onSetTaskSidecarMode"
+    @stop-running-assistant-message="onStopRunningAssistantMessage"
+  />
 
   <Sheet v-model:open="fileViewerOpen">
     <SheetContent side="right" class="w-full sm:max-w-2xl flex flex-col gap-3">

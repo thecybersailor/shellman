@@ -64,4 +64,14 @@ describe("App project entry wiring", () => {
   it("wires mobile thread send-message passthrough", () => {
     expect(appSource).toContain("@send-message=\"onSendTaskMessage\"");
   });
+
+  it("wires overview sheet open state and event bridge", () => {
+    expect(appSource).toContain("const showOverviewSheet = ref(false)");
+    expect(appSource).toContain("@open-overview=\"onOpenOverview('desktop')\"");
+    expect(appSource).toContain("@open-overview=\"onOpenOverview('mobile')\"");
+    expect(appSource).toContain("<OverviewSheet");
+    expect(appSource).toContain("v-model:open=\"showOverviewSheet\"");
+    expect(appSource).toContain("@select-task=\"onSelectTask\"");
+    expect(appSource).toContain("@send-message=\"onSendTaskMessage\"");
+  });
 });
