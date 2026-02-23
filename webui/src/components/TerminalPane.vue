@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Card, CardContent } from "@/components/ui/card";
 import TaskHeader from "@/components/TaskHeader.vue";
 import PaneLaunchForm from "@/components/PaneLaunchForm.vue";
+import { parseTerminalLinks } from "@/lib/terminal_link_parser";
 const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -29,6 +30,7 @@ const emit = defineEmits<{
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
   (event: "terminal-image-paste", file: File): void;
+  (event: "terminal-link-open", payload: { type: "url"; raw: string } | { type: "path"; raw: string }): void;
   (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "open-session-detail"): void;
 }>();
@@ -50,6 +52,7 @@ let onDataSeq = 0;
 let cursorMoveSeq = 0;
 let terminalInput: HTMLTextAreaElement | null = null;
 let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
+let terminalLinkProviderDisposable: { dispose?: () => void } | null = null;
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
 const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.manual")));
 
@@ -374,6 +377,77 @@ function bindPasteHandler(input: HTMLTextAreaElement | null) {
   input.addEventListener("paste", handler);
 }
 
+function readBufferLine(y: number) {
+  const terminal = term as unknown as {
+    buffer?: {
+      active?: {
+        getLine?: (line: number) => {
+          translateToString?: (trimRight?: boolean, startColumn?: number, endColumn?: number) => string;
+        } | null;
+      };
+    };
+  };
+  const getLine = terminal.buffer?.active?.getLine;
+  if (!getLine) {
+    return "";
+  }
+  for (const lineIndex of [y - 1, y]) {
+    if (lineIndex < 0) {
+      continue;
+    }
+    const line = getLine(lineIndex);
+    const text = line?.translateToString?.(true) ?? "";
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function bindTerminalLinkProvider() {
+  const terminal = term as unknown as {
+    registerLinkProvider?: (provider: {
+      provideLinks: (
+        y: number,
+        callback: (
+          links: Array<{
+            range: {
+              start: { x: number; y: number };
+              end: { x: number; y: number };
+            };
+            activate: () => void;
+          }>
+        ) => void
+      ) => void;
+    }) => { dispose?: () => void };
+  };
+  if (!terminal.registerLinkProvider) {
+    return;
+  }
+  terminalLinkProviderDisposable = terminal.registerLinkProvider({
+    provideLinks(y, callback) {
+      const text = readBufferLine(y);
+      if (!text) {
+        callback([]);
+        return;
+      }
+      const links = parseTerminalLinks(text).map((item) => {
+        const startX = item.start + 1;
+        const endX = Math.max(startX, item.end);
+        const payload = item.type === "url" ? { type: "url" as const, raw: item.text } : { type: "path" as const, raw: item.text };
+        return {
+          range: {
+            start: { x: startX, y },
+            end: { x: endX, y }
+          },
+          activate: () => emit("terminal-link-open", payload)
+        };
+      });
+      callback(links);
+    }
+  });
+}
+
 function syncTerminalInputDisabled() {
   if (!terminalInput) {
     return;
@@ -574,6 +648,7 @@ onMounted(async () => {
         emit("terminal-history-more");
       }
     });
+    bindTerminalLinkProvider();
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", handleWindowResize);
     logInfo("shellman.term.view.resize_listener.added");
@@ -613,6 +688,8 @@ onBeforeUnmount(() => {
     window.clearTimeout(taskSwitchRetryTimer);
     taskSwitchRetryTimer = null;
   }
+  terminalLinkProviderDisposable?.dispose?.();
+  terminalLinkProviderDisposable = null;
   if (resizeObserver) {
     resizeObserver.disconnect();
     resizeObserver = null;
