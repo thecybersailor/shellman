@@ -4,6 +4,7 @@ WORKER_BASE_URL ?= https://turn.runbok.com
 TMUX_SOCKET ?=
 WEBUI_DEV_PROXY_URL ?= http://127.0.0.1:15173
 WEBUI_DIST_DIR ?= ../webui/dist
+DEFAULT_LOCAL_PORT ?= 8000
 
 help:
 	@echo "Shellman Commands:"
@@ -22,11 +23,12 @@ help:
 	@echo "  TMUX_SOCKET=<name>     (default: empty)"
 	@echo "  WEBUI_DEV_PROXY_URL=<url> (default: http://127.0.0.1:15173)"
 	@echo "  WEBUI_DIST_DIR=<dir>      (default: ../webui/dist)"
+	@echo "  DEFAULT_LOCAL_PORT=<port> (default: 8000, compile-time default for local mode)"
 	@echo "  SHELLMAN_LOCAL_HOST=<host> (default for make dev: 0.0.0.0)"
 
 build:
 	@mkdir -p tmp
-	cd cli && go build -o ../tmp/shellman ./cmd/shellman
+	cd cli && go build -ldflags "-X 'shellman/cli/internal/config.defaultLocalPort=$(DEFAULT_LOCAL_PORT)'" -o ../tmp/shellman ./cmd/shellman
 
 server: build
 	SHELLMAN_MODE=local \

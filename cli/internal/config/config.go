@@ -17,6 +17,8 @@ type Config struct {
 	TurnEnabled      bool
 	LocalHost        string
 	LocalPort        int
+	OpenBrowser      bool
+	PIDFile          string
 	WebUIMode        string
 	WebUIDevProxyURL string
 	WebUIDistDir     string
@@ -33,6 +35,7 @@ var (
 	cachedAt         time.Time
 	cacheValid       bool
 	defaultWebUIMode = "dev"
+	defaultLocalPort = "8000"
 )
 
 func LoadConfig() Config {
@@ -93,13 +96,13 @@ func loadFromEnv() Config {
 	if localHost == "" {
 		localHost = "127.0.0.1"
 	}
-	localPort := 4621
+	localPort := atoiOrDefault(defaultLocalPort, 8000)
 	if p := os.Getenv("SHELLMAN_LOCAL_PORT"); p != "" {
 		if p == "0" {
-			localPort = 4621
+			localPort = atoiOrDefault(defaultLocalPort, 8000)
 		} else {
 			// Keep parsing strict but fallback to default on malformed values.
-			if n := atoiOrDefault(p, 4621); n > 0 {
+			if n := atoiOrDefault(p, localPort); n > 0 {
 				localPort = n
 			}
 		}

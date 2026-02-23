@@ -27,7 +27,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.TurnEnabled {
 		t.Fatal("turn should default to disabled")
 	}
-	if cfg.LocalPort != 4621 {
+	if cfg.LocalPort != 8000 {
 		t.Fatalf("unexpected local port: %d", cfg.LocalPort)
 	}
 	if cfg.LocalHost != "127.0.0.1" {
@@ -100,6 +100,20 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 	}
 	if cfg.OpenAIAPIKey != "sk-test" {
 		t.Fatalf("unexpected openai key")
+	}
+}
+
+func TestLoadConfig_DefaultLocalPortFromBuildVariable(t *testing.T) {
+	old := defaultLocalPort
+	defaultLocalPort = "9001"
+	t.Cleanup(func() {
+		defaultLocalPort = old
+	})
+	t.Setenv("SHELLMAN_LOCAL_PORT", "")
+
+	cfg := LoadConfig()
+	if cfg.LocalPort != 9001 {
+		t.Fatalf("unexpected local port from build variable: %d", cfg.LocalPort)
 	}
 }
 

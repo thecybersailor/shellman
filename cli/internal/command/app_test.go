@@ -66,6 +66,8 @@ func TestBuildApp_ServeFlags_OverrideConfig(t *testing.T) {
 				LocalPort:    4621,
 				TmuxSocket:   "",
 				WebUIDistDir: "/default",
+				OpenBrowser:  false,
+				PIDFile:      "",
 			}
 		},
 		RunLocalMode: func(_ context.Context, cfg config.Config) error {
@@ -79,11 +81,13 @@ func TestBuildApp_ServeFlags_OverrideConfig(t *testing.T) {
 		"--port", "4701",
 		"--tmux-socket", "/tmp/tmux.sock",
 		"--webui-dist-dir", "/tmp/webui",
+		"--open",
+		"--pid", "/tmp/shellman.pid",
 	}
 	if err := app.RunContext(context.Background(), args); err != nil {
 		t.Fatalf("run failed: %v", err)
 	}
-	if got.LocalHost != "0.0.0.0" || got.LocalPort != 4701 || got.TmuxSocket != "/tmp/tmux.sock" || got.WebUIDistDir != "/tmp/webui" {
+	if got.LocalHost != "0.0.0.0" || got.LocalPort != 4701 || got.TmuxSocket != "/tmp/tmux.sock" || got.WebUIDistDir != "/tmp/webui" || !got.OpenBrowser || got.PIDFile != "/tmp/shellman.pid" {
 		t.Fatalf("override failed: %#v", got)
 	}
 }

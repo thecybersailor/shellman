@@ -9,11 +9,14 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -43,6 +46,7 @@ import (
 
 var version = "dev"
 var buildTime = "unknown"
+var openBrowserURL = openBrowserURLWithSystem
 
 var streamPumpInterval = 200 * time.Millisecond
 var statusPumpInterval = 500 * time.Millisecond
@@ -492,6 +496,13 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 	if err != nil {
 		return err
 	}
+	pidFilePath := resolveServePIDFile(configDir, cfg)
+	releasePID, err := acquireServePIDFileLock(pidFilePath)
+	if err != nil {
+		return err
+	}
+	defer releasePID()
+
 	cfgStore := global.NewConfigStore(configDir)
 	appProgramsStore := global.NewAppProgramsStore(configDir)
 	projectsStore := global.NewProjectsStore(configDir)
@@ -546,6 +557,7 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 	})
 	addr := fmt.Sprintf("%s:%d", cfg.LocalHost, cfg.LocalPort)
 	_, _ = fmt.Fprintf(out, "shellman local web server listening at http://%s (version=%s built=%s)\n", addr, version, buildTime)
+	maybeOpenBrowser(out, cfg, openBrowserURL)
 
 	httpServer := &http.Server{
 		Addr:    addr,
@@ -585,6 +597,88 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 		return err
 	})
 	return mgr.StartAndWait(ctx)
+}
+
+func resolveServePIDFile(configDir string, cfg config.Config) string {
+	override := strings.TrimSpace(cfg.PIDFile)
+	if override != "" {
+		return override
+	}
+	return filepath.Join(strings.TrimSpace(configDir), "shellman-serve.pid")
+}
+
+func acquireServePIDFileLock(pidFilePath string) (func(), error) {
+	pidFilePath = strings.TrimSpace(pidFilePath)
+	if pidFilePath == "" {
+		return nil, errors.New("pid file path is empty")
+	}
+	if err := os.MkdirAll(filepath.Dir(pidFilePath), 0o755); err != nil {
+		return nil, err
+	}
+
+	f, err := os.OpenFile(pidFilePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+	if err != nil {
+		if errors.Is(err, os.ErrExist) {
+			existingPID, _ := os.ReadFile(pidFilePath)
+			existingText := strings.TrimSpace(string(existingPID))
+			if existingText != "" {
+				return nil, fmt.Errorf("serve already running (pid file exists: %s, pid=%s)", pidFilePath, existingText)
+			}
+			return nil, fmt.Errorf("serve already running (pid file exists: %s)", pidFilePath)
+		}
+		return nil, err
+	}
+	pid := fmt.Sprintf("%d\n", os.Getpid())
+	if _, err := f.WriteString(pid); err != nil {
+		_ = f.Close()
+		_ = os.Remove(pidFilePath)
+		return nil, err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(pidFilePath)
+		return nil, err
+	}
+	return func() {
+		_ = os.Remove(pidFilePath)
+	}, nil
+}
+
+func localBrowserURL(cfg config.Config) string {
+	host := strings.TrimSpace(cfg.LocalHost)
+	switch host {
+	case "", "0.0.0.0", "::", "[::]":
+		host = "127.0.0.1"
+	}
+	return "http://" + net.JoinHostPort(host, fmt.Sprintf("%d", cfg.LocalPort))
+}
+
+func maybeOpenBrowser(out io.Writer, cfg config.Config, opener func(string) error) {
+	if !cfg.OpenBrowser || opener == nil {
+		return
+	}
+	rawURL := localBrowserURL(cfg)
+	if err := opener(rawURL); err != nil {
+		_, _ = fmt.Fprintf(out, "shellman: failed to open browser: %v\n", err)
+	}
+}
+
+func openBrowserURLWithSystem(rawURL string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+	go func() {
+		_ = cmd.Wait()
+	}()
+	return nil
 }
 
 func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigStore, httpExec gatewayHTTPExecutor) (localapi.AgentLoopRunner, string, string) {

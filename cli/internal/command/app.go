@@ -72,6 +72,11 @@ func serveFlags() []cli.Flag {
 			Name:  "port",
 			Usage: "local listen port",
 		},
+		&cli.BoolFlag{
+			Name:    "open",
+			Aliases: []string{"o"},
+			Usage:   "open browser after local server starts",
+		},
 		&cli.StringFlag{
 			Name:  "config-dir",
 			Usage: "shellman config directory",
@@ -83,6 +88,10 @@ func serveFlags() []cli.Flag {
 		&cli.StringFlag{
 			Name:  "webui-dist-dir",
 			Usage: "web ui dist directory",
+		},
+		&cli.StringFlag{
+			Name:  "pid",
+			Usage: "pid file path for serve singleton",
 		},
 	}
 }
@@ -106,11 +115,17 @@ func applyServeFlagOverrides(cliCtx *cli.Context, cfg config.Config) config.Conf
 	if cliCtx.IsSet("port") {
 		cfg.LocalPort = cliCtx.Int("port")
 	}
+	if cliCtx.IsSet("open") {
+		cfg.OpenBrowser = cliCtx.Bool("open")
+	}
 	if cliCtx.IsSet("tmux-socket") {
 		cfg.TmuxSocket = strings.TrimSpace(cliCtx.String("tmux-socket"))
 	}
 	if cliCtx.IsSet("webui-dist-dir") {
 		cfg.WebUIDistDir = strings.TrimSpace(cliCtx.String("webui-dist-dir"))
+	}
+	if cliCtx.IsSet("pid") {
+		cfg.PIDFile = strings.TrimSpace(cliCtx.String("pid"))
 	}
 	if cliCtx.IsSet("config-dir") {
 		_ = os.Setenv("SHELLMAN_CONFIG_DIR", strings.TrimSpace(cliCtx.String("config-dir")))
