@@ -7,6 +7,10 @@ echo "Running full validation before push..."
 echo "This will check: frontend typecheck and tests"
 echo ""
 
+# Hooks inherit Git's local repository env (e.g. GIT_DIR/GIT_WORK_TREE).
+# Unset them so nested git commands in tests operate on their intended temp repos.
+unset $(git rev-parse --local-env-vars)
+
 if make validate-all; then
     echo ""
     echo "✅ All validations passed. Proceeding with push..."
