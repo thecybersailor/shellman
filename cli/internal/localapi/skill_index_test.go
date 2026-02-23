@@ -102,7 +102,10 @@ func TestLoadSkillIndex_RefreshOnSkillFileModTimeChange(t *testing.T) {
 			projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
 		},
 	})
-	first := srv.loadSkillIndex("p1")
+	first, err := srv.loadSkillIndex("p1")
+	if err != nil {
+		t.Fatalf("loadSkillIndex first failed: %v", err)
+	}
 	if len(first) != 1 {
 		t.Fatalf("expected one skill, got %d", len(first))
 	}
@@ -116,11 +119,48 @@ func TestLoadSkillIndex_RefreshOnSkillFileModTimeChange(t *testing.T) {
 	if err := os.Chtimes(projectSkillPath, newTime, newTime); err != nil {
 		t.Fatalf("chtimes project new failed: %v", err)
 	}
-	second := srv.loadSkillIndex("p1")
+	second, err := srv.loadSkillIndex("p1")
+	if err != nil {
+		t.Fatalf("loadSkillIndex second failed: %v", err)
+	}
 	if len(second) != 1 {
 		t.Fatalf("expected one skill after refresh, got %d", len(second))
 	}
 	if strings.TrimSpace(second[0].Description) != "v2" {
 		t.Fatalf("expected refreshed description=v2, got %q", second[0].Description)
+	}
+}
+
+func TestBuildSkillIndex_ReturnsErrorWhenBasePathIsFile(t *testing.T) {
+	systemBase := filepath.Join(t.TempDir(), "skills-as-file")
+	if err := os.WriteFile(systemBase, []byte("not a dir"), 0o644); err != nil {
+		t.Fatalf("write system base file failed: %v", err)
+	}
+	_, err := BuildSkillIndex(systemBase, "")
+	if err == nil {
+		t.Fatalf("expected BuildSkillIndex returns error when base path is file")
+	}
+}
+
+func TestLoadSkillIndex_ReturnsErrorWhenProjectSkillsPathIsFile(t *testing.T) {
+	repo := t.TempDir()
+	configDir := t.TempDir()
+	t.Setenv("SHELLMAN_CONFIG_DIR", configDir)
+	if err := os.MkdirAll(filepath.Join(repo, ".shellman"), 0o755); err != nil {
+		t.Fatalf("mkdir .shellman failed: %v", err)
+	}
+	projectSkillsPath := filepath.Join(repo, ".shellman", "skills")
+	if err := os.WriteFile(projectSkillsPath, []byte("file-not-dir"), 0o644); err != nil {
+		t.Fatalf("write project skills path file failed: %v", err)
+	}
+	srv := NewServer(Deps{
+		ConfigStore: &staticConfigStore{},
+		ProjectsStore: &memProjectsStore{
+			projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
+		},
+	})
+	_, err := srv.loadSkillIndex("p1")
+	if err == nil {
+		t.Fatalf("expected loadSkillIndex returns error when project skills base path is file")
 	}
 }

@@ -50,6 +50,7 @@ type TaskAgentAutoProgressPromptInput struct {
 	ChildTasks        []TaskAgentChildContext
 	TaskContextDocs   []taskCompletionContextDocument
 	SkillIndex        []SkillIndexEntry
+	SkillIndexError   string
 }
 
 func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) string {
@@ -64,7 +65,7 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 		input.Summary = "tty_output detected pane idle and stable output"
 	}
 	taskContextJSON := mustBuildTaskContextJSON(input.PrevFlag, input.PrevStatusMessage, input.TTY, input.ParentTask, input.ChildTasks)
-	systemContextJSON := mustBuildTaskSystemContextJSON(input.TaskContextDocs, input.SkillIndex)
+	systemContextJSON := mustBuildTaskSystemContextJSON(input.TaskContextDocs, input.SkillIndex, input.SkillIndexError)
 	eventContextJSON := mustBuildTaskEventContextJSON("tty_output", "", input.Summary, input.HistoryBlock, taskContextJSON)
 
 	var b strings.Builder
@@ -109,7 +110,7 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 }
 
 func buildTaskAgentUserPrompt(userInput string, prevFlag string, prevStatusMessage string, tty TaskAgentTTYContext, parent *TaskAgentParentContext, children []TaskAgentChildContext, historyBlock string) string {
-	return buildTaskAgentUserPromptWithContexts(userInput, prevFlag, prevStatusMessage, tty, parent, children, historyBlock, nil, nil)
+	return buildTaskAgentUserPromptWithContexts(userInput, prevFlag, prevStatusMessage, tty, parent, children, historyBlock, nil, nil, "")
 }
 
 func buildTaskAgentUserPromptWithContexts(
@@ -122,10 +123,11 @@ func buildTaskAgentUserPromptWithContexts(
 	historyBlock string,
 	taskContextDocs []taskCompletionContextDocument,
 	skillIndex []SkillIndexEntry,
+	skillIndexError string,
 ) string {
 	userInput = strings.TrimSpace(userInput)
 	taskContextJSON := mustBuildTaskContextJSON(prevFlag, prevStatusMessage, tty, parent, children)
-	systemContextJSON := mustBuildTaskSystemContextJSON(taskContextDocs, skillIndex)
+	systemContextJSON := mustBuildTaskSystemContextJSON(taskContextDocs, skillIndex, skillIndexError)
 	eventContextJSON := mustBuildTaskEventContextJSON("user_input", userInput, "", historyBlock, taskContextJSON)
 	var b strings.Builder
 	b.WriteString("USER_INPUT_EVENT\n")
@@ -218,7 +220,7 @@ func buildTaskContextObject(prevFlag string, prevStatus string, tty TaskAgentTTY
 	}
 }
 
-func mustBuildTaskSystemContextJSON(taskContextDocs []taskCompletionContextDocument, skillIndex []SkillIndexEntry) string {
+func mustBuildTaskSystemContextJSON(taskContextDocs []taskCompletionContextDocument, skillIndex []SkillIndexEntry, skillIndexError string) string {
 	skills := cloneSkillEntries(skillIndex)
 	sort.Slice(skills, func(i, j int) bool {
 		if skills[i].Name == skills[j].Name {
@@ -240,6 +242,7 @@ func mustBuildTaskSystemContextJSON(taskContextDocs []taskCompletionContextDocum
 		},
 		"task_completion_context_docs": docs,
 		"skills_index":                skills,
+		"skills_index_error":          strings.TrimSpace(skillIndexError),
 	})
 	return string(raw)
 }
