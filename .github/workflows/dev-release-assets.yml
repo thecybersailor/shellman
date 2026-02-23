@@ -178,3 +178,15 @@ jobs:
             tmp/release/assets/release.json
           generate_release_notes: false
           append_body: false
+      - name: Mirror manifest as latest release.json
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: stable-manifest
+          name: Stable Manifest Mirror
+          prerelease: false
+          target_commitish: main
+          files: |
+            tmp/release/assets/release.json
+          generate_release_notes: false
+          append_body: false
+          make_latest: true
