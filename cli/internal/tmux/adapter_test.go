@@ -20,8 +20,10 @@ type outputStep struct {
 
 type SequencedExec struct {
 	OutputSteps []outputStep
+	RunSteps    []error
 	LastArgs    string
 	OutputCalls []string
+	RunCalls    []string
 }
 
 func (s *SequencedExec) Output(name string, args ...string) ([]byte, error) {
@@ -37,8 +39,27 @@ func (s *SequencedExec) Output(name string, args ...string) ([]byte, error) {
 }
 
 func (s *SequencedExec) Run(name string, args ...string) error {
-	s.LastArgs = strings.Join(append([]string{name}, args...), " ")
-	return nil
+	cmd := strings.Join(append([]string{name}, args...), " ")
+	s.LastArgs = cmd
+	s.RunCalls = append(s.RunCalls, cmd)
+	if len(s.RunSteps) == 0 {
+		return nil
+	}
+	step := s.RunSteps[0]
+	s.RunSteps = s.RunSteps[1:]
+	return step
+}
+
+type fakeExitCodeError struct {
+	code int
+}
+
+func (e fakeExitCodeError) Error() string {
+	return "exit status"
+}
+
+func (e fakeExitCodeError) ExitCode() int {
+	return e.code
 }
 
 func (f *FakeExec) Output(name string, args ...string) ([]byte, error) {
@@ -79,7 +100,7 @@ func TestAdapter_ListSessions_WithTmuxSocket(t *testing.T) {
 func TestAdapter_ListSessions_NoServerRunningReturnsEmpty(t *testing.T) {
 	f := &SequencedExec{
 		OutputSteps: []outputStep{
-			{out: nil, err: errors.New("exit status 1: no server running on /private/tmp/tmux-501/default")},
+			{out: nil, err: fakeExitCodeError{code: 1}},
 		},
 	}
 	a := NewAdapter(f)
@@ -277,8 +298,59 @@ func TestAdapter_CreateChildPane(t *testing.T) {
 	}
 }
 
-func TestAdapter_CreateRootPane(t *testing.T) {
-	f := &FakeExec{OutputText: "%5\n"}
+func TestExtractExitCode(t *testing.T) {
+	code, ok := extractExitCode(fakeExitCodeError{code: 1})
+	if !ok || code != 1 {
+		t.Fatalf("unexpected extract result: ok=%v code=%d", ok, code)
+	}
+	if _, ok := extractExitCode(errors.New("plain")); ok {
+		t.Fatalf("expected plain error to have no exit code")
+	}
+}
+
+func TestAdapter_HasSession_ExitCodeZeroMeansExists(t *testing.T) {
+	f := &SequencedExec{}
+	a := NewAdapter(f)
+	exists, err := a.hasSession("shellman")
+	if err != nil {
+		t.Fatalf("has session failed: %v", err)
+	}
+	if !exists {
+		t.Fatalf("expected session exists=true")
+	}
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected run calls: %#v", f.RunCalls)
+	}
+}
+
+func TestAdapter_HasSession_ExitCodeOneMeansNotExists(t *testing.T) {
+	f := &SequencedExec{RunSteps: []error{fakeExitCodeError{code: 1}}}
+	a := NewAdapter(f)
+	exists, err := a.hasSession("shellman")
+	if err != nil {
+		t.Fatalf("has session failed: %v", err)
+	}
+	if exists {
+		t.Fatalf("expected session exists=false")
+	}
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected run calls: %#v", f.RunCalls)
+	}
+}
+
+func TestAdapter_HasSession_UnexpectedExitCodeReturnsError(t *testing.T) {
+	f := &SequencedExec{RunSteps: []error{fakeExitCodeError{code: 2}}}
+	a := NewAdapter(f)
+	_, err := a.hasSession("shellman")
+	if err == nil {
+		t.Fatalf("expected error for exit code 2")
+	}
+}
+
+func TestAdapter_CreateRootPaneInDir_UsesExistingShellmanSession(t *testing.T) {
+	f := &SequencedExec{
+		OutputSteps: []outputStep{{out: []byte("%5\n"), err: nil}},
+	}
 	a := NewAdapter(f)
 	pane, err := a.CreateRootPaneInDir("/tmp/repo")
 	if err != nil {
@@ -287,20 +359,18 @@ func TestAdapter_CreateRootPane(t *testing.T) {
 	if pane != "%5" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if !strings.HasPrefix(f.LastArgs, "tmux new-window -c /tmp/repo -P -F #{pane_id} bash --rcfile ") {
-		t.Fatalf("unexpected command prefix: %s", f.LastArgs)
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected has-session calls: %#v", f.RunCalls)
 	}
-	if !strings.HasSuffix(f.LastArgs, " -i") {
-		t.Fatalf("unexpected command: %s", f.LastArgs)
+	if len(f.OutputCalls) != 1 || !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -t shellman -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected output calls: %#v", f.OutputCalls)
 	}
 }
 
-func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenNoServer(t *testing.T) {
+func TestAdapter_CreateRootPaneInDir_CreatesShellmanSessionWhenMissing(t *testing.T) {
 	f := &SequencedExec{
-		OutputSteps: []outputStep{
-			{out: nil, err: errors.New("exit status 1: no server running on /private/tmp/tmux-501/default")},
-			{out: []byte("%8\n"), err: nil},
-		},
+		RunSteps:    []error{fakeExitCodeError{code: 1}},
+		OutputSteps: []outputStep{{out: []byte("%8\n"), err: nil}},
 	}
 	a := NewAdapter(f)
 	pane, err := a.CreateRootPaneInDir("/tmp/repo")
@@ -310,40 +380,31 @@ func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenNoServer(t *testing
 	if pane != "%8" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if len(f.OutputCalls) != 2 {
-		t.Fatalf("expected 2 output calls, got %d: %#v", len(f.OutputCalls), f.OutputCalls)
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected has-session calls: %#v", f.RunCalls)
 	}
-	if !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -c /tmp/repo -P -F #{pane_id} ") {
-		t.Fatalf("unexpected first command: %s", f.OutputCalls[0])
-	}
-	if !strings.HasPrefix(f.OutputCalls[1], "tmux new-session -d -c /tmp/repo -P -F #{pane_id} ") {
-		t.Fatalf("unexpected fallback command: %s", f.OutputCalls[1])
+	if len(f.OutputCalls) != 1 || !strings.HasPrefix(f.OutputCalls[0], "tmux new-session -d -s shellman -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected output calls: %#v", f.OutputCalls)
 	}
 }
 
-func TestAdapter_CreateRootPaneInDir_FallbackToNewSessionWhenSocketMissing(t *testing.T) {
+func TestAdapter_CreateRootPane_UsesExistingShellmanSession(t *testing.T) {
 	f := &SequencedExec{
-		OutputSteps: []outputStep{
-			{out: nil, err: errors.New("exit status 1: error connecting to /tmp/tmux-0/default (No such file or directory)")},
-			{out: []byte("%9\n"), err: nil},
-		},
+		OutputSteps: []outputStep{{out: []byte("%6\n"), err: nil}},
 	}
 	a := NewAdapter(f)
-	pane, err := a.CreateRootPaneInDir("/tmp/repo")
+	pane, err := a.CreateRootPane()
 	if err != nil {
 		t.Fatalf("create root pane failed: %v", err)
 	}
-	if pane != "%9" {
+	if pane != "%6" {
 		t.Fatalf("unexpected pane id: %s", pane)
 	}
-	if len(f.OutputCalls) != 2 {
-		t.Fatalf("expected 2 output calls, got %d: %#v", len(f.OutputCalls), f.OutputCalls)
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected has-session calls: %#v", f.RunCalls)
 	}
-	if !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -c /tmp/repo -P -F #{pane_id} ") {
-		t.Fatalf("unexpected first command: %s", f.OutputCalls[0])
-	}
-	if !strings.HasPrefix(f.OutputCalls[1], "tmux new-session -d -c /tmp/repo -P -F #{pane_id} ") {
-		t.Fatalf("unexpected fallback command: %s", f.OutputCalls[1])
+	if len(f.OutputCalls) != 1 || !strings.HasPrefix(f.OutputCalls[0], "tmux new-window -t shellman -P -F #{pane_id} ") {
+		t.Fatalf("unexpected output calls: %#v", f.OutputCalls)
 	}
 }
 

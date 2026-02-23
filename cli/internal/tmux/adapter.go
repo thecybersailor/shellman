@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -14,6 +15,10 @@ type Adapter struct {
 	exec       Exec
 	tmuxSocket string
 }
+
+const rootSessionName = "shellman"
+
+var rootSessionCreateMu sync.Mutex
 
 type processInfo struct {
 	pid  int
@@ -41,7 +46,7 @@ func (a *Adapter) SocketName() string {
 func (a *Adapter) ListSessions() ([]string, error) {
 	out, err := a.exec.Output("tmux", a.withSocket("list-panes", "-a", "-F", "#{pane_id}")...)
 	if err != nil {
-		if isTmuxNoServerError(err) {
+		if code, ok := extractExitCode(err); ok && code == 1 {
 			return []string{}, nil
 		}
 		return nil, err
@@ -537,19 +542,26 @@ func (a *Adapter) CreateChildPaneInDir(target, cwd string) (string, error) {
 }
 
 func (a *Adapter) CreateRootPane() (string, error) {
+	rootSessionCreateMu.Lock()
+	defer rootSessionCreateMu.Unlock()
+
 	shellCmd, err := paneBootstrapShellCommand()
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-P", "-F", "#{pane_id}", shellCmd)...)
+	exists, err := a.hasSession(rootSessionName)
 	if err != nil {
-		if isTmuxNoServerError(err) {
-			fallbackOut, fallbackErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-P", "-F", "#{pane_id}", shellCmd)...)
-			if fallbackErr != nil {
-				return "", err
-			}
-			return strings.TrimSpace(string(fallbackOut)), nil
+		return "", err
+	}
+	if !exists {
+		out, createErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-s", rootSessionName, "-P", "-F", "#{pane_id}", shellCmd)...)
+		if createErr != nil {
+			return "", createErr
 		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-t", rootSessionName, "-P", "-F", "#{pane_id}", shellCmd)...)
+	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
@@ -559,34 +571,54 @@ func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
 	if strings.TrimSpace(cwd) == "" {
 		return "", errors.New("pane cwd is required")
 	}
+	rootSessionCreateMu.Lock()
+	defer rootSessionCreateMu.Unlock()
+
 	shellCmd, err := paneBootstrapShellCommand()
 	if err != nil {
 		return "", err
 	}
-	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+	exists, err := a.hasSession(rootSessionName)
 	if err != nil {
-		if isTmuxNoServerError(err) {
-			fallbackOut, fallbackErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
-			if fallbackErr != nil {
-				return "", err
-			}
-			return strings.TrimSpace(string(fallbackOut)), nil
+		return "", err
+	}
+	if !exists {
+		out, createErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-s", rootSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+		if createErr != nil {
+			return "", createErr
 		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-t", rootSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+	if err != nil {
 		return "", err
 	}
 	return strings.TrimSpace(string(out)), nil
 }
 
-func isTmuxNoServerError(err error) bool {
+func (a *Adapter) hasSession(session string) (bool, error) {
+	err := a.exec.Run("tmux", a.withSocket("has-session", "-t", session)...)
 	if err == nil {
-		return false
+		return true, nil
 	}
-	msg := strings.ToLower(strings.TrimSpace(err.Error()))
-	if strings.Contains(msg, "no server running") {
-		return true
+	if code, ok := extractExitCode(err); ok && code == 1 {
+		return false, nil
 	}
-	// tmux 3.6+ can report missing server socket in this form.
-	return strings.Contains(msg, "error connecting to") && strings.Contains(msg, "no such file or directory")
+	return false, err
+}
+
+func extractExitCode(err error) (int, bool) {
+	if err == nil {
+		return 0, false
+	}
+	type exitCoder interface {
+		ExitCode() int
+	}
+	var e exitCoder
+	if errors.As(err, &e) {
+		return e.ExitCode(), true
+	}
+	return 0, false
 }
 
 func paneBootstrapShellCommand() (string, error) {
