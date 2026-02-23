@@ -221,6 +221,64 @@ func TestLoopRunner_FullContextReplay_InterleavesCallAndOutputWithCallIDAndID(t 
 	}
 }
 
+func TestLoopRunner_IncludesSystemMessageBeforeUserPrompt(t *testing.T) {
+	var firstReq map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if firstReq == nil {
+			firstReq = map[string]any{}
+			if err := json.NewDecoder(r.Body).Decode(&firstReq); err != nil {
+				t.Fatalf("decode request body failed: %v", err)
+			}
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"id": "resp_1",
+			"output": []map[string]any{
+				{
+					"type": "message",
+					"content": []map[string]any{
+						{"type": "output_text", "text": "DONE"},
+					},
+				},
+			},
+		})
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	runner := NewLoopRunner(client, nil, LoopRunnerOptions{MaxIterations: 2})
+
+	prompt := "USER_INPUT_EVENT\nsystem_context_json:\n{\"skills_index\":[{\"name\":\"writing-plans\",\"description\":\"desc\",\"path\":\".shellman/skills/writing-plans/SKILL.md\",\"source\":\"project\"}]}\n\nevent_context_json:\n{\"event_type\":\"user_input\"}\n"
+	out, err := runner.Run(context.Background(), prompt)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+	if strings.TrimSpace(out) != "DONE" {
+		t.Fatalf("unexpected output: %q", out)
+	}
+	inputItems, ok := firstReq["input"].([]any)
+	if !ok || len(inputItems) < 2 {
+		t.Fatalf("expected at least 2 input items, got %#v", firstReq["input"])
+	}
+	firstItem, ok := inputItems[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected first input item map, got %#v", inputItems[0])
+	}
+	secondItem, ok := inputItems[1].(map[string]any)
+	if !ok {
+		t.Fatalf("expected second input item map, got %#v", inputItems[1])
+	}
+	if got := strings.TrimSpace(anyToString(firstItem["role"])); got != "system" {
+		t.Fatalf("expected first role=system, got %q", got)
+	}
+	if got := strings.TrimSpace(anyToString(secondItem["role"])); got != "user" {
+		t.Fatalf("expected second role=user, got %q", got)
+	}
+}
+
 func anyToString(v any) string {
 	s, _ := v.(string)
 	return s
