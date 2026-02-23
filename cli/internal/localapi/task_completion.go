@@ -380,7 +380,9 @@ func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID 
 	input.ParentTask, input.ChildTasks = s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), input.TaskID)
 	historyBlock, _ := s.buildTaskHistoryBlock(store, input.TaskID)
 	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
-	input.HistoryBlock = mergeTaskCompletionContextIntoHistory(taskContext, historyBlock)
+	input.HistoryBlock = strings.TrimSpace(historyBlock)
+	input.TaskContextDocs = taskContext
+	input.SkillIndex = s.loadSkillIndex(strings.TrimSpace(projectID))
 	return input
 }
 
@@ -393,14 +395,16 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 	parent, children := s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), strings.TrimSpace(taskID))
 	historyBlock, historyMeta := s.buildTaskHistoryBlock(store, strings.TrimSpace(taskID))
 	taskContext := s.loadTaskCompletionContext(strings.TrimSpace(projectID))
-	return buildTaskAgentUserPrompt(
+	return buildTaskAgentUserPromptWithContexts(
 		userInput,
 		strings.TrimSpace(entry.Flag),
 		strings.TrimSpace(entry.FlagDesc),
 		tty,
 		parent,
 		children,
-		mergeTaskCompletionContextIntoHistory(taskContext, historyBlock),
+		strings.TrimSpace(historyBlock),
+		taskContext,
+		s.loadSkillIndex(strings.TrimSpace(projectID)),
 	), historyMeta
 }
 

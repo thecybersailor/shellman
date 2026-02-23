@@ -165,3 +165,32 @@ func TestBuildTaskAgentPrompt_CursorSemanticUnavailable(t *testing.T) {
 		t.Fatalf("expected cursor_unavailable semantic, got %q", prompt)
 	}
 }
+
+func TestBuildTaskAgentUserPrompt_IncludesSystemAndEventContext(t *testing.T) {
+	prompt := buildTaskAgentUserPrompt(
+		"do X",
+		"notify",
+		"waiting",
+		TaskAgentTTYContext{
+			CurrentCommand: "bash",
+			OutputTail:     "$ ",
+			Cwd:            "/tmp/repo",
+			HasCursor:      true,
+			CursorX:        2,
+			CursorY:        10,
+		},
+		nil,
+		nil,
+		"[user#1] hi",
+	)
+	required := []string{
+		"system_context_json:",
+		"event_context_json:",
+		"skills_index",
+	}
+	for _, s := range required {
+		if !strings.Contains(prompt, s) {
+			t.Fatalf("expected prompt contains %q, got %q", s, prompt)
+		}
+	}
+}
