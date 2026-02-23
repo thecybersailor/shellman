@@ -37,11 +37,17 @@ type fakePaneService struct{}
 func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
 	return "pane-1", nil
 }
+func (f *fakePaneService) CreateSiblingPaneInDirLoginShell(targetTaskID, cwd string) (string, error) {
+	return "pane-1", nil
+}
 func (f *fakePaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string, error) {
 	return "pane-2", nil
 }
 func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) { return "pane-0", nil }
-func (f *fakePaneService) ClosePane(target string) error                  { return nil }
+func (f *fakePaneService) CreateRootPaneInDirLoginShell(cwd string) (string, error) {
+	return "pane-0", nil
+}
+func (f *fakePaneService) ClosePane(target string) error { return nil }
 func (f *fakePaneService) CaptureHistory(target string, lines int) (string, error) {
 	return "history\n", nil
 }

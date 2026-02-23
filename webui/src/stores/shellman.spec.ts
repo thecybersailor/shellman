@@ -176,6 +176,70 @@ describe("shellman store", () => {
     expect(patchCall?.body).toContain("\"sidecar_mode\":\"autopilot\"");
   });
 
+  it("loads and saves default sidecar mode in config", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      const body = typeof init?.body === "string" ? init.body : undefined;
+      calls.push({ url, method, body });
+      if (url.endsWith("/api/v1/config") && method === "GET") {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              local_port: 4621,
+              defaults: {
+                session_program: "shell",
+                helper_program: "codex",
+                sidecar_mode: "observer"
+              },
+              task_completion_mode: "none",
+              task_completion_command: "",
+              task_completion_idle_duration_seconds: 0
+            }
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/config") && method === "PATCH") {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              local_port: 4621,
+              defaults: {
+                session_program: "shell",
+                helper_program: "codex",
+                sidecar_mode: "autopilot"
+              },
+              task_completion_mode: "none",
+              task_completion_command: "",
+              task_completion_idle_duration_seconds: 0
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: [] }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.loadConfig();
+    expect(store.state.defaultSidecarMode).toBe("observer");
+
+    await store.saveTaskCompletionSettings("shell", "codex", {
+      defaultSidecarMode: "autopilot",
+      taskCompletionMode: "none",
+      taskCompletionCommand: "",
+      taskCompletionIdleDuration: 0,
+      helperOpenAIEndpoint: "",
+      helperOpenAIModel: "",
+      helperOpenAIApiKey: ""
+    });
+    expect(store.state.defaultSidecarMode).toBe("autopilot");
+    const patchCall = calls.find((it) => it.url.endsWith("/api/v1/config") && it.method === "PATCH");
+    expect(patchCall?.body).toContain("\"sidecar_mode\":\"autopilot\"");
+  });
+
   it("supports loading only preferred task pane when prefetchAllTaskPanes is disabled", async () => {
     const calls: string[] = [];
     const fakeFetch = async (url: string) => {
@@ -1600,7 +1664,7 @@ describe("shellman store", () => {
     expect(store.state.terminalEnded).toBe(true);
   });
 
-  it("reopens pane for existing task and reselects the task", async () => {
+  it("manual launches pane for existing task and reselects the task", async () => {
     const sock = new FakeSocket();
     const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
@@ -1622,7 +1686,7 @@ describe("shellman store", () => {
       if (url.endsWith("/api/v1/tasks/t1/pane")) {
         return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
       }
-      if (url.endsWith("/api/v1/tasks/t1/panes/reopen") && method === "POST") {
+      if (url.endsWith("/api/v1/tasks/t1/panes/manual") && method === "POST") {
         return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1b", pane_id: "e2e:1.0", pane_target: "e2e:1.0" } }) } as Response;
       }
       return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
@@ -1634,7 +1698,7 @@ describe("shellman store", () => {
     sock.emitOpen();
     sock.sent = [];
 
-    await store.reopenPaneForTask("t1");
+    await store.manualLaunchPaneForTask("t1");
 
     expect(store.state.paneByTaskId.t1?.paneUuid).toBe("uuid-t1b");
     expect(store.state.paneByTaskId.t1?.paneTarget).toBe("e2e:1.0");
@@ -1643,7 +1707,7 @@ describe("shellman store", () => {
     expect(sentOps).toContain("tmux.select_pane");
   });
 
-  it("derives task title from init prompt when reopening pane", async () => {
+  it("derives task title from init prompt when manual launching pane", async () => {
     const sock = new FakeSocket();
     const calls: Array<{ url: string; method: string; body?: string }> = [];
     const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1667,7 +1731,7 @@ describe("shellman store", () => {
       if (url.endsWith("/api/v1/tasks/t1/pane")) {
         return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
       }
-      if (url.endsWith("/api/v1/tasks/t1/panes/reopen") && method === "POST") {
+      if (url.endsWith("/api/v1/tasks/t1/panes/manual") && method === "POST") {
         return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1b", pane_id: "e2e:1.0", pane_target: "e2e:1.0" } }) } as Response;
       }
       if (url.endsWith("/api/v1/tasks/t1/title") && method === "PATCH") {
@@ -1682,7 +1746,7 @@ describe("shellman store", () => {
     sock.emitOpen();
     sock.sent = [];
 
-    await store.reopenPaneForTask("t1", {
+    await store.manualLaunchPaneForTask("t1", {
       program: "codex",
       prompt: "Refactor authentication middleware to avoid duplicated token parsing between admin and user endpoints."
     });

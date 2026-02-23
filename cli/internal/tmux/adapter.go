@@ -502,6 +502,18 @@ func (a *Adapter) CreateSiblingPaneInDir(target, cwd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (a *Adapter) CreateSiblingPaneInDirLoginShell(target, cwd string) (string, error) {
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("pane cwd is required")
+	}
+	shellCmd := paneLoginShellCommand()
+	out, err := a.exec.Output("tmux", a.withSocket("split-window", "-h", "-t", target, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (a *Adapter) CreateChildPane(target string) (string, error) {
 	shellCmd, err := paneBootstrapShellCommand()
 	if err != nil {
@@ -596,6 +608,32 @@ func (a *Adapter) CreateRootPaneInDir(cwd string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
+func (a *Adapter) CreateRootPaneInDirLoginShell(cwd string) (string, error) {
+	if strings.TrimSpace(cwd) == "" {
+		return "", errors.New("pane cwd is required")
+	}
+	rootSessionCreateMu.Lock()
+	defer rootSessionCreateMu.Unlock()
+
+	shellCmd := paneLoginShellCommand()
+	exists, err := a.hasSession(rootSessionName)
+	if err != nil {
+		return "", err
+	}
+	if !exists {
+		out, createErr := a.exec.Output("tmux", a.withSocket("new-session", "-d", "-s", rootSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+		if createErr != nil {
+			return "", createErr
+		}
+		return strings.TrimSpace(string(out)), nil
+	}
+	out, err := a.exec.Output("tmux", a.withSocket("new-window", "-t", rootSessionName, "-c", cwd, "-P", "-F", "#{pane_id}", shellCmd)...)
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(out)), nil
+}
+
 func (a *Adapter) hasSession(session string) (bool, error) {
 	err := a.exec.Run("tmux", a.withSocket("has-session", "-t", session)...)
 	if err == nil {
@@ -627,6 +665,14 @@ func paneBootstrapShellCommand() (string, error) {
 		return "", err
 	}
 	return "bash --rcfile " + shellSingleQuote(rcPath) + " -i", nil
+}
+
+func paneLoginShellCommand() string {
+	shellPath := strings.TrimSpace(os.Getenv("SHELL"))
+	if shellPath == "" {
+		shellPath = "/bin/bash"
+	}
+	return "exec " + shellSingleQuote(shellPath) + " -l -i"
 }
 
 func ensurePaneBootstrapRCFile() (string, error) {

@@ -19,7 +19,7 @@ const props = defineProps<{
   paneUuid?: string;
   currentCommand?: string;
   isEnded?: boolean;
-  showReopenButton?: boolean;
+  showManualLaunchButton?: boolean;
   isNoPaneTask?: boolean;
   defaultLaunchProgram?: LaunchProgram;
   appPrograms?: Array<{ id: "codex" | "claude" | "cursor"; display_name: string; command: string }>;
@@ -29,7 +29,7 @@ const emit = defineEmits<{
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
   (event: "terminal-image-paste", file: File): void;
-  (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
+  (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "open-session-detail"): void;
 }>();
 const slots = useSlots();
@@ -51,7 +51,7 @@ let cursorMoveSeq = 0;
 let terminalInput: HTMLTextAreaElement | null = null;
 let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
-const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.reopen")));
+const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.manual")));
 
 interface BufferSnapshot {
   cursorX: number | null;
@@ -637,25 +637,25 @@ onBeforeUnmount(() => {
       </slot>
     </CardContent>
     <div
-      v-if="props.showReopenButton && !props.isNoPaneTask"
+      v-if="props.showManualLaunchButton && !props.isNoPaneTask"
       class="px-3 py-2 border-t border-border/10 bg-muted/5"
     >
       <PaneLaunchForm
         :submit-label="launchSubmitLabel"
         :default-program="props.defaultLaunchProgram ?? 'shell'"
         :providers="props.appPrograms ?? []"
-        @submit="(payload) => emit('reopen-pane', payload)"
+        @submit="(payload) => emit('manual-launch-pane', payload)"
       />
     </div>
     <div
-      v-if="props.showReopenButton && props.isNoPaneTask"
+      v-if="props.showManualLaunchButton && props.isNoPaneTask"
       class="px-3 py-3 border-t border-border/10 bg-muted/5"
       >
       <PaneLaunchForm
         :submit-label="launchSubmitLabel"
         :default-program="props.defaultLaunchProgram ?? 'shell'"
         :providers="props.appPrograms ?? []"
-        @submit="(payload) => emit('reopen-pane', payload)"
+        @submit="(payload) => emit('manual-launch-pane', payload)"
       />
     </div>
   </Card>

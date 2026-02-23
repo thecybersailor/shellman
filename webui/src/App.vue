@@ -194,7 +194,7 @@ const selectedTaskHasPaneBinding = computed(() => {
 const selectedTaskIsNoPane = computed(() => Boolean(store.state.selectedTaskId) && !selectedTaskHasPaneBinding.value);
 const orphanPanes = computed(() => store.getOrphanPaneItems());
 const appBootstrapped = ref(false);
-const showReopenPaneButton = computed(() => {
+const showManualLaunchPaneButton = computed(() => {
   if (!store.state.selectedTaskId) {
     return false;
   }
@@ -343,6 +343,7 @@ watch(showSettingsPanel, (open) => {
 async function onSaveSettings(payload: {
   defaultLaunchProgram: "shell" | "codex" | "claude" | "cursor";
   defaultHelperProgram: "codex" | "claude" | "cursor";
+  defaultSidecarMode: "advisor" | "observer" | "autopilot";
   taskCompletionMode: "none" | "command";
   taskCompletionCommand: string;
   taskCompletionIdleDuration: number;
@@ -353,6 +354,7 @@ async function onSaveSettings(payload: {
   try {
     settingsSaving.value = true;
     await store.saveTaskCompletionSettings(payload.defaultLaunchProgram, payload.defaultHelperProgram, {
+      defaultSidecarMode: payload.defaultSidecarMode,
       taskCompletionMode: payload.taskCompletionMode,
       taskCompletionCommand: payload.taskCompletionCommand,
       taskCompletionIdleDuration: payload.taskCompletionIdleDuration,
@@ -419,15 +421,15 @@ function findProjectIdByTask(taskId: string) {
   return "";
 }
 
-async function onReopenPane(payload: { program: LaunchProgram; prompt?: string }) {
+async function onManualLaunchPane(payload: { program: LaunchProgram; prompt?: string }) {
   if (!store.state.selectedTaskId) {
     return;
   }
   try {
     taskActionError.value = "";
-    await store.reopenPaneForTask(store.state.selectedTaskId, payload);
+    await store.manualLaunchPaneForTask(store.state.selectedTaskId, payload);
   } catch (err) {
-    taskActionError.value = err instanceof Error ? err.message : "REOPEN_PANE_FAILED";
+    taskActionError.value = err instanceof Error ? err.message : "MANUAL_LAUNCH_PANE_FAILED";
     notifyError(taskActionError.value);
   }
 }
@@ -669,7 +671,7 @@ onBeforeUnmount(() => {
             selectedTaskFrame,
             selectedTaskCursor,
             selectedTaskEnded,
-            showReopenPaneButton,
+            showManualLaunchPaneButton,
             selectedTaskIsNoPane,
             defaultLaunchProgram: store.state.defaultLaunchProgram,
             appPrograms: store.state.appPrograms
@@ -684,7 +686,7 @@ onBeforeUnmount(() => {
               :frame="selectedTaskFrame"
               :cursor="selectedTaskCursor"
               :is-ended="selectedTaskEnded"
-              :show-reopen-button="showReopenPaneButton"
+              :show-manual-launch-button="showManualLaunchPaneButton"
               :is-no-pane-task="selectedTaskIsNoPane"
               :default-launch-program="store.state.defaultLaunchProgram"
               :app-programs="store.state.appPrograms"
@@ -692,7 +694,7 @@ onBeforeUnmount(() => {
               @terminal-image-paste="onTerminalImagePaste"
               @terminal-resize="onTerminalResize"
               @terminal-history-more="onTerminalHistoryMore"
-              @reopen-pane="onReopenPane"
+              @manual-launch-pane="onManualLaunchPane"
               @open-session-detail="onOpenSessionDetail"
             />
           </slot>
@@ -750,7 +752,7 @@ onBeforeUnmount(() => {
       :frame="selectedTaskFrame"
       :cursor="selectedTaskCursor"
       :is-ended="selectedTaskEnded"
-      :show-reopen-pane-button="showReopenPaneButton"
+      :show-manual-launch-pane-button="showManualLaunchPaneButton"
       :is-no-pane-task="selectedTaskIsNoPane"
       :default-launch-program="store.state.defaultLaunchProgram"
       :app-programs="store.state.appPrograms"
@@ -762,7 +764,7 @@ onBeforeUnmount(() => {
       @terminal-image-paste="onTerminalImagePaste"
       @terminal-resize="onTerminalResize"
       @terminal-history-more="onTerminalHistoryMore"
-      @reopen-pane="onReopenPane"
+      @manual-launch-pane="onManualLaunchPane"
       @save-task-meta="onSaveTaskMeta"
       @send-message="onSendTaskMessage"
       @set-sidecar-mode="onSetTaskSidecarMode"
@@ -808,6 +810,7 @@ onBeforeUnmount(() => {
     v-model:show="showSettingsPanel"
     :default-launch-program="store.state.defaultLaunchProgram"
     :default-helper-program="store.state.defaultHelperProgram"
+    :default-sidecar-mode="store.state.defaultSidecarMode"
     :providers="store.state.appPrograms"
     :task-completion-command="store.state.taskCompletionCommand"
     :task-completion-mode="store.state.taskCompletionMode"

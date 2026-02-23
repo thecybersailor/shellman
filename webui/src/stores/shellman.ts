@@ -135,6 +135,7 @@ interface GlobalConfig {
   defaults?: {
     session_program?: string;
     helper_program?: string;
+    sidecar_mode?: string;
   };
   helper_openai?: {
     endpoint?: string;
@@ -158,7 +159,7 @@ interface AppProgramsConfig {
 
 type TaskCompletionMode = "none" | "command";
 
-interface ReopenPaneOptions {
+interface ManualLaunchPaneOptions {
   program?: LaunchProgram;
   prompt?: string;
 }
@@ -389,6 +390,14 @@ export function createShellmanStore(
     return "none";
   }
 
+  function normalizeSidecarMode(value: unknown): SidecarMode {
+    const raw = String(value ?? "").trim().toLowerCase();
+    if (raw === "advisor" || raw === "autopilot") {
+      return raw;
+    }
+    return "observer";
+  }
+
   function shellQuote(value: string): string {
     if (!value) {
       return "''";
@@ -454,6 +463,7 @@ export function createShellmanStore(
     localPort: 4621,
     defaultLaunchProgram: "shell" as LaunchProgram,
     defaultHelperProgram: "codex" as HelperProgram,
+    defaultSidecarMode: "observer" as SidecarMode,
     helperOpenAIEndpoint: "",
     helperOpenAIModel: "",
     helperOpenAIApiKey: "",
@@ -2326,6 +2336,7 @@ export function createShellmanStore(
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
+    state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
     if (state.appPrograms.length > 0 && !state.appPrograms.some((item) => item.id === state.defaultHelperProgram)) {
       state.defaultHelperProgram = state.appPrograms[0].id;
     }
@@ -2346,7 +2357,8 @@ export function createShellmanStore(
       local_port: state.localPort,
       defaults: {
         session_program: nextProgram,
-        helper_program: state.defaultHelperProgram
+        helper_program: state.defaultHelperProgram,
+        sidecar_mode: state.defaultSidecarMode
       },
       task_completion_mode: state.taskCompletionMode,
       task_completion_command: state.taskCompletionCommand,
@@ -2356,6 +2368,7 @@ export function createShellmanStore(
   }
 
   async function saveTaskCompletionSettings(program: LaunchProgram, helperProgram: HelperProgram, payload: {
+    defaultSidecarMode: SidecarMode;
     taskCompletionMode: TaskCompletionMode;
     taskCompletionCommand: string;
     taskCompletionIdleDuration: number;
@@ -2365,6 +2378,7 @@ export function createShellmanStore(
   }) {
     const nextProgram = normalizeLaunchProgram(program);
     const nextHelperProgram = normalizeHelperProgram(helperProgram);
+    const nextSidecarMode = normalizeSidecarMode(payload.defaultSidecarMode);
     const nextDuration = Number(payload.taskCompletionIdleDuration) >= 0 ? Math.floor(Number(payload.taskCompletionIdleDuration)) : 0;
     const helperOpenAIEndpoint = String(payload.helperOpenAIEndpoint ?? "").trim();
     const helperOpenAIModel = String(payload.helperOpenAIModel ?? "").trim();
@@ -2383,7 +2397,8 @@ export function createShellmanStore(
         local_port: state.localPort,
         defaults: {
           session_program: nextProgram,
-          helper_program: nextHelperProgram
+          helper_program: nextHelperProgram,
+          sidecar_mode: nextSidecarMode
         },
         task_completion_mode: String(payload.taskCompletionMode ?? "none").trim(),
         task_completion_command: String(payload.taskCompletionCommand ?? "").trim(),
@@ -2397,6 +2412,7 @@ export function createShellmanStore(
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
+    state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
@@ -2420,6 +2436,7 @@ export function createShellmanStore(
     state.localPort = typeof res.data.local_port === "number" && res.data.local_port > 0 ? res.data.local_port : 4621;
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
+    state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
@@ -2706,13 +2723,13 @@ export function createShellmanStore(
     };
   }
 
-  async function reopenPaneForTask(taskId: string, options: ReopenPaneOptions = {}) {
-    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/panes/reopen`), {
+  async function manualLaunchPaneForTask(taskId: string, options: ManualLaunchPaneOptions = {}) {
+    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/panes/manual`), {
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" })
     }).then((r) => r.json())) as APIResponse<{ task_id: string; pane_uuid?: string; pane_id: string; pane_target?: string }>;
     if (!res.ok || !res.data?.task_id || !res.data?.pane_id) {
-      throw new Error(String(res.error?.message ?? "REOPEN_PANE_FAILED"));
+      throw new Error(String(res.error?.message ?? "MANUAL_LAUNCH_PANE_FAILED"));
     }
     state.paneByTaskId[res.data.task_id] = {
       paneUuid: String(res.data.pane_uuid ?? res.data.pane_id),
@@ -2806,6 +2823,6 @@ export function createShellmanStore(
     reportRunResult,
     getOrphanPaneItems,
     adoptPaneAsChild,
-    reopenPaneForTask
+    manualLaunchPaneForTask
   };
 }

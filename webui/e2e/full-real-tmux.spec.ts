@@ -715,7 +715,7 @@ test.describe("shellman local web full chain (docker)", () => {
 
     await selectTask(page, seeded.projectID, seeded.missingTaskID);
 
-    const reopenButton = page.getByTestId("shellman-reopen-pane-button").first();
+    const reopenButton = page.getByTestId("shellman-manual-launch-pane-button").first();
     await expect(reopenButton).toBeVisible({ timeout: 15000 });
     await expect(reopenButton).toBeEnabled();
 

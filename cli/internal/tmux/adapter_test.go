@@ -280,6 +280,22 @@ func TestAdapter_CreateSiblingPane(t *testing.T) {
 	}
 }
 
+func TestAdapter_CreateSiblingPaneLoginShell(t *testing.T) {
+	f := &FakeExec{OutputText: "%2\n"}
+	t.Setenv("SHELL", "/bin/zsh")
+	a := NewAdapter(f)
+	pane, err := a.CreateSiblingPaneInDirLoginShell("e2e:0.0", "/tmp/repo")
+	if err != nil {
+		t.Fatalf("create sibling pane login shell failed: %v", err)
+	}
+	if pane != "%2" {
+		t.Fatalf("unexpected pane id: %s", pane)
+	}
+	if !strings.HasPrefix(f.LastArgs, "tmux split-window -h -t e2e:0.0 -c /tmp/repo -P -F #{pane_id} exec '/bin/zsh' -l -i") {
+		t.Fatalf("unexpected command: %s", f.LastArgs)
+	}
+}
+
 func TestAdapter_CreateChildPane(t *testing.T) {
 	f := &FakeExec{OutputText: "%3\n"}
 	a := NewAdapter(f)
@@ -384,6 +400,27 @@ func TestAdapter_CreateRootPaneInDir_CreatesShellmanSessionWhenMissing(t *testin
 		t.Fatalf("unexpected has-session calls: %#v", f.RunCalls)
 	}
 	if len(f.OutputCalls) != 1 || !strings.HasPrefix(f.OutputCalls[0], "tmux new-session -d -s shellman -c /tmp/repo -P -F #{pane_id} ") {
+		t.Fatalf("unexpected output calls: %#v", f.OutputCalls)
+	}
+}
+
+func TestAdapter_CreateRootPaneInDirLoginShell_UsesExistingShellmanSession(t *testing.T) {
+	f := &SequencedExec{
+		OutputSteps: []outputStep{{out: []byte("%5\n"), err: nil}},
+	}
+	t.Setenv("SHELL", "/bin/zsh")
+	a := NewAdapter(f)
+	pane, err := a.CreateRootPaneInDirLoginShell("/tmp/repo")
+	if err != nil {
+		t.Fatalf("create root pane login shell failed: %v", err)
+	}
+	if pane != "%5" {
+		t.Fatalf("unexpected pane id: %s", pane)
+	}
+	if len(f.RunCalls) != 1 || f.RunCalls[0] != "tmux has-session -t shellman" {
+		t.Fatalf("unexpected has-session calls: %#v", f.RunCalls)
+	}
+	if len(f.OutputCalls) != 1 || f.OutputCalls[0] != "tmux new-window -t shellman -c /tmp/repo -P -F #{pane_id} exec '/bin/zsh' -l -i" {
 		t.Fatalf("unexpected output calls: %#v", f.OutputCalls)
 	}
 }

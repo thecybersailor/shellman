@@ -36,7 +36,7 @@ const props = defineProps<{
   frame?: TerminalFrame | null;
   cursor?: { x: number; y: number } | null;
   isEnded?: boolean;
-  showReopenPaneButton?: boolean;
+  showManualLaunchPaneButton?: boolean;
   isNoPaneTask?: boolean;
   defaultLaunchProgram?: LaunchProgram;
   appPrograms?: Array<{ id: "codex" | "claude" | "cursor"; display_name: string; command: string }>;
@@ -51,7 +51,7 @@ const emit = defineEmits<{
   (event: "terminal-image-paste", file: File): void;
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
-  (event: "reopen-pane", payload: { program: LaunchProgram; prompt?: string }): void;
+  (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "save-task-meta", payload: { title: string; description: string }): void;
   (event: "send-message", payload: { content: string }): void;
   (event: "set-sidecar-mode", payload: { mode: "advisor" | "observer" | "autopilot" }): void;
@@ -172,7 +172,7 @@ function onProjectPanelActiveTabChange(next: string) {
             frame: props.frame ?? null,
             cursor: props.cursor ?? null,
             isEnded: Boolean(props.isEnded),
-            showReopenButton: Boolean(props.showReopenPaneButton)
+            showManualLaunchButton: Boolean(props.showManualLaunchPaneButton)
           }">
             <TerminalPane
               :task-id="props.selectedTaskId"
@@ -183,7 +183,7 @@ function onProjectPanelActiveTabChange(next: string) {
               :frame="props.frame ?? null"
               :cursor="props.cursor ?? null"
               :is-ended="Boolean(props.isEnded)"
-              :show-reopen-button="Boolean(props.showReopenPaneButton)"
+              :show-manual-launch-button="Boolean(props.showManualLaunchPaneButton)"
               :is-no-pane-task="Boolean(props.isNoPaneTask)"
               :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
               :app-programs="props.appPrograms ?? []"
@@ -191,7 +191,7 @@ function onProjectPanelActiveTabChange(next: string) {
               @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
               @terminal-resize="(size) => emit('terminal-resize', size)"
               @terminal-history-more="() => emit('terminal-history-more')"
-              @reopen-pane="(payload) => emit('reopen-pane', payload)"
+              @manual-launch-pane="(payload) => emit('manual-launch-pane', payload)"
               @open-session-detail="openSessionDetailPanel"
             />
           </slot>

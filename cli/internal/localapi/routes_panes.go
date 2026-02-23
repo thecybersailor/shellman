@@ -523,7 +523,7 @@ func (s *Server) handleGetTaskPaneHistory(w http.ResponseWriter, r *http.Request
 	})
 }
 
-func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID string) {
+func (s *Server) handlePaneManualLaunch(w http.ResponseWriter, _ *http.Request, taskID string) {
 	if s.deps.PaneService == nil {
 		respondError(w, http.StatusInternalServerError, "PANE_SERVICE_UNAVAILABLE", "pane service is not configured")
 		return
@@ -548,10 +548,10 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 
 	paneID := ""
 	if target != "" {
-		paneID, err = s.deps.PaneService.CreateSiblingPaneInDir(target, repoRoot)
+		paneID, err = s.deps.PaneService.CreateSiblingPaneInDirLoginShell(target, repoRoot)
 	}
 	if paneID == "" || err != nil {
-		paneID, err = s.deps.PaneService.CreateRootPaneInDir(repoRoot)
+		paneID, err = s.deps.PaneService.CreateRootPaneInDirLoginShell(repoRoot)
 		if err != nil {
 			respondError(w, http.StatusInternalServerError, "PANE_CREATE_FAILED", err.Error())
 			return
@@ -564,8 +564,8 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 		PaneUUID:           paneUUID,
 		PaneID:             paneID,
 		PaneTarget:         paneID,
-		ShellReadyRequired: true,
-		ShellReadyAcked:    false,
+		ShellReadyRequired: false,
+		ShellReadyAcked:    true,
 	}
 	if err := store.SavePanes(panes); err != nil {
 		respondError(w, http.StatusInternalServerError, "PANES_SAVE_FAILED", err.Error())
@@ -581,7 +581,7 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 	}
 	s.publishEvent("task.status.updated", projectID, taskID, map[string]any{"status": projectstate.StatusRunning})
 	s.publishEvent("pane.created", projectID, taskID, map[string]any{
-		"relation":    "reopen",
+		"relation":    "manual",
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
@@ -592,7 +592,7 @@ func (s *Server) handlePaneReopen(w http.ResponseWriter, _ *http.Request, taskID
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
-		"relation":    "reopen",
+		"relation":    "manual",
 	})
 }
 

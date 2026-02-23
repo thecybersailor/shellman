@@ -136,7 +136,7 @@ describe("TerminalPane", () => {
     expect(wrapper.get("[data-test-id='shellman-console-pane-current-command']").text()).toBe("toolkit");
   });
 
-  it("shows reopen button and emits reopen-pane with launch options", async () => {
+  it("shows manual launch button and emits manual-launch-pane with launch options", async () => {
     terminalOptions = undefined;
     writes = [];
     resized = [];
@@ -147,11 +147,11 @@ describe("TerminalPane", () => {
     });
     const wrapper = mount(TerminalPane, {
       props: {
-        showReopenButton: true
+        showManualLaunchButton: true
       }
     });
     await wrapper.get("[data-test-id='shellman-pane-launch-form']").trigger("submit");
-    const emitted = wrapper.emitted("reopen-pane") ?? [];
+    const emitted = wrapper.emitted("manual-launch-pane") ?? [];
     expect(emitted.length).toBe(1);
     expect((emitted[0] ?? [])[0]).toMatchObject({ program: "shell" });
   });
@@ -167,7 +167,7 @@ describe("TerminalPane", () => {
     });
     const wrapper = mount(TerminalPane, {
       props: {
-        showReopenButton: true,
+        showManualLaunchButton: true,
         isNoPaneTask: true
       }
     });
@@ -175,7 +175,7 @@ describe("TerminalPane", () => {
     expect(root.exists()).toBe(true);
     const container = root.element.parentElement as HTMLElement;
     expect(container.style.display).toBe("none");
-    expect(wrapper.get("[data-test-id='shellman-reopen-pane-button']").text()).toBe("Start");
+    expect(wrapper.get("[data-test-id='shellman-manual-launch-pane-button']").text()).toBe("Start");
   });
 
   it("enables convertEol so plain \\n output wraps correctly", () => {

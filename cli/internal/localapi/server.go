@@ -35,8 +35,10 @@ type ProjectsStore interface {
 
 type PaneService interface {
 	CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error)
+	CreateSiblingPaneInDirLoginShell(targetTaskID, cwd string) (string, error)
 	CreateChildPaneInDir(targetTaskID, cwd string) (string, error)
 	CreateRootPaneInDir(cwd string) (string, error)
+	CreateRootPaneInDirLoginShell(cwd string) (string, error)
 	ClosePane(target string) error
 	CaptureHistory(target string, lines int) (string, error)
 }

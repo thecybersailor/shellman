@@ -22,7 +22,7 @@
     "noDescription": "No description"
   },
   "paneLaunch": {
-    "reopen": "Reopen",
+    "manual": "Manual",
     "program": "Program",
     "selectProgram": "Select program",
     "initialPrompt": "Initial Prompt",
@@ -68,6 +68,7 @@
     "title": "Settings",
     "description": "Configure default behavior for new sessions.",
     "defaultProgramForNewSession": "Default Program For New Session",
+    "defaultSidecarModeForNewTask": "Default Sidecar Mode For New Task",
     "selectDefaultProgram": "Select default program",
     "helperOpenaiApi": "Helper OpenAI API",
     "runCommandAfterTaskCompleted": "Run command after task completed",
@@ -88,7 +89,7 @@
   },
   "terminal": {
     "start": "Start",
-    "reopen": "Reopen"
+    "manual": "Manual"
   },
   "app": {
     "sessionEndedPaneUnavailable": "Session ended. Pane is no longer available.",

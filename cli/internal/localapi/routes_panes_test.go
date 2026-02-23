@@ -17,25 +17,37 @@ import (
 )
 
 type fakePaneService struct {
-	siblingCount   int
-	childCount     int
-	rootCount      int
-	lastSibling    string
-	lastChild      string
-	lastSiblingCWD string
-	lastChildCWD   string
-	lastRootCWD    string
-	closedTargets  []string
-	closeErr       error
-	history        string
-	historyLines   int
-	historyTarget  string
+	siblingCount         int
+	manualSiblingCount   int
+	childCount           int
+	rootCount            int
+	manualRootCount      int
+	lastSibling          string
+	lastManualSibling    string
+	lastChild            string
+	lastSiblingCWD       string
+	lastManualSiblingCWD string
+	lastChildCWD         string
+	lastRootCWD          string
+	lastManualRootCWD    string
+	closedTargets        []string
+	closeErr             error
+	history              string
+	historyLines         int
+	historyTarget        string
 }
 
 func (f *fakePaneService) CreateSiblingPaneInDir(targetTaskID, cwd string) (string, error) {
 	f.siblingCount++
 	f.lastSibling = targetTaskID
 	f.lastSiblingCWD = cwd
+	return "pane_sibling_1", nil
+}
+
+func (f *fakePaneService) CreateSiblingPaneInDirLoginShell(targetTaskID, cwd string) (string, error) {
+	f.manualSiblingCount++
+	f.lastManualSibling = targetTaskID
+	f.lastManualSiblingCWD = cwd
 	return "pane_sibling_1", nil
 }
 
@@ -49,6 +61,12 @@ func (f *fakePaneService) CreateChildPaneInDir(targetTaskID, cwd string) (string
 func (f *fakePaneService) CreateRootPaneInDir(cwd string) (string, error) {
 	f.rootCount++
 	f.lastRootCWD = cwd
+	return "pane_root_1", nil
+}
+
+func (f *fakePaneService) CreateRootPaneInDirLoginShell(cwd string) (string, error) {
+	f.manualRootCount++
+	f.lastManualRootCWD = cwd
 	return "pane_root_1", nil
 }
 
@@ -987,7 +1005,7 @@ func TestTaskPaneHistoryEndpoint_ReturnsSnapshotByLinesQuery(t *testing.T) {
 	}
 }
 
-func TestPaneReopenRoute_RebindsExistingTask(t *testing.T) {
+func TestPaneManualLaunchRoute_RebindsExistingTask(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
 	paneSvc := &fakePaneService{}
@@ -1020,30 +1038,30 @@ func TestPaneReopenRoute_RebindsExistingTask(t *testing.T) {
 		t.Fatalf("seed panes failed: %v", err)
 	}
 
-	resp, err = http.Post(ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/panes/reopen", "application/json", nil)
+	resp, err = http.Post(ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/panes/manual", "application/json", nil)
 	if err != nil {
-		t.Fatalf("POST reopen failed: %v", err)
+		t.Fatalf("POST manual launch failed: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST reopen expected 200, got %d", resp.StatusCode)
+		t.Fatalf("POST manual launch expected 200, got %d", resp.StatusCode)
 	}
-	if paneSvc.lastSibling != "e2e:0.0" {
-		t.Fatalf("expected reopen to use existing pane target, got %q", paneSvc.lastSibling)
+	if paneSvc.lastManualSibling != "e2e:0.0" {
+		t.Fatalf("expected manual launch to use existing pane target, got %q", paneSvc.lastManualSibling)
 	}
-	var reopenRes struct {
+	var manualLaunchRes struct {
 		Data struct {
 			TaskID   string `json:"task_id"`
 			PaneUUID string `json:"pane_uuid"`
 			PaneID   string `json:"pane_id"`
 		} `json:"data"`
 	}
-	if err := json.NewDecoder(resp.Body).Decode(&reopenRes); err != nil {
-		t.Fatalf("decode reopen failed: %v", err)
+	if err := json.NewDecoder(resp.Body).Decode(&manualLaunchRes); err != nil {
+		t.Fatalf("decode manual launch failed: %v", err)
 	}
-	if reopenRes.Data.TaskID != createRes.Data.TaskID {
-		t.Fatalf("expected same task id, got %q", reopenRes.Data.TaskID)
+	if manualLaunchRes.Data.TaskID != createRes.Data.TaskID {
+		t.Fatalf("expected same task id, got %q", manualLaunchRes.Data.TaskID)
 	}
-	if _, err := uuid.Parse(reopenRes.Data.PaneUUID); err != nil {
+	if _, err := uuid.Parse(manualLaunchRes.Data.PaneUUID); err != nil {
 		t.Fatalf("pane_uuid is not valid UUID: %v", err)
 	}
 
@@ -1054,9 +1072,15 @@ func TestPaneReopenRoute_RebindsExistingTask(t *testing.T) {
 	if panes[createRes.Data.TaskID].PaneID != "pane_sibling_1" {
 		t.Fatalf("expected pane binding replaced, got %#v", panes[createRes.Data.TaskID])
 	}
+	if panes[createRes.Data.TaskID].ShellReadyRequired {
+		t.Fatalf("expected manual launch shell_ready_required=false, got %#v", panes[createRes.Data.TaskID])
+	}
+	if !panes[createRes.Data.TaskID].ShellReadyAcked {
+		t.Fatalf("expected manual launch shell_ready_acked=true, got %#v", panes[createRes.Data.TaskID])
+	}
 }
 
-func TestTaskPaneReopen_DoesNotDependOnTaskTreeJSON(t *testing.T) {
+func TestTaskPaneManualLaunch_DoesNotDependOnTaskTreeJSON(t *testing.T) {
 	tid := uniqueTaskID(t, "t1")
 	repo := t.TempDir()
 	store := projectstate.NewStore(repo)
@@ -1085,15 +1109,15 @@ func TestTaskPaneReopen_DoesNotDependOnTaskTreeJSON(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	resp, err := http.Post(ts.URL+"/api/v1/tasks/"+tid+"/panes/reopen", "application/json", nil)
+	resp, err := http.Post(ts.URL+"/api/v1/tasks/"+tid+"/panes/manual", "application/json", nil)
 	if err != nil {
-		t.Fatalf("POST reopen failed: %v", err)
+		t.Fatalf("POST manual launch failed: %v", err)
 	}
 	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("POST reopen expected 200, got %d", resp.StatusCode)
+		t.Fatalf("POST manual launch expected 200, got %d", resp.StatusCode)
 	}
-	if paneSvc.lastSibling != "e2e:0.0" {
-		t.Fatalf("expected reopen to use existing pane target, got %q", paneSvc.lastSibling)
+	if paneSvc.lastManualSibling != "e2e:0.0" {
+		t.Fatalf("expected manual launch to use existing pane target, got %q", paneSvc.lastManualSibling)
 	}
 
 	rows, err := store.ListTasksByProject("p1")
@@ -1108,6 +1132,6 @@ func TestTaskPaneReopen_DoesNotDependOnTaskTreeJSON(t *testing.T) {
 		}
 	}
 	if !foundRunning {
-		t.Fatalf("expected task t1 status running after reopen, rows=%#v", rows)
+		t.Fatalf("expected task t1 status running after manual launch, rows=%#v", rows)
 	}
 }

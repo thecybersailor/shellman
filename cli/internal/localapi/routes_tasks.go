@@ -334,8 +334,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handlePaneCreate(w, r, taskID, "sibling")
 	case r.Method == http.MethodPost && action == "panes/child":
 		s.handlePaneCreate(w, r, taskID, "child")
-	case r.Method == http.MethodPost && action == "panes/reopen":
-		s.handlePaneReopen(w, r, taskID)
+	case r.Method == http.MethodPost && action == "panes/manual":
+		s.handlePaneManualLaunch(w, r, taskID)
 	case r.Method == http.MethodPost && action == "adopt-pane":
 		s.handleAdoptPane(w, r, taskID)
 	default:
@@ -1005,7 +1005,7 @@ func (s *Server) createTaskWithRole(projectID, parentTaskID, title, requestedRol
 	}
 	store := projectstate.NewStore(repoRoot)
 	taskID := fmt.Sprintf("t_%d", time.Now().UnixNano())
-	sidecarMode := projectstate.SidecarModeAdvisor
+	sidecarMode := s.defaultRootTaskSidecarMode()
 	taskRole := normalizeTaskRole(requestedRole)
 	if taskRole == "" {
 		return "", errInvalidTaskRole
@@ -1066,6 +1066,26 @@ func (s *Server) createTaskWithRole(projectID, parentTaskID, title, requestedRol
 		_ = s.taskAgentSupervisor.SetSidecarMode(taskID, sidecarMode)
 	}
 	return taskID, nil
+}
+
+func (s *Server) defaultRootTaskSidecarMode() string {
+	if s == nil || s.deps.ConfigStore == nil {
+		return projectstate.SidecarModeObserver
+	}
+	cfg, err := s.deps.ConfigStore.LoadOrInit()
+	if err != nil {
+		return projectstate.SidecarModeObserver
+	}
+	switch strings.TrimSpace(strings.ToLower(cfg.Defaults.SidecarMode)) {
+	case projectstate.SidecarModeAdvisor:
+		return projectstate.SidecarModeAdvisor
+	case projectstate.SidecarModeAutopilot:
+		return projectstate.SidecarModeAutopilot
+	case projectstate.SidecarModeObserver:
+		return projectstate.SidecarModeObserver
+	default:
+		return projectstate.SidecarModeObserver
+	}
 }
 
 func (s *Server) findProjectRepoRoot(projectID string) (string, error) {

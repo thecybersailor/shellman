@@ -103,12 +103,12 @@ function submitLaunch() {
     </div>
 
     <Button
-      data-test-id="shellman-reopen-pane-button"
+      data-test-id="shellman-manual-launch-pane-button"
       type="submit"
       class="min-w-32"
       :disabled="!canSubmit"
     >
-      {{ props.submitLabel || t("paneLaunch.reopen") }}
+      {{ props.submitLabel || t("paneLaunch.manual") }}
     </Button>
   </form>
 </template>
