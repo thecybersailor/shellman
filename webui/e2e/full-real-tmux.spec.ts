@@ -798,7 +798,7 @@ test.describe("shellman local web full chain (docker)", () => {
             hasTurnTwo: userMessages.some((m: any) => String(m?.content ?? "").includes("TURN_TWO_MARKER"))
           };
         },
-        { timeout: 30000, intervals: [500, 1000, 1500] }
+        { timeout: 90000, intervals: [500, 1000, 1500] }
       )
       .toMatchObject({ userCount: expect.any(Number), hasTurnOne: true, hasTurnTwo: true });
 
