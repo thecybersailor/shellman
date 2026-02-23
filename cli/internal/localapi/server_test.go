@@ -39,6 +39,18 @@ func (f *fakeProjectsStore) ListProjects() ([]global.ActiveProject, error) {
 	return append([]global.ActiveProject{}, f.projects...), nil
 }
 func (f *fakeProjectsStore) AddProject(p global.ActiveProject) error {
+	for i := range f.projects {
+		if f.projects[i].ProjectID == p.ProjectID {
+			f.projects[i].RepoRoot = p.RepoRoot
+			if strings.TrimSpace(p.DisplayName) != "" {
+				f.projects[i].DisplayName = strings.TrimSpace(p.DisplayName)
+			}
+			return nil
+		}
+	}
+	if strings.TrimSpace(p.DisplayName) == "" {
+		p.DisplayName = p.ProjectID
+	}
 	f.projects = append(f.projects, p)
 	return nil
 }
@@ -375,7 +387,7 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	ts := httptest.NewServer(srv.Handler())
 	defer ts.Close()
 
-	body := bytes.NewBufferString(fmt.Sprintf(`{"project_id":"p_plain","repo_root":"%s"}`, repo))
+	body := bytes.NewBufferString(fmt.Sprintf(`{"project_id":"p_plain","repo_root":"%s","display_name":"Plain Repo"}`, repo))
 	resp, err := http.Post(ts.URL+"/api/v1/projects/active", "application/json", body)
 	if err != nil {
 		t.Fatalf("POST projects failed: %v", err)
@@ -388,8 +400,9 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	var createBody struct {
 		OK   bool `json:"ok"`
 		Data struct {
-			ProjectID string `json:"project_id"`
-			IsGitRepo bool   `json:"is_git_repo"`
+			ProjectID   string `json:"project_id"`
+			DisplayName string `json:"display_name"`
+			IsGitRepo   bool   `json:"is_git_repo"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&createBody); err != nil {
@@ -400,6 +413,9 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	}
 	if createBody.Data.ProjectID != "p_plain" {
 		t.Fatalf("unexpected project_id: %q", createBody.Data.ProjectID)
+	}
+	if createBody.Data.DisplayName != "Plain Repo" {
+		t.Fatalf("unexpected display_name: %q", createBody.Data.DisplayName)
 	}
 	if createBody.Data.IsGitRepo {
 		t.Fatalf("expected non-git directory to return is_git_repo=false")
@@ -416,9 +432,10 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	var listBody struct {
 		OK   bool `json:"ok"`
 		Data []struct {
-			ProjectID string `json:"project_id"`
-			RepoRoot  string `json:"repo_root"`
-			IsGitRepo bool   `json:"is_git_repo"`
+			ProjectID   string `json:"project_id"`
+			DisplayName string `json:"display_name"`
+			RepoRoot    string `json:"repo_root"`
+			IsGitRepo   bool   `json:"is_git_repo"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
@@ -430,8 +447,68 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	if listBody.Data[0].ProjectID != "p_plain" || listBody.Data[0].RepoRoot != repo {
 		t.Fatalf("unexpected project payload: %#v", listBody.Data[0])
 	}
+	if listBody.Data[0].DisplayName != "Plain Repo" {
+		t.Fatalf("expected listed project display_name=Plain Repo, got %q", listBody.Data[0].DisplayName)
+	}
 	if listBody.Data[0].IsGitRepo {
 		t.Fatalf("expected listed project is_git_repo=false")
+	}
+}
+
+func TestServer_RenameProjectDisplayName(t *testing.T) {
+	repo := initGitRepo(t)
+
+	cfgStore := &fakeConfigStore{cfg: global.GlobalConfig{LocalPort: 4621}}
+	projStore := &fakeProjectsStore{}
+	srv := NewServer(Deps{ConfigStore: cfgStore, ProjectsStore: projStore})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createBody := bytes.NewBufferString(fmt.Sprintf(`{"project_id":"p1","repo_root":"%s","display_name":"Old Name"}`, repo))
+	createResp, err := http.Post(ts.URL+"/api/v1/projects/active", "application/json", createBody)
+	if err != nil {
+		t.Fatalf("POST projects failed: %v", err)
+	}
+	_ = createResp.Body.Close()
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", createResp.StatusCode)
+	}
+
+	renameReqBody := bytes.NewBufferString(`{"display_name":"New Name"}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/projects/active/p1", renameReqBody)
+	req.Header.Set("Content-Type", "application/json")
+	renameResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH project display name failed: %v", err)
+	}
+	defer func() { _ = renameResp.Body.Close() }()
+	if renameResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", renameResp.StatusCode)
+	}
+
+	listResp, err := http.Get(ts.URL + "/api/v1/projects/active")
+	if err != nil {
+		t.Fatalf("GET projects failed: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listResp.StatusCode)
+	}
+	var listBody struct {
+		OK   bool `json:"ok"`
+		Data []struct {
+			ProjectID   string `json:"project_id"`
+			DisplayName string `json:"display_name"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list projects response failed: %v", err)
+	}
+	if !listBody.OK || len(listBody.Data) != 1 {
+		t.Fatalf("unexpected list payload: ok=%v len=%d", listBody.OK, len(listBody.Data))
+	}
+	if listBody.Data[0].ProjectID != "p1" || listBody.Data[0].DisplayName != "New Name" {
+		t.Fatalf("unexpected renamed project payload: %#v", listBody.Data[0])
 	}
 }
 

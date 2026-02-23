@@ -38,6 +38,12 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("await store.removeActiveProject(projectId)");
   });
 
+  it("wires edit project display name action", () => {
+    expect(appSource).toContain("@edit-project=\"onRequestEditProjectName\"");
+    expect(appSource).toContain("<AlertDialog v-model:open=\"showEditProjectDialog\">");
+    expect(appSource).toContain("await store.renameProjectDisplayName(projectId, nextDisplayName)");
+  });
+
   it("wires archive-all-done action from project menu", () => {
     expect(appSource).toContain("@archive-project-done=\"onArchiveProjectDone\"");
     expect(appSource).toContain("await store.archiveDoneTasksByProject(id)");

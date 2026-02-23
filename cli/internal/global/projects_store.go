@@ -4,15 +4,17 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
 const activeProjectsFileName = "active-projects.json"
 
 type ActiveProject struct {
-	ProjectID string    `json:"project_id"`
-	RepoRoot  string    `json:"repo_root"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ProjectID   string    `json:"project_id"`
+	RepoRoot    string    `json:"repo_root"`
+	DisplayName string    `json:"display_name"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 type ProjectsStore struct {
@@ -47,17 +49,27 @@ func (s *ProjectsStore) AddProject(p ActiveProject) error {
 	if err != nil {
 		return err
 	}
+	p.DisplayName = strings.TrimSpace(p.DisplayName)
 	now := time.Now().UTC()
 	updated := false
 	for i := range list {
 		if list[i].ProjectID == p.ProjectID {
 			list[i].RepoRoot = p.RepoRoot
+			if p.DisplayName != "" {
+				list[i].DisplayName = p.DisplayName
+			}
+			if strings.TrimSpace(list[i].DisplayName) == "" {
+				list[i].DisplayName = p.ProjectID
+			}
 			list[i].UpdatedAt = now
 			updated = true
 			break
 		}
 	}
 	if !updated {
+		if p.DisplayName == "" {
+			p.DisplayName = p.ProjectID
+		}
 		p.UpdatedAt = now
 		list = append(list, p)
 	}
@@ -76,6 +88,22 @@ func (s *ProjectsStore) RemoveProject(projectID string) error {
 		}
 	}
 	return s.save(out)
+}
+
+func (s *ProjectsStore) SetProjectDisplayName(projectID, displayName string) error {
+	list, err := s.ListProjects()
+	if err != nil {
+		return err
+	}
+	nextName := strings.TrimSpace(displayName)
+	for i := range list {
+		if list[i].ProjectID == projectID {
+			list[i].DisplayName = nextName
+			list[i].UpdatedAt = time.Now().UTC()
+			return s.save(list)
+		}
+	}
+	return s.save(list)
 }
 
 func (s *ProjectsStore) save(list []ActiveProject) error {
