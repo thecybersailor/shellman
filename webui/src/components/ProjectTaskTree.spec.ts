@@ -147,6 +147,20 @@ describe("ProjectTaskTree", () => {
     expect(wrapper.emitted("create-root-pane")?.[0]).toEqual(["p1"]);
   });
 
+  it("keeps project actions visible without hover", () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [{ projectId: "p1", title: "Project One", tasks: [] }],
+        selectedTaskId: ""
+      }
+    });
+
+    const actions = wrapper.get("[data-test-id='shellman-project-actions-p1']");
+    expect(actions.classes()).not.toContain("opacity-0");
+    expect(actions.classes().some((c) => c.includes("group-hover"))).toBe(false);
+    expect(wrapper.find("[data-test-id='shellman-project-root-pane-p1']").exists()).toBe(true);
+  });
+
   it("emits open-overview from footer button", async () => {
     const wrapper = mount(ProjectTaskTree, {
       props: {

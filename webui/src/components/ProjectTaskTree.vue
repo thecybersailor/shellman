@@ -403,7 +403,11 @@ function onTaskDrop(taskId: string) {
                     </span>
                   </div>
 
-                  <div class="flex items-center gap-1 opacity-0 group-hover/header:opacity-100 transition-opacity pr-1" @click.stop>
+                  <div
+                    :data-test-id="`shellman-project-actions-${project.projectId}`"
+                    class="flex items-center gap-1 pr-1"
+                    @click.stop
+                  >
                     <!-- More Actions Menu -->
                     <DropdownMenu>
                       <DropdownMenuTrigger as-child>
