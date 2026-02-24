@@ -465,6 +465,40 @@ describe("TerminalPane", () => {
     });
   });
 
+  it("emits terminal-link-open on touch tap fallback", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    await wrapper.setProps({ frame: { mode: "reset", data: "open https://example.com/docs" } });
+
+    const root = wrapper.get("[data-test-id='tt-terminal-root']").element as HTMLElement;
+    Object.defineProperty(root, "getBoundingClientRect", {
+      configurable: true,
+      value: () => ({ left: 0, top: 0, right: 800, bottom: 240, width: 800, height: 240 })
+    });
+
+    const down = new MouseEvent("pointerdown", { bubbles: true, cancelable: true, clientX: 80, clientY: 5 }) as PointerEvent;
+    Object.defineProperty(down, "pointerType", { value: "touch" });
+    Object.defineProperty(down, "pointerId", { value: 1 });
+    root.dispatchEvent(down);
+
+    const up = new MouseEvent("pointerup", { bubbles: true, cancelable: true, clientX: 80, clientY: 5 }) as PointerEvent;
+    Object.defineProperty(up, "pointerType", { value: "touch" });
+    Object.defineProperty(up, "pointerId", { value: 1 });
+    root.dispatchEvent(up);
+
+    expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
+      type: "url",
+      raw: "https://example.com/docs"
+    });
+  });
+
   it("emits terminal-image-paste when clipboard has image", async () => {
     terminalOptions = undefined;
     writes = [];

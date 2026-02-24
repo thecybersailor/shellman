@@ -56,6 +56,7 @@ let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
 let terminalInputFocusHandler: ((event: FocusEvent) => void) | null = null;
 let terminalInputBlurHandler: ((event: FocusEvent) => void) | null = null;
 let terminalLinkProviderDisposable: { dispose?: () => void } | null = null;
+let touchLinkCandidate: { pointerId: number; payload: { type: "url"; raw: string } | { type: "path"; raw: string } } | null = null;
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
 const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.manual")));
 
@@ -470,6 +471,66 @@ function bindTerminalLinkProvider() {
   }
 }
 
+function resolveTouchLinkPayload(event: PointerEvent): { type: "url"; raw: string } | { type: "path"; raw: string } | null {
+  if (event.pointerType !== "touch" || !root.value) {
+    return null;
+  }
+  const rect = root.value.getBoundingClientRect();
+  if (rect.width <= 0 || rect.height <= 0) {
+    return null;
+  }
+  const cols = Math.max(1, term.cols || 1);
+  const rows = Math.max(1, term.rows || 1);
+  const cellWidth = rect.width / cols;
+  const cellHeight = rect.height / rows;
+  if (cellWidth <= 0 || cellHeight <= 0) {
+    return null;
+  }
+  const x0 = event.clientX - rect.left;
+  const y0 = event.clientY - rect.top;
+  if (x0 < 0 || y0 < 0 || x0 > rect.width || y0 > rect.height) {
+    return null;
+  }
+  const colIndex = Math.max(0, Math.min(cols - 1, Math.floor(x0 / cellWidth)));
+  const row = Math.max(1, Math.min(rows, Math.floor(y0 / cellHeight) + 1));
+  const text = readBufferLine(row);
+  if (!text) {
+    return null;
+  }
+  const links = parseTerminalLinks(text);
+  const matched = links.find((item) => colIndex >= item.start && colIndex < item.end);
+  if (!matched) {
+    return null;
+  }
+  return matched.type === "url" ? { type: "url", raw: matched.text } : { type: "path", raw: matched.text };
+}
+
+function onRootPointerDown(event: PointerEvent) {
+  const payload = resolveTouchLinkPayload(event);
+  if (!payload) {
+    touchLinkCandidate = null;
+    return;
+  }
+  touchLinkCandidate = { pointerId: event.pointerId, payload };
+  event.preventDefault();
+  event.stopPropagation();
+}
+
+function onRootPointerUp(event: PointerEvent) {
+  if (!touchLinkCandidate || event.pointerId !== touchLinkCandidate.pointerId) {
+    return;
+  }
+  const payload = touchLinkCandidate.payload;
+  touchLinkCandidate = null;
+  event.preventDefault();
+  event.stopPropagation();
+  emit("terminal-link-open", payload);
+}
+
+function onRootPointerCancel() {
+  touchLinkCandidate = null;
+}
+
 function syncTerminalInputDisabled() {
   if (!terminalInput) {
     return;
@@ -684,6 +745,9 @@ onMounted(async () => {
         emit("terminal-history-more");
       }
     });
+    root.value.addEventListener("pointerdown", onRootPointerDown, { capture: true });
+    root.value.addEventListener("pointerup", onRootPointerUp, { capture: true });
+    root.value.addEventListener("pointercancel", onRootPointerCancel, { capture: true });
     bindTerminalLinkProvider();
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", handleWindowResize);
@@ -724,6 +788,12 @@ onBeforeUnmount(() => {
     window.clearTimeout(taskSwitchRetryTimer);
     taskSwitchRetryTimer = null;
   }
+  if (root.value) {
+    root.value.removeEventListener("pointerdown", onRootPointerDown, { capture: true });
+    root.value.removeEventListener("pointerup", onRootPointerUp, { capture: true });
+    root.value.removeEventListener("pointercancel", onRootPointerCancel, { capture: true });
+  }
+  touchLinkCandidate = null;
   terminalLinkProviderDisposable?.dispose?.();
   terminalLinkProviderDisposable = null;
   {
