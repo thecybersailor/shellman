@@ -657,6 +657,34 @@ test.describe("shellman local web full chain (docker)", () => {
     await runEcho(page, "__AFTER_REFRESH__");
   });
 
+  test("session route keeps selected task after reload", async ({ page, request }) => {
+    const seeded = await seedProject(request);
+    await page.goto(`${visitURL}/sess/${seeded.siblingTaskID}`);
+
+    await expect(page.getByTestId("shellman-task-title-input")).toHaveValue("sibling-task", { timeout: 30000 });
+    await page.reload();
+    await expect(page.getByTestId("shellman-task-title-input")).toHaveValue("sibling-task", { timeout: 30000 });
+  });
+
+  test("mobile task list route persists after back and reload", async ({ page, request }) => {
+    const seeded = await seedProject(request);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${visitURL}/m/tasks`);
+
+    const rootRow = projectRegion(page, seeded.projectID).getByTestId(`shellman-task-row-${seeded.rootTaskID}`).first();
+    await expect(rootRow).toBeVisible({ timeout: 30000 });
+    await rootRow.click();
+    await expect(page).toHaveURL(new RegExp(`/sess/${seeded.rootTaskID}$`));
+
+    await page.getByTestId("shellman-mobile-back-to-tasks").click();
+    await expect(page).toHaveURL(/\/m\/tasks$/);
+    await expect(taskRowTitle(page, seeded.projectID, seeded.rootTaskID)).toBeVisible();
+
+    await page.reload();
+    await expect(page).toHaveURL(/\/m\/tasks$/);
+    await expect(taskRowTitle(page, seeded.projectID, seeded.rootTaskID)).toBeVisible();
+  });
+
   test("marks flag_readed after selecting task", async ({ page, request }) => {
     const seeded = await seedProject(request);
     await page.goto(visitURL);

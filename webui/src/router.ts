@@ -15,6 +15,11 @@ const router = createRouter({
             component: MainView,
             props: true,
         },
+        {
+            path: '/m/tasks',
+            name: 'mobile-tasks',
+            component: MainView,
+        },
     ],
 })
 

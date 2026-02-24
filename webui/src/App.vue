@@ -144,6 +144,7 @@ const projects = computed<ProjectSection[]>(() => {
 });
 
 const selectedTaskId = computed(() => store.state.selectedTaskId);
+const selectedTaskIdForMobileView = computed(() => (route.name === "mobile-tasks" ? "" : store.state.selectedTaskId));
 const selectedPaneUuid = computed(() => store.state.selectedPaneUuid);
 const selectedPaneTarget = computed(() => {
   const selected = store.state.selectedPaneTarget;
@@ -243,6 +244,12 @@ async function onSelectTask(taskId: string) {
     router.push({ name: 'session', params: { sessionId: taskId } });
   } else {
     await store.selectTask(taskId);
+  }
+}
+
+async function onMobileBackToTaskList() {
+  if (route.name !== "mobile-tasks") {
+    await router.push({ name: "mobile-tasks" });
   }
 }
 
@@ -850,10 +857,11 @@ onMounted(async () => {
   }
   window.addEventListener("keydown", handleGlobalKeydown);
   logInfo("shellman.app.mounted.start");
+  const isMobileTaskListRoute = route.name === "mobile-tasks";
   const routeSessionId = Array.isArray(route.params.sessionId) ? route.params.sessionId[0] : route.params.sessionId;
   try {
     await store.load({
-      preferredTaskId: routeSessionId,
+      preferredTaskId: isMobileTaskListRoute ? "" : routeSessionId,
       prefetchAllTaskPanes: false
     });
   } catch (err) {
@@ -880,11 +888,11 @@ onMounted(async () => {
   store.connectWS();
   logInfo("shellman.app.ws.connect.called");
 
-  const initialTaskId = routeSessionId || store.state.selectedTaskId;
+  const initialTaskId = isMobileTaskListRoute ? "" : routeSessionId || store.state.selectedTaskId;
   if (initialTaskId) {
     await store.selectTask(initialTaskId);
   }
-  if (!routeSessionId && store.state.selectedTaskId) {
+  if (!isMobileTaskListRoute && !routeSessionId && store.state.selectedTaskId) {
     router.replace({ name: 'session', params: { sessionId: store.state.selectedTaskId } });
   }
   appBootstrapped.value = true;
@@ -1032,15 +1040,15 @@ onBeforeUnmount(() => {
   <main v-else class="shellman-mobile-only">
     <MobileStackView 
       :projects="projects" 
-      :selected-task-id="selectedTaskId" 
+      :selected-task-id="selectedTaskIdForMobileView" 
       :selected-pane-uuid="selectedPaneUuid"
       :selected-task-title="selectedTaskTitle"
       :selected-task-description="selectedTaskDescription"
       :selected-task-messages="selectedTaskMessages"
       :selected-task-notes="selectedTaskNotes"
       :selected-current-command="selectedCurrentCommand"
-      :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
-      :selected-task-project-id="findProjectIdByTask(selectedTaskId)"
+      :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskIdForMobileView] || 'advisor'"
+      :selected-task-project-id="findProjectIdByTask(selectedTaskIdForMobileView)"
       :selected-task-repo-root="selectedTaskProjectRoot"
       :selected-task-project-is-git-repo="selectedTaskProjectIsGitRepo"
       :dark-mode="mode"
@@ -1054,6 +1062,7 @@ onBeforeUnmount(() => {
       :scm-ai-loading="scmAiLoading"
       :scm-submit-loading="scmSubmitLoading"
       @select-task="onSelectTask" 
+      @back-to-task-list="onMobileBackToTaskList"
       @toggle-task-check="onToggleTaskCheck"
       @terminal-input="onTerminalInput"
       @terminal-image-paste="onTerminalImagePaste"

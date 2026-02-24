@@ -82,6 +82,11 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("async function onSaveFileViewer() {");
   });
 
+  it("wires mobile back-to-task-list routing", () => {
+    expect(appSource).toContain("@back-to-task-list=\"onMobileBackToTaskList\"");
+    expect(appSource).toContain("router.push({ name: \"mobile-tasks\" })");
+  });
+
   it("wires overview sheet open state and event bridge", () => {
     expect(appSource).toContain("const showOverviewSheet = ref(false)");
     expect(appSource).toContain("@open-overview=\"onOpenOverview('desktop')\"");
