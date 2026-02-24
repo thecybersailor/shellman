@@ -10,4 +10,8 @@ describe("main entry", () => {
     expect(mainSource).toContain('import i18n from "./i18n";');
     expect(mainSource).toContain("app.use(i18n);");
   });
+
+  it("waits router ready before mounting app", () => {
+    expect(mainSource).toContain("router.isReady()");
+  });
 });

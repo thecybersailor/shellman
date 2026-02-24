@@ -47,6 +47,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (event: "select-task", taskId: string): void;
+  (event: "back-to-task-list"): void;
   (event: "toggle-task-check", payload: { taskId: string; checked: boolean }): void;
   (event: "terminal-input", text: string): void;
   (event: "terminal-image-paste", file: File): void;
@@ -80,7 +81,7 @@ function onSelectTask(taskId: string) {
 
 function goBack() {
   showInfoPanel.value = false;
-  emit("select-task", "");
+  emit("back-to-task-list");
 }
 
 function resolveSelectedTaskTitle() {
@@ -159,7 +160,13 @@ function onProjectPanelActiveTabChange(next: string) {
     <template v-else>
       <header class="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-md z-10">
         <div class="flex items-center gap-1 -ml-2">
-          <Button variant="ghost" size="icon" @click="goBack" class="h-9 w-9 text-muted-foreground mr-1">
+          <Button
+            variant="ghost"
+            size="icon"
+            class="h-9 w-9 text-muted-foreground mr-1"
+            data-test-id="shellman-mobile-back-to-tasks"
+            @click="goBack"
+          >
             <ChevronLeft class="h-6 w-6" />
           </Button>
           <div class="flex flex-col">

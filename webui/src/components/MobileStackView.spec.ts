@@ -52,6 +52,20 @@ describe("MobileStackView", () => {
     expect(terminal.props("cursor")).toEqual({ x: 3, y: 7 });
   });
 
+  it("clicking mobile back emits back-to-task-list", async () => {
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Root", status: "running" }] }],
+        selectedTaskId: "t1",
+        darkMode: "dark"
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-mobile-back-to-tasks']").trigger("click");
+    expect(wrapper.emitted("back-to-task-list")?.[0]).toEqual([]);
+    expect(wrapper.emitted("select-task")).toBeUndefined();
+  });
+
   it("disables orphan tmux section on mobile tree", () => {
     const ProjectTaskTreeStub = defineComponent({
       name: "ProjectTaskTree",
