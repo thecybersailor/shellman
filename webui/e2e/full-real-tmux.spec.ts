@@ -229,38 +229,6 @@ async function waitBufferContains(page: Page, text: string, timeoutMs = 12000) {
     .toBe(true);
 }
 
-async function activateTokenLink(page: Page, token: string) {
-  const activated = await page.evaluate((needle) => {
-    const g = window as unknown as {
-      __SHELLMAN_TERM_LINK_PROVIDERS__?: Array<{ term: any; provider: any }>;
-    };
-    const providers = Array.isArray(g.__SHELLMAN_TERM_LINK_PROVIDERS__) ? g.__SHELLMAN_TERM_LINK_PROVIDERS__ : [];
-    const entry = providers.find((item) => Boolean(item?.term?.element && item.term.element.offsetParent !== null));
-    if (!entry?.term || !entry?.provider?.provideLinks) {
-      return false;
-    }
-    const active = entry.term?.buffer?.active;
-    if (!active || typeof active.viewportY !== "number") {
-      return false;
-    }
-    const start = Math.max(0, Number(active.viewportY));
-    const end = start + Math.max(1, Number(entry.term.rows ?? 24));
-    for (let y = start; y < end; y += 1) {
-      let links: Array<{ text?: string; activate?: () => void }> = [];
-      entry.provider.provideLinks(y + 1, (provided: Array<{ text?: string; activate?: () => void }>) => {
-        links = provided;
-      });
-      const found = links.find((item) => String(item.text ?? "") === needle);
-      if (found?.activate) {
-        found.activate();
-        return true;
-      }
-    }
-    return false;
-  }, token);
-  expect(activated).toBe(true);
-}
-
 async function bufferContains(page: Page, text: string) {
   return page.evaluate((needle) => {
     const g = window as unknown as { __SHELLMAN_TERM_INSTANCES__?: Array<any> };
@@ -537,43 +505,6 @@ test.describe("shellman local web full chain (docker)", () => {
 
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
     await runEcho(page, "__ROOT_BACK__");
-  });
-
-  test.fixme("terminal url/path links are clickable", async ({ page, request }) => {
-    await page.addInitScript(() => {
-      const g = window as unknown as { __SHELLMAN_TERM_DEBUG__?: boolean };
-      g.__SHELLMAN_TERM_DEBUG__ = true;
-    });
-    const seeded = await seedProject(request);
-    await page.goto(visitURL);
-    await selectTask(page, seeded.projectID, seeded.rootTaskID);
-
-    await activeTerminal(page).click();
-    await page.keyboard.type("echo https://example.com");
-    await page.keyboard.press("Enter");
-    await page.keyboard.type("echo webui/src/App.vue:20:2");
-    await page.keyboard.press("Enter");
-    await waitBufferContains(page, "https://example.com", 20000);
-    await waitBufferContains(page, "webui/src/App.vue:20:2", 20000);
-    await page.waitForTimeout(200);
-
-    const popupPromise = page.waitForEvent("popup");
-    await activateTokenLink(page, "https://example.com");
-    const popup = await popupPromise;
-    await expect(popup).toHaveURL("https://example.com/");
-    await popup.close();
-
-    await activateTokenLink(page, "webui/src/App.vue:20:2");
-    await expect(page.getByTestId("shellman-file-viewer-textarea")).toBeVisible({ timeout: 15000 });
-    await expect(page.getByText("webui/src/App.vue").first()).toBeVisible();
-    await expect
-      .poll(async () =>
-        page.evaluate(() => {
-          const el = document.querySelector("[data-test-id='shellman-file-viewer-textarea']") as HTMLTextAreaElement | null;
-          return el ? el.selectionStart : -1;
-        })
-      )
-      .toBeGreaterThan(0);
   });
 
   test("10 panes with 5000 lines should evict LRU and recover evicted panes with gap_recover", async ({ page, request }) => {

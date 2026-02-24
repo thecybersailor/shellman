@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -24,6 +25,123 @@ func mustRunGit(t *testing.T, repo string, args ...string) {
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v failed: %v, out=%s", args, err, string(out))
+	}
+}
+
+func TestAddonRoutes_FileContentSaveWithRevisionGuard(t *testing.T) {
+	repo := t.TempDir()
+	mustRunGit(t, repo, "init")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
+
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("line1\nline2\n"), 0o644); err != nil {
+		t.Fatalf("write a.txt failed: %v", err)
+	}
+
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: &fakePaneService{}})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	var createRes struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&createRes); err != nil {
+		t.Fatalf("decode create failed: %v", err)
+	}
+
+	contentURL := ts.URL + "/api/v1/tasks/" + createRes.Data.TaskID + "/files/content?path=" + url.QueryEscape("a.txt")
+	contentResp, err := http.Get(contentURL)
+	if err != nil {
+		t.Fatalf("GET file content failed: %v", err)
+	}
+	if contentResp.StatusCode != http.StatusOK {
+		t.Fatalf("GET file content expected 200, got %d", contentResp.StatusCode)
+	}
+	var contentRes struct {
+		Data struct {
+			Content string `json:"content"`
+			Rev     struct {
+				MTimeNS int64  `json:"mtime_ns"`
+				Size    int64  `json:"size"`
+				SHA256  string `json:"sha256"`
+			} `json:"rev"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(contentResp.Body).Decode(&contentRes); err != nil {
+		t.Fatalf("decode content failed: %v", err)
+	}
+	if contentRes.Data.Rev.MTimeNS <= 0 || contentRes.Data.Rev.SHA256 == "" {
+		t.Fatalf("expected revision payload, got %+v", contentRes.Data.Rev)
+	}
+
+	saveBody := bytes.NewBufferString(`{"path":"a.txt","content":"line1\nline2\nline3\n","expected_rev":{"mtime_ns":` + strconv.FormatInt(contentRes.Data.Rev.MTimeNS, 10) + `,"size":` + strconv.FormatInt(contentRes.Data.Rev.Size, 10) + `,"sha256":"` + contentRes.Data.Rev.SHA256 + `"}}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/content", saveBody)
+	req.Header.Set("Content-Type", "application/json")
+	saveResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH file content failed: %v", err)
+	}
+	if saveResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH file content expected 200, got %d", saveResp.StatusCode)
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "a.txt"), []byte("external-change\n"), 0o644); err != nil {
+		t.Fatalf("external overwrite failed: %v", err)
+	}
+
+	conflictBody := bytes.NewBufferString(`{"path":"a.txt","content":"mine\n","expected_rev":{"mtime_ns":` + strconv.FormatInt(contentRes.Data.Rev.MTimeNS, 10) + `,"size":` + strconv.FormatInt(contentRes.Data.Rev.Size, 10) + `,"sha256":"` + contentRes.Data.Rev.SHA256 + `"}}`)
+	conflictReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/content", conflictBody)
+	conflictReq.Header.Set("Content-Type", "application/json")
+	conflictResp, err := http.DefaultClient.Do(conflictReq)
+	if err != nil {
+		t.Fatalf("PATCH conflict request failed: %v", err)
+	}
+	if conflictResp.StatusCode != http.StatusConflict {
+		t.Fatalf("PATCH conflict expected 409, got %d", conflictResp.StatusCode)
+	}
+	var conflictRes struct {
+		OK    bool `json:"ok"`
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+		Data struct {
+			Path    string `json:"path"`
+			Content string `json:"content"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(conflictResp.Body).Decode(&conflictRes); err != nil {
+		t.Fatalf("decode conflict failed: %v", err)
+	}
+	if conflictRes.OK || conflictRes.Error.Code != "FILE_REV_CONFLICT" {
+		t.Fatalf("expected FILE_REV_CONFLICT, got %+v", conflictRes)
+	}
+	if conflictRes.Data.Path != "a.txt" || !strings.Contains(conflictRes.Data.Content, "external-change") {
+		t.Fatalf("expected latest content payload, got %+v", conflictRes.Data)
+	}
+
+	newFileBody := bytes.NewBufferString(`{"path":"new-dir/new.txt","content":"hello-new\n","expected_rev":{"mtime_ns":0,"size":0,"sha256":""},"create_if_missing":true}`)
+	newFileReq, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/content", newFileBody)
+	newFileReq.Header.Set("Content-Type", "application/json")
+	newFileResp, err := http.DefaultClient.Do(newFileReq)
+	if err != nil {
+		t.Fatalf("PATCH create file failed: %v", err)
+	}
+	if newFileResp.StatusCode != http.StatusOK {
+		t.Fatalf("PATCH create file expected 200, got %d", newFileResp.StatusCode)
+	}
+	created, err := os.ReadFile(filepath.Join(repo, "new-dir", "new.txt"))
+	if err != nil {
+		t.Fatalf("read created file failed: %v", err)
+	}
+	if string(created) != "hello-new\n" {
+		t.Fatalf("unexpected created content: %q", string(created))
 	}
 }
 

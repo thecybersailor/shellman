@@ -16,15 +16,6 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("@terminal-image-paste=\"onTerminalImagePaste\"");
   });
 
-  it("wires terminal-link-open from terminal panes", () => {
-    expect(appSource).toContain("@terminal-link-open=\"onTerminalLinkOpen\"");
-  });
-
-  it("guards path links by selected project root", () => {
-    expect(appSource).toContain("resolvePathLinkInProject(payload.raw, projectRoot)");
-    expect(appSource).toContain("selectedTaskProjectRoot.value");
-  });
-
   it("marks task flag as read on task selection", () => {
     expect(appSource).toContain("async function onSelectTask(taskId: string)");
     expect(appSource).toContain("store.markTaskFlagReaded(taskId, true)");
@@ -74,6 +65,14 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("@send-message=\"onSendTaskMessage\"");
   });
 
+  it("wires file editor header actions for close and save", () => {
+    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-close\"");
+    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-save\"");
+    expect(appSource).toContain("@click=\"onCloseFileViewer\"");
+    expect(appSource).toContain("@click=\"onSaveFileViewer\"");
+    expect(appSource).toContain("async function onSaveFileViewer() {");
+  });
+
   it("wires overview sheet open state and event bridge", () => {
     expect(appSource).toContain("const showOverviewSheet = ref(false)");
     expect(appSource).toContain("@open-overview=\"onOpenOverview('desktop')\"");
@@ -82,6 +81,9 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("v-model:open=\"showOverviewSheet\"");
     expect(appSource).toContain(":projects=\"projects\"");
     expect(appSource).toContain("@select-task=\"onSelectTask\"");
-    expect(appSource).toContain(":selected-task-messages=\"[]\"");
+    expect(appSource).toContain(":pm-sessions=\"overviewPmSessions\"");
+    expect(appSource).toContain(":selected-pm-session-id=\"overviewPmSessionId\"");
+    expect(appSource).toContain(":pm-messages=\"overviewPmMessages\"");
+    expect(appSource).toContain("@send-pm-message=\"onOverviewSendPMMessage\"");
   });
 });

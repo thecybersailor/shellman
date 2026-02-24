@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import TerminalPane from "./components/TerminalPane.vue";
@@ -11,7 +11,6 @@ import ActiveProjectEntry from "./components/ActiveProjectEntry.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import { createShellmanStore } from "./stores/shellman";
 import type { TerminalFrame } from "./stores/shellman";
-import { resolvePathLinkInProject } from "@/lib/terminal_path_resolver";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,13 +45,21 @@ const showAddProjectDialog = ref(false);
 const showSettingsPanel = ref(false);
 const showOverviewSheet = ref(false);
 const overviewProjectId = ref("");
+const overviewPmSessionId = ref("");
 const settingsSaving = ref(false);
 const scmAiLoading = ref(false);
 const scmSubmitLoading = ref(false);
 const fileViewerOpen = ref(false);
 const fileViewerLoading = ref(false);
+const fileViewerSaving = ref(false);
 const fileViewerPath = ref("");
 const fileViewerContent = ref("");
+const fileViewerBaseContent = ref("");
+const fileViewerBaseRev = ref<{ mtime_ns: number; size: number; sha256: string }>({
+  mtime_ns: 0,
+  size: 0,
+  sha256: ""
+});
 const showRemoveProjectDialog = ref(false);
 const pendingRemoveProjectId = ref("");
 const showEditProjectDialog = ref(false);
@@ -304,10 +311,120 @@ function onOpenOverview(source: "desktop" | "mobile") {
   overviewProjectId.value = selectedProjectId || projects.value[0]?.projectId || "";
   logInfo("shellman.overview.open.request", { source, projectId: overviewProjectId.value });
   showOverviewSheet.value = true;
+  void ensureOverviewPmReady(overviewProjectId.value);
 }
 
 function onOverviewSelectProject(projectId: string) {
   overviewProjectId.value = String(projectId ?? "").trim();
+  void ensureOverviewPmReady(overviewProjectId.value);
+}
+
+function formatPMUpdatedAt(unixSec: number): string {
+  const ts = Number(unixSec ?? 0);
+  if (!Number.isFinite(ts) || ts <= 0) {
+    return t("overview.pmUpdatedJustNow");
+  }
+  const nowSec = Math.floor(Date.now() / 1000);
+  const delta = Math.max(0, nowSec - ts);
+  if (delta < 60) {
+    return t("overview.pmUpdatedJustNow");
+  }
+  const mins = Math.floor(delta / 60);
+  if (mins < 60) {
+    return `${mins}m`;
+  }
+  return `${Math.floor(mins / 60)}h`;
+}
+
+const overviewPmSessions = computed(() => {
+  const projectID = String(overviewProjectId.value ?? "").trim();
+  const raw = store.state.pmSessionsByProjectId[projectID] ?? [];
+  return raw.map((item) => ({
+    sessionId: String(item.session_id ?? ""),
+    title: String(item.title ?? "").trim() || t("overview.pmNewSession"),
+    updatedAtLabel: formatPMUpdatedAt(Number(item.updated_at ?? item.last_message_at ?? item.created_at ?? 0))
+  }));
+});
+
+const overviewPmMessages = computed(() => {
+  const sessionID = String(overviewPmSessionId.value ?? "").trim();
+  const raw = store.state.pmMessagesBySessionId[sessionID] ?? [];
+  return raw.map((item) => ({
+    id: Number(item.id ?? 0),
+    task_id: sessionID,
+    role: item.role === "assistant" ? "assistant" : "user",
+    content: String(item.content ?? ""),
+    status: item.status === "running" || item.status === "error" ? item.status : "completed",
+    error_text: String(item.error_text ?? ""),
+    created_at: Number(item.created_at ?? 0),
+    updated_at: Number(item.updated_at ?? 0)
+  }));
+});
+
+async function ensureOverviewPmReady(projectId: string) {
+  const projectID = String(projectId ?? "").trim();
+  if (!projectID) {
+    overviewPmSessionId.value = "";
+    return;
+  }
+  try {
+    const sessions = await store.loadPMSessions(projectID, true);
+    const current = String(overviewPmSessionId.value ?? "").trim();
+    const hasCurrent = sessions.some((item) => String(item.session_id ?? "").trim() === current);
+    const nextSessionID = hasCurrent ? current : String(sessions[0]?.session_id ?? "").trim();
+    overviewPmSessionId.value = nextSessionID;
+    if (nextSessionID) {
+      await store.loadPMMessages(projectID, nextSessionID, true);
+    }
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "PM_SESSIONS_LOAD_FAILED");
+  }
+}
+
+async function onOverviewSelectPMSession(payload: { sessionId: string }) {
+  const projectID = String(overviewProjectId.value ?? "").trim();
+  const sessionID = String(payload?.sessionId ?? "").trim();
+  if (!projectID || !sessionID) {
+    return;
+  }
+  overviewPmSessionId.value = sessionID;
+  try {
+    await store.loadPMMessages(projectID, sessionID, true);
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "PM_MESSAGES_LOAD_FAILED");
+  }
+}
+
+async function onOverviewCreatePMSession() {
+  const projectID = String(overviewProjectId.value ?? "").trim();
+  if (!projectID) {
+    return;
+  }
+  try {
+    const createdSessionID = await store.createPMSession(projectID, "");
+    overviewPmSessionId.value = createdSessionID;
+    await store.loadPMMessages(projectID, createdSessionID, true);
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "PM_SESSION_CREATE_FAILED");
+  }
+}
+
+async function onOverviewSendPMMessage(payload: { content: string }) {
+  const projectID = String(overviewProjectId.value ?? "").trim();
+  if (!projectID) {
+    return;
+  }
+  let sessionID = String(overviewPmSessionId.value ?? "").trim();
+  try {
+    if (!sessionID) {
+      sessionID = await store.createPMSession(projectID, "");
+      overviewPmSessionId.value = sessionID;
+    }
+    await store.sendPMMessage(projectID, sessionID, String(payload?.content ?? ""));
+    await store.loadPMMessages(projectID, sessionID, true);
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "PM_MESSAGE_SEND_FAILED");
+  }
 }
 
 function onRequestRemoveProject(projectId: string) {
@@ -590,17 +707,29 @@ async function onFileOpen(path: string) {
   fileViewerLoading.value = true;
   fileViewerPath.value = path;
   fileViewerContent.value = "";
+  fileViewerBaseContent.value = "";
+  fileViewerBaseRev.value = { mtime_ns: 0, size: 0, sha256: "" };
   try {
     const encodedPath = encodeURIComponent(path);
     const res = (await fetch(`/api/v1/tasks/${taskId}/files/content?path=${encodedPath}`).then((r) => r.json())) as {
       ok: boolean;
-      data?: { content?: string };
+      data?: {
+        content?: string;
+        rev?: { mtime_ns?: number; size?: number; sha256?: string };
+      };
       error?: { code?: string; message?: string };
     };
     if (!res.ok) {
       throw new Error(String(res.error?.code ?? "TASK_FILE_CONTENT_LOAD_FAILED"));
     }
-    fileViewerContent.value = String(res.data?.content ?? "");
+    const content = String(res.data?.content ?? "");
+    fileViewerContent.value = content;
+    fileViewerBaseContent.value = content;
+    fileViewerBaseRev.value = {
+      mtime_ns: Number(res.data?.rev?.mtime_ns ?? 0),
+      size: Number(res.data?.rev?.size ?? content.length),
+      sha256: String(res.data?.rev?.sha256 ?? "")
+    };
   } catch (err) {
     notifyError(err instanceof Error ? err.message : "TASK_FILE_CONTENT_LOAD_FAILED");
   } finally {
@@ -608,42 +737,67 @@ async function onFileOpen(path: string) {
   }
 }
 
-function moveFileViewerCursor(line: number | null, col: number | null) {
-  if (!line || line < 1) {
-    return;
-  }
-  const input = document.querySelector("[data-test-id='shellman-file-viewer-textarea']") as HTMLTextAreaElement | null;
-  if (!input) {
-    return;
-  }
-  const lines = String(input.value ?? "").split("\n");
-  if (lines.length === 0) {
-    return;
-  }
-  const lineIndex = Math.max(0, Math.min(lines.length - 1, line - 1));
-  const lineText = lines[lineIndex] ?? "";
-  const colIndex = Math.max(0, Math.min(lineText.length, (col ?? 1) - 1));
-  let offset = colIndex;
-  for (let i = 0; i < lineIndex; i += 1) {
-    offset += lines[i].length + 1;
-  }
-  input.focus();
-  input.setSelectionRange(offset, offset);
+function buildReplacePatch(path: string, baseContent: string, nextContent: string) {
+  const normalizedBase = baseContent.replace(/\r\n/g, "\n");
+  const normalizedNext = nextContent.replace(/\r\n/g, "\n");
+  const oldLines = normalizedBase.split("\n");
+  const newLines = normalizedNext.split("\n");
+  const lines = [
+    `--- a/${path}`,
+    `+++ b/${path}`,
+    `@@ -1,${oldLines.length} +1,${newLines.length} @@`,
+    ...oldLines.map((line) => `-${line}`),
+    ...newLines.map((line) => `+${line}`)
+  ];
+  return `${lines.join("\n")}\n`;
 }
 
-async function onTerminalLinkOpen(payload: { type: "url"; raw: string } | { type: "path"; raw: string }) {
-  if (payload.type === "url") {
-    window.open(payload.raw, "_blank", "noopener,noreferrer");
+function onCloseFileViewer() {
+  fileViewerOpen.value = false;
+}
+
+async function onSaveFileViewer() {
+  const taskId = store.state.selectedTaskId;
+  const path = String(fileViewerPath.value ?? "").trim();
+  if (!taskId || !path || fileViewerSaving.value) {
     return;
   }
-  const projectRoot = selectedTaskProjectRoot.value;
-  const resolved = resolvePathLinkInProject(payload.raw, projectRoot);
-  if (!resolved) {
-    return;
+  try {
+    fileViewerSaving.value = true;
+    const patch = buildReplacePatch(path, fileViewerBaseContent.value, fileViewerContent.value);
+    const res = await fetch(`/api/v1/tasks/${taskId}/files/content`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        path,
+        content: fileViewerContent.value,
+        patch,
+        expected_rev: fileViewerBaseRev.value
+      })
+    }).then((r) => r.json()) as {
+      ok: boolean;
+      data?: {
+        content?: string;
+        rev?: { mtime_ns?: number; size?: number; sha256?: string };
+      };
+      error?: { code?: string; message?: string };
+    };
+    if (!res.ok) {
+      throw new Error(String(res.error?.code ?? "TASK_FILE_SAVE_FAILED"));
+    }
+    const nextContent = String(res.data?.content ?? fileViewerContent.value);
+    fileViewerContent.value = nextContent;
+    fileViewerBaseContent.value = nextContent;
+    fileViewerBaseRev.value = {
+      mtime_ns: Number(res.data?.rev?.mtime_ns ?? 0),
+      size: Number(res.data?.rev?.size ?? nextContent.length),
+      sha256: String(res.data?.rev?.sha256 ?? "")
+    };
+  } catch (err) {
+    notifyError(err instanceof Error ? err.message : "TASK_FILE_SAVE_FAILED");
+  } finally {
+    fileViewerSaving.value = false;
   }
-  await onFileOpen(resolved.safePath);
-  await nextTick();
-  moveFileViewerCursor(resolved.line, resolved.col);
 }
 
 onMounted(async () => {
@@ -793,7 +947,6 @@ onBeforeUnmount(() => {
               :app-programs="store.state.appPrograms"
               @terminal-input="onTerminalInput"
               @terminal-image-paste="onTerminalImagePaste"
-              @terminal-link-open="onTerminalLinkOpen"
               @terminal-resize="onTerminalResize"
               @terminal-history-more="onTerminalHistoryMore"
               @manual-launch-pane="onManualLaunchPane"
@@ -864,7 +1017,6 @@ onBeforeUnmount(() => {
       @toggle-task-check="onToggleTaskCheck"
       @terminal-input="onTerminalInput"
       @terminal-image-paste="onTerminalImagePaste"
-      @terminal-link-open="onTerminalLinkOpen"
       @terminal-resize="onTerminalResize"
       @terminal-history-more="onTerminalHistoryMore"
       @manual-launch-pane="onManualLaunchPane"
@@ -899,14 +1051,41 @@ onBeforeUnmount(() => {
     :selected-task-sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
     :selected-pane-uuid="selectedPaneUuid"
     :selected-current-command="selectedCurrentCommand"
+    :pm-sessions="overviewPmSessions"
+    :selected-pm-session-id="overviewPmSessionId"
+    :pm-messages="overviewPmMessages"
     @select-project="onOverviewSelectProject"
     @select-task="onSelectTask"
+    @select-pm-session="onOverviewSelectPMSession"
+    @create-pm-session="onOverviewCreatePMSession"
+    @send-pm-message="onOverviewSendPMMessage"
   />
 
   <Sheet v-model:open="fileViewerOpen">
     <SheetContent side="right" class="w-full sm:max-w-2xl flex flex-col gap-3">
-      <SheetHeader class="text-left">
-        <SheetTitle class="text-xs font-mono break-all">{{ fileViewerPath || "File Viewer" }}</SheetTitle>
+      <SheetHeader class="text-left gap-2">
+        <div class="flex items-center justify-between gap-2">
+          <SheetTitle class="text-xs font-mono break-all">{{ fileViewerPath || "File Viewer" }}</SheetTitle>
+          <div class="flex items-center gap-2">
+            <Button
+              data-test-id="shellman-file-viewer-close"
+              variant="ghost"
+              size="sm"
+              :disabled="fileViewerSaving"
+              @click="onCloseFileViewer"
+            >
+              {{ t("overview.close") }}
+            </Button>
+            <Button
+              data-test-id="shellman-file-viewer-save"
+              size="sm"
+              :disabled="fileViewerLoading || fileViewerSaving || fileViewerContent === fileViewerBaseContent"
+              @click="onSaveFileViewer"
+            >
+              {{ fileViewerSaving ? t("common.saving") : t("common.save") }}
+            </Button>
+          </div>
+        </div>
       </SheetHeader>
       <Textarea
         v-model="fileViewerContent"

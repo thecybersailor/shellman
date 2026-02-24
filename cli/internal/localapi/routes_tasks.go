@@ -304,6 +304,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handleGetTaskFileSearch(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files/content":
 		s.handleGetTaskFileContent(w, r, taskID)
+	case r.Method == http.MethodPatch && action == "files/content":
+		s.handlePatchTaskFileContent(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files/raw":
 		s.handleGetTaskFileRaw(w, r, taskID)
 	case r.Method == http.MethodPost && action == "commit-message/generate":
