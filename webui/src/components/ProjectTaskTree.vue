@@ -77,6 +77,7 @@ const props = defineProps<{
   hideFooter?: boolean;
   orphanPanes?: OrphanPaneItem[];
   showOrphanSection?: boolean;
+  alwaysShowTaskRowAction?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -517,10 +518,11 @@ function onTaskDrop(taskId: string) {
                         <Button
                             variant="ghost"
                             size="icon"
-                            class="h-4 w-4 p-0 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground/50 hover:text-foreground"
+                            class="h-5 w-5 p-0 transition-opacity text-muted-foreground/50 hover:text-foreground"
+                            :class="props.alwaysShowTaskRowAction ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'"
                             @click.stop="emit('create-child-pane', row.task.taskId)"
                         >
-                            <Plus class="h-3 w-3" />
+                            <Plus class="h-3.5 w-3.5" />
                         </Button>
 
                         <span :data-test-id="`shellman-task-flag-slot-${row.task.taskId}`">

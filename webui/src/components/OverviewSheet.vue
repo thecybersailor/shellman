@@ -10,6 +10,7 @@ import { ArrowLeft, History, PencilLine } from "lucide-vue-next";
 import type { TaskMessage } from "@/stores/shellman";
 
 type SidecarMode = "advisor" | "observer" | "autopilot";
+type PMSessionItem = { sessionId: string; title: string; updatedAtLabel: string };
 
 const props = withDefaults(
   defineProps<{
@@ -24,6 +25,9 @@ const props = withDefaults(
     selectedTaskSidecarMode?: SidecarMode;
     selectedPaneUuid?: string;
     selectedCurrentCommand?: string;
+    pmSessions?: PMSessionItem[];
+    selectedPmSessionId?: string;
+    pmMessages?: TaskMessage[];
   }>(),
   {
     isMobile: false,
@@ -35,7 +39,10 @@ const props = withDefaults(
     selectedTaskDescription: "",
     selectedTaskSidecarMode: "advisor",
     selectedPaneUuid: "",
-    selectedCurrentCommand: ""
+    selectedCurrentCommand: "",
+    pmSessions: () => [],
+    selectedPmSessionId: "",
+    pmMessages: () => []
   }
 );
 
@@ -43,7 +50,9 @@ const emit = defineEmits<{
   (event: "update:open", open: boolean): void;
   (event: "select-project", projectId: string): void;
   (event: "select-task", taskId: string): void;
-  (event: "send-message", payload: { content: string }): void;
+  (event: "send-pm-message", payload: { content: string }): void;
+  (event: "select-pm-session", payload: { sessionId: string }): void;
+  (event: "create-pm-session"): void;
   (event: "set-sidecar-mode", payload: { mode: SidecarMode }): void;
   (event: "stop-running-assistant-message"): void;
 }>();
@@ -54,12 +63,6 @@ const localProjectId = ref("");
 const promptDraft = ref("");
 const showPmSessionList = ref(false);
 const showPmRecentQuickList = ref(false);
-const pmSessions = ref([
-  { id: "pm-session-1", title: t("overview.pmSession1"), updatedAt: t("overview.pmUpdatedJustNow") },
-  { id: "pm-session-2", title: t("overview.pmSession2"), updatedAt: t("overview.pmUpdated5m") },
-  { id: "pm-session-3", title: t("overview.pmSession3"), updatedAt: t("overview.pmUpdated15m") }
-]);
-const activePmSessionId = ref("pm-session-1");
 
 const effectiveProjects = computed<ProjectSection[]>(() => {
   return props.projects ?? [];
@@ -91,7 +94,8 @@ const activeProjectId = computed(() => localProjectId.value || effectiveProjects
 const activeProject = computed(() => effectiveProjects.value.find((item) => item.projectId === activeProjectId.value) ?? null);
 const activeTasks = computed(() => activeProject.value?.tasks ?? []);
 const activePmSessionTitle = computed(() => {
-  const current = pmSessions.value.find((item) => item.id === activePmSessionId.value);
+  const nextSessionID = String(props.selectedPmSessionId ?? "").trim();
+  const current = (props.pmSessions ?? []).find((item) => item.sessionId === nextSessionID);
   return current?.title || t("overview.projectManager");
 });
 const effectiveTaskId = computed(() => {
@@ -125,19 +129,13 @@ function onPmToggleQuickHistory() {
 }
 
 function onPmSelectSession(sessionId: string) {
-  activePmSessionId.value = sessionId;
+  emit("select-pm-session", { sessionId: String(sessionId ?? "").trim() });
   showPmSessionList.value = false;
   showPmRecentQuickList.value = false;
 }
 
 function onPmCreateSession() {
-  const nextId = `pm-session-${Date.now()}`;
-  pmSessions.value.unshift({
-    id: nextId,
-    title: t("overview.pmNewSession"),
-    updatedAt: t("overview.pmUpdatedJustNow")
-  });
-  activePmSessionId.value = nextId;
+  emit("create-pm-session");
   showPmSessionList.value = false;
   showPmRecentQuickList.value = false;
 }
@@ -233,37 +231,37 @@ function onPmCreateSession() {
                   </div>
                   <div v-if="showPmRecentQuickList" data-test-id="shellman-pm-recent-sessions" class="absolute right-0 top-9 z-10 w-64 rounded-md border border-border bg-popover p-1 shadow-lg">
                     <button
-                      v-for="session in pmSessions.slice(0, 5)"
-                      :key="session.id"
+                      v-for="session in (props.pmSessions ?? []).slice(0, 5)"
+                      :key="session.sessionId"
                       type="button"
                       class="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-accent flex items-center justify-between gap-2"
-                      @click="onPmSelectSession(session.id)"
+                      @click="onPmSelectSession(session.sessionId)"
                     >
                       <span class="truncate">{{ session.title }}</span>
-                      <span class="shrink-0 text-muted-foreground">{{ session.updatedAt }}</span>
+                      <span class="shrink-0 text-muted-foreground">{{ session.updatedAtLabel }}</span>
                     </button>
                   </div>
                 </div>
                 <div v-if="showPmSessionList" data-test-id="shellman-pm-session-list" class="flex-1 min-h-0 overflow-y-auto p-1 space-y-1">
                   <button
-                    v-for="session in pmSessions"
-                    :key="session.id"
+                    v-for="session in props.pmSessions ?? []"
+                    :key="session.sessionId"
                     type="button"
                     class="w-full text-left px-2 py-2 rounded-md border border-border/50 hover:bg-accent/40"
-                    :class="session.id === activePmSessionId ? 'bg-accent/50' : ''"
-                    @click="onPmSelectSession(session.id)"
+                    :class="session.sessionId === props.selectedPmSessionId ? 'bg-accent/50' : ''"
+                    @click="onPmSelectSession(session.sessionId)"
                   >
                     <div class="text-sm truncate">{{ session.title }}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5">{{ session.updatedAt }}</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">{{ session.updatedAtLabel }}</div>
                   </button>
                 </div>
                 <ConversationSession
                   v-else
-                  :task-id="effectiveTaskId"
-                  :task-messages="props.selectedTaskMessages"
+                  :task-id="`pm:${String(props.selectedPmSessionId ?? '')}`"
+                  :task-messages="props.pmMessages"
                   :model-value="promptDraft"
                   @update:model-value="(value) => (promptDraft = value)"
-                  @submit-message="(payload) => emit('send-message', payload)"
+                  @submit-message="(payload) => emit('send-pm-message', payload)"
                   @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
                 />
               </div>
@@ -365,37 +363,37 @@ function onPmCreateSession() {
                   </div>
                   <div v-if="showPmRecentQuickList" data-test-id="shellman-pm-recent-sessions-mobile" class="absolute right-0 top-9 z-10 w-[85%] rounded-md border border-border bg-popover p-1 shadow-lg">
                     <button
-                      v-for="session in pmSessions.slice(0, 5)"
-                      :key="session.id"
+                      v-for="session in (props.pmSessions ?? []).slice(0, 5)"
+                      :key="session.sessionId"
                       type="button"
                       class="w-full text-left px-2 py-1.5 rounded text-xs hover:bg-accent flex items-center justify-between gap-2"
-                      @click="onPmSelectSession(session.id)"
+                      @click="onPmSelectSession(session.sessionId)"
                     >
                       <span class="truncate">{{ session.title }}</span>
-                      <span class="shrink-0 text-muted-foreground">{{ session.updatedAt }}</span>
+                      <span class="shrink-0 text-muted-foreground">{{ session.updatedAtLabel }}</span>
                     </button>
                   </div>
                 </div>
                 <div v-if="showPmSessionList" data-test-id="shellman-pm-session-list-mobile" class="flex-1 min-h-0 overflow-y-auto p-1 space-y-1">
                   <button
-                    v-for="session in pmSessions"
-                    :key="session.id"
+                    v-for="session in props.pmSessions ?? []"
+                    :key="session.sessionId"
                     type="button"
                     class="w-full text-left px-2 py-2 rounded-md border border-border/50 hover:bg-accent/40"
-                    :class="session.id === activePmSessionId ? 'bg-accent/50' : ''"
-                    @click="onPmSelectSession(session.id)"
+                    :class="session.sessionId === props.selectedPmSessionId ? 'bg-accent/50' : ''"
+                    @click="onPmSelectSession(session.sessionId)"
                   >
                     <div class="text-sm truncate">{{ session.title }}</div>
-                    <div class="text-xs text-muted-foreground mt-0.5">{{ session.updatedAt }}</div>
+                    <div class="text-xs text-muted-foreground mt-0.5">{{ session.updatedAtLabel }}</div>
                   </button>
                 </div>
                 <ConversationSession
                   v-else
-                  :task-id="effectiveTaskId"
-                  :task-messages="props.selectedTaskMessages"
+                  :task-id="`pm:${String(props.selectedPmSessionId ?? '')}`"
+                  :task-messages="props.pmMessages"
                   :model-value="promptDraft"
                   @update:model-value="(value) => (promptDraft = value)"
-                  @submit-message="(payload) => emit('send-message', payload)"
+                  @submit-message="(payload) => emit('send-pm-message', payload)"
                   @stop-running-assistant-message="() => emit('stop-running-assistant-message')"
                 />
               </div>

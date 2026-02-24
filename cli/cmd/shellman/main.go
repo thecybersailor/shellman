@@ -17,6 +17,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -616,31 +617,57 @@ func acquireServePIDFileLock(pidFilePath string) (func(), error) {
 		return nil, err
 	}
 
-	f, err := os.OpenFile(pidFilePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
-	if err != nil {
-		if errors.Is(err, os.ErrExist) {
+	for attempt := 0; attempt < 2; attempt++ {
+		f, err := os.OpenFile(pidFilePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o644)
+		if err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return nil, err
+			}
 			existingPID, _ := os.ReadFile(pidFilePath)
 			existingText := strings.TrimSpace(string(existingPID))
+			if attempt == 0 && isStalePID(existingText) {
+				removeErr := os.Remove(pidFilePath)
+				if removeErr == nil || errors.Is(removeErr, os.ErrNotExist) {
+					continue
+				}
+				return nil, removeErr
+			}
 			if existingText != "" {
 				return nil, fmt.Errorf("serve already running (pid file exists: %s, pid=%s)", pidFilePath, existingText)
 			}
 			return nil, fmt.Errorf("serve already running (pid file exists: %s)", pidFilePath)
 		}
-		return nil, err
+		pid := fmt.Sprintf("%d\n", os.Getpid())
+		if _, err := f.WriteString(pid); err != nil {
+			_ = f.Close()
+			_ = os.Remove(pidFilePath)
+			return nil, err
+		}
+		if err := f.Close(); err != nil {
+			_ = os.Remove(pidFilePath)
+			return nil, err
+		}
+		return func() {
+			_ = os.Remove(pidFilePath)
+		}, nil
 	}
-	pid := fmt.Sprintf("%d\n", os.Getpid())
-	if _, err := f.WriteString(pid); err != nil {
-		_ = f.Close()
-		_ = os.Remove(pidFilePath)
-		return nil, err
+	return nil, fmt.Errorf("serve already running (pid file exists: %s)", pidFilePath)
+}
+
+func isStalePID(pidText string) bool {
+	pidText = strings.TrimSpace(pidText)
+	if pidText == "" {
+		return false
 	}
-	if err := f.Close(); err != nil {
-		_ = os.Remove(pidFilePath)
-		return nil, err
+	pid, err := strconv.Atoi(pidText)
+	if err != nil || pid <= 0 {
+		return false
 	}
-	return func() {
-		_ = os.Remove(pidFilePath)
-	}, nil
+	err = syscall.Kill(pid, 0)
+	if err == nil || errors.Is(err, syscall.EPERM) {
+		return false
+	}
+	return errors.Is(err, syscall.ESRCH)
 }
 
 func localBrowserURL(cfg config.Config) string {

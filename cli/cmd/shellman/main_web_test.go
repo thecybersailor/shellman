@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -132,4 +133,17 @@ func TestAcquireServePIDFileLock_MutualExclusion(t *testing.T) {
 		t.Fatalf("lock should succeed after release: %v", err)
 	}
 	release2()
+}
+
+func TestAcquireServePIDFileLock_StalePIDFileCanBeRecovered(t *testing.T) {
+	pidPath := filepath.Join(t.TempDir(), "shellman.pid")
+	if err := os.WriteFile(pidPath, []byte("99999999\n"), 0o644); err != nil {
+		t.Fatalf("write stale pid file: %v", err)
+	}
+
+	release, err := acquireServePIDFileLock(pidPath)
+	if err != nil {
+		t.Fatalf("stale pid lock should be recovered: %v", err)
+	}
+	defer release()
 }

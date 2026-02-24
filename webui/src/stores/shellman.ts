@@ -48,6 +48,27 @@ export interface TaskMessage {
   updated_at: number;
 }
 
+export interface PMChatSession {
+  session_id: string;
+  project_id: string;
+  title: string;
+  archived?: boolean;
+  last_message_at?: number;
+  created_at?: number;
+  updated_at?: number;
+}
+
+export interface PMChatMessage {
+  id: number;
+  session_id: string;
+  role: "user" | "assistant";
+  content: string;
+  status: "running" | "completed" | "error";
+  error_text?: string;
+  created_at: number;
+  updated_at: number;
+}
+
 export interface TerminalFrame {
   mode: "reset" | "append";
   data: string;
@@ -447,6 +468,8 @@ export function createShellmanStore(
     treesByProject: {} as Record<string, TaskNode[]>,
     paneByTaskId: {} as Record<string, PaneBinding>,
     taskMessagesByTaskId: {} as Record<string, TaskMessage[]>,
+    pmSessionsByProjectId: {} as Record<string, PMChatSession[]>,
+    pmMessagesBySessionId: {} as Record<string, PMChatMessage[]>,
     taskSidecarModeByTaskId: {} as Record<string, SidecarMode>,
     selectedTaskId: "",
     selectedPaneUuid: "",
@@ -485,6 +508,8 @@ export function createShellmanStore(
   const refreshTimerByTaskID: Record<string, ReturnType<typeof setTimeout> | undefined> = {};
   const messagesRefreshTimerByTaskID: Record<string, ReturnType<typeof setTimeout> | undefined> = {};
   const messagesHydratedByTaskID: Record<string, true> = {};
+  const pmMessagesRefreshTimerBySessionID: Record<string, ReturnType<typeof setTimeout> | undefined> = {};
+  const pmMessagesHydratedBySessionID: Record<string, true> = {};
   const persistedSnapshotByPaneUuid: Record<string, TerminalCacheEntry> = {};
   const paneGapByPaneUuid: Record<string, true> = {};
   const pendingGapRecoverByPaneUuid: Record<string, number> = {};
@@ -1235,6 +1260,17 @@ export function createShellmanStore(
         return;
       }
       scheduleRefreshTaskMessages(taskID);
+      return;
+    }
+
+    if (msg.type === "event" && msg.op === "project.pm.messages.updated") {
+      const payload = msg.payload ?? {};
+      const projectID = String(payload.project_id ?? "").trim();
+      const sessionID = String(payload.session_id ?? "").trim();
+      if (!projectID || !sessionID) {
+        return;
+      }
+      scheduleRefreshPMMessages(projectID, sessionID);
       return;
     }
 
@@ -2687,6 +2723,149 @@ export function createShellmanStore(
     }
   }
 
+  async function loadPMSessions(projectId: string, force = false) {
+    const nextProjectID = String(projectId ?? "").trim();
+    if (!nextProjectID) {
+      return [];
+    }
+    if (!force && Array.isArray(state.pmSessionsByProjectId[nextProjectID])) {
+      return state.pmSessionsByProjectId[nextProjectID];
+    }
+    const res = (await fetchImpl(apiURL(`/api/v1/projects/${encodeURIComponent(nextProjectID)}/pm/sessions`), {
+      headers: apiHeaders()
+    }).then((r) => r.json())) as APIResponse<{ project_id: string; items: PMChatSession[] }>;
+    if (!res.ok) {
+      throw new Error(res.error?.code || "PM_SESSIONS_LOAD_FAILED");
+    }
+    const items = (res.data?.items ?? []).map((item) => ({
+      session_id: String(item.session_id ?? ""),
+      project_id: String(item.project_id ?? nextProjectID),
+      title: String(item.title ?? ""),
+      archived: Boolean(item.archived),
+      last_message_at: Number(item.last_message_at ?? 0),
+      created_at: Number(item.created_at ?? 0),
+      updated_at: Number(item.updated_at ?? 0)
+    }));
+    state.pmSessionsByProjectId[nextProjectID] = items;
+    return items;
+  }
+
+  async function createPMSession(projectId: string, title = "") {
+    const nextProjectID = String(projectId ?? "").trim();
+    if (!nextProjectID) {
+      throw new Error("INVALID_PROJECT_ID");
+    }
+    const res = (await fetchImpl(apiURL(`/api/v1/projects/${encodeURIComponent(nextProjectID)}/pm/sessions`), {
+      method: "POST",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ title: String(title ?? "").trim() })
+    }).then((r) => r.json())) as APIResponse<{ session_id: string; project_id: string; title: string }>;
+    if (!res.ok) {
+      throw new Error(res.error?.code || "PM_SESSION_CREATE_FAILED");
+    }
+    await loadPMSessions(nextProjectID, true);
+    return String(res.data?.session_id ?? "");
+  }
+
+  async function loadPMMessages(projectId: string, sessionId: string, force = false) {
+    const nextProjectID = String(projectId ?? "").trim();
+    const nextSessionID = String(sessionId ?? "").trim();
+    if (!nextProjectID || !nextSessionID) {
+      return [];
+    }
+    if (!force && pmMessagesHydratedBySessionID[nextSessionID]) {
+      return state.pmMessagesBySessionId[nextSessionID] ?? [];
+    }
+    const res = (await fetchImpl(
+      apiURL(`/api/v1/projects/${encodeURIComponent(nextProjectID)}/pm/sessions/${encodeURIComponent(nextSessionID)}/messages`),
+      { headers: apiHeaders() }
+    ).then((r) => r.json())) as APIResponse<{ project_id: string; session_id: string; messages: PMChatMessage[] }>;
+    if (!res.ok) {
+      state.pmMessagesBySessionId[nextSessionID] = [];
+      pmMessagesHydratedBySessionID[nextSessionID] = true;
+      throw new Error(res.error?.code || "PM_MESSAGES_LOAD_FAILED");
+    }
+    state.pmMessagesBySessionId[nextSessionID] = (res.data?.messages ?? []).map((item) => ({
+      id: Number(item.id ?? 0),
+      session_id: String(item.session_id ?? nextSessionID),
+      role: item.role === "assistant" ? "assistant" : "user",
+      content: String(item.content ?? ""),
+      status: item.status === "running" || item.status === "error" ? item.status : "completed",
+      error_text: String(item.error_text ?? ""),
+      created_at: Number(item.created_at ?? 0),
+      updated_at: Number(item.updated_at ?? 0)
+    }));
+    pmMessagesHydratedBySessionID[nextSessionID] = true;
+    return state.pmMessagesBySessionId[nextSessionID];
+  }
+
+  async function sendPMMessage(projectId: string, sessionId: string, content: string) {
+    const nextProjectID = String(projectId ?? "").trim();
+    const nextSessionID = String(sessionId ?? "").trim();
+    const nextContent = String(content ?? "").trim();
+    if (!nextProjectID || !nextSessionID || !nextContent) {
+      throw new Error("INVALID_MESSAGE");
+    }
+    const now = Math.floor(Date.now() / 1000);
+    const base = state.pmMessagesBySessionId[nextSessionID] ?? [];
+    const tmpUserID = -(Date.now());
+    const tmpAssistantID = tmpUserID - 1;
+    state.pmMessagesBySessionId[nextSessionID] = [
+      ...base,
+      {
+        id: tmpUserID,
+        session_id: nextSessionID,
+        role: "user",
+        content: nextContent,
+        status: "completed",
+        error_text: "",
+        created_at: now,
+        updated_at: now
+      },
+      {
+        id: tmpAssistantID,
+        session_id: nextSessionID,
+        role: "assistant",
+        content: "",
+        status: "running",
+        error_text: "",
+        created_at: now,
+        updated_at: now
+      }
+    ];
+    pmMessagesHydratedBySessionID[nextSessionID] = true;
+    const sendRes = (await fetchImpl(
+      apiURL(`/api/v1/projects/${encodeURIComponent(nextProjectID)}/pm/sessions/${encodeURIComponent(nextSessionID)}/messages`),
+      {
+        method: "POST",
+        headers: apiHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ content: nextContent, source: "user_input" })
+      }
+    ).then((r) => r.json())) as APIResponse<{ status?: string }>;
+    if (!sendRes.ok) {
+      throw new Error(sendRes.error?.code || "PM_MESSAGE_SEND_FAILED");
+    }
+    await loadPMMessages(nextProjectID, nextSessionID, true);
+    await loadPMSessions(nextProjectID, true);
+  }
+
+  function scheduleRefreshPMMessages(projectId: string, sessionId: string) {
+    const nextProjectID = String(projectId ?? "").trim();
+    const nextSessionID = String(sessionId ?? "").trim();
+    if (!nextProjectID || !nextSessionID) {
+      return;
+    }
+    const existed = pmMessagesRefreshTimerBySessionID[nextSessionID];
+    if (existed) {
+      clearTimeout(existed);
+    }
+    pmMessagesRefreshTimerBySessionID[nextSessionID] = setTimeout(() => {
+      pmMessagesRefreshTimerBySessionID[nextSessionID] = undefined;
+      void loadPMMessages(nextProjectID, nextSessionID, true).catch(() => {});
+      void loadPMSessions(nextProjectID, true).catch(() => {});
+    }, 50);
+  }
+
   async function stopTaskMessage(taskId: string): Promise<boolean> {
     const nextTaskID = String(taskId ?? "").trim();
     if (!nextTaskID) {
@@ -2857,6 +3036,10 @@ export function createShellmanStore(
     loadTaskMessages,
     loadTaskSidecarMode,
     sendTaskMessage,
+    loadPMSessions,
+    createPMSession,
+    loadPMMessages,
+    sendPMMessage,
     stopTaskMessage,
     setTaskSidecarMode,
     submitTaskCommit,
