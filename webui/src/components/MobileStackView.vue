@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import type { ProjectSection } from "./ProjectTaskTree.vue";
 import type { TaskMessage, TerminalFrame } from "@/stores/shellman";
+import { applyPhysicalKey, applyVirtualKey, createModifierState, type ModifierState, type VirtualKey } from "@/lib/terminal_keys";
 import ProjectInfoPanel from "./ProjectInfoPanel.vue";
 import ProjectTaskTree from "./ProjectTaskTree.vue";
 import TerminalPane from "./TerminalPane.vue";
+import VirtualKeyboardPanel from "./VirtualKeyboardPanel.vue";
 import TaskTitleResolver from "./TaskTitleResolver.vue";
 import { 
   Settings,
@@ -50,6 +52,7 @@ const emit = defineEmits<{
   (event: "toggle-task-check", payload: { taskId: string; checked: boolean }): void;
   (event: "terminal-input", text: string): void;
   (event: "terminal-image-paste", file: File): void;
+  (event: "terminal-link-open", payload: { type: "url"; raw: string } | { type: "path"; raw: string }): void;
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
   (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
@@ -73,6 +76,11 @@ const emit = defineEmits<{
 
 const showInfoPanel = ref(false);
 const projectPanelActiveTab = ref<"diff" | "file" | "thread">("thread");
+const terminalFocused = ref(false);
+const modifierState = ref<ModifierState>(createModifierState());
+const keyboardInsetPx = ref(0);
+const effectiveKeyboardInsetPx = computed(() => (terminalFocused.value ? keyboardInsetPx.value : 0));
+const virtualKeyboardTopPx = computed(() => 16);
 
 function onSelectTask(taskId: string) {
   emit("select-task", taskId);
@@ -106,6 +114,62 @@ function onProjectPanelActiveTabChange(next: string) {
     projectPanelActiveTab.value = next;
   }
 }
+
+function onTerminalFocusChange(focused: boolean) {
+  terminalFocused.value = focused;
+  if (!focused) {
+    modifierState.value = createModifierState();
+  }
+}
+
+function onVirtualKeyPress(key: VirtualKey) {
+  const result = applyVirtualKey(key, modifierState.value);
+  modifierState.value = result.state;
+  if (result.text) {
+    emit("terminal-input", result.text);
+  }
+}
+
+function onTerminalInput(text: string) {
+  if ((modifierState.value.ctrlArmed || modifierState.value.altArmed) && text.length === 1) {
+    const result = applyPhysicalKey(text, modifierState.value);
+    if (result) {
+      modifierState.value = result.state;
+      emit("terminal-input", result.text);
+      return;
+    }
+  }
+  emit("terminal-input", text);
+}
+
+function syncKeyboardInset() {
+  const vv = window.visualViewport;
+  if (!vv) {
+    keyboardInsetPx.value = 0;
+    return;
+  }
+  const inset = window.innerHeight - vv.height - vv.offsetTop;
+  keyboardInsetPx.value = Math.max(0, Math.round(inset));
+}
+
+onMounted(() => {
+  syncKeyboardInset();
+  const vv = window.visualViewport;
+  if (!vv) {
+    return;
+  }
+  vv.addEventListener("resize", syncKeyboardInset);
+  vv.addEventListener("scroll", syncKeyboardInset);
+});
+
+onBeforeUnmount(() => {
+  const vv = window.visualViewport;
+  if (!vv) {
+    return;
+  }
+  vv.removeEventListener("resize", syncKeyboardInset);
+  vv.removeEventListener("scroll", syncKeyboardInset);
+});
 </script>
 
 <template>
@@ -142,6 +206,7 @@ function onProjectPanelActiveTabChange(next: string) {
           :selected-task-id="props.selectedTaskId"
           :hide-footer="true"
           :show-orphan-section="false"
+          :always-show-task-row-action="true"
           @select-task="onSelectTask"
           @toggle-task-check="(payload) => emit('toggle-task-check', payload)"
           @add-project="emit('add-project')"
@@ -176,7 +241,11 @@ function onProjectPanelActiveTabChange(next: string) {
         </Button>
       </header>
 
-      <main class="flex-1 min-h-0 relative bg-black overflow-hidden">
+      <main
+        data-test-id="shellman-mobile-session-main"
+        class="flex-1 min-h-0 relative bg-black overflow-hidden"
+        :style="{ paddingBottom: `${effectiveKeyboardInsetPx}px` }"
+      >
         <div class="h-full w-full" :class="{ 'opacity-20 blur-sm pointer-events-none': showInfoPanel }">
           <slot name="terminal" v-bind="{
             taskId: props.selectedTaskId,
@@ -200,15 +269,24 @@ function onProjectPanelActiveTabChange(next: string) {
               :is-no-pane-task="Boolean(props.isNoPaneTask)"
               :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
               :app-programs="props.appPrograms ?? []"
-              @terminal-input="(text) => emit('terminal-input', text)"
+              @terminal-input="onTerminalInput"
               @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
+              @terminal-link-open="(payload) => emit('terminal-link-open', payload)"
               @terminal-resize="(size) => emit('terminal-resize', size)"
               @terminal-history-more="() => emit('terminal-history-more')"
               @manual-launch-pane="(payload) => emit('manual-launch-pane', payload)"
               @open-session-detail="openSessionDetailPanel"
+              @terminal-focus-change="onTerminalFocusChange"
             />
           </slot>
         </div>
+        <VirtualKeyboardPanel
+          v-if="terminalFocused"
+          :ctrl-armed="modifierState.ctrlArmed"
+          :alt-armed="modifierState.altArmed"
+          :top-offset-px="virtualKeyboardTopPx"
+          @press-key="onVirtualKeyPress"
+        />
 
         <!-- Overlaid Side Panel -->
         <transition 

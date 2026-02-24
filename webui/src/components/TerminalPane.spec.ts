@@ -8,13 +8,27 @@ let resetCalls = 0;
 let scrollToBottomCalls = 0;
 let customKeyEventHandler: ((ev: KeyboardEvent) => boolean) | null = null;
 let onScrollHandler: ((y: number) => void) | null = null;
+let linkProvider: {
+  provideLinks: (
+    lineNumber: number,
+    callback: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; activate: () => void }>
+  ) => void;
+} | null = null;
 let deferWriteCallback = false;
+let renderedLines: string[] = [];
 const SCROLL_MARKER = "__SCROLL__";
 
 vi.mock("@xterm/xterm", () => ({
   Terminal: class {
     cols = 80;
     rows = 24;
+    buffer = {
+      active: {
+        getLine: (line: number) => ({
+          translateToString: () => renderedLines[line] ?? ""
+        })
+      }
+    };
     constructor(options?: unknown) {
       terminalOptions = options;
     }
@@ -27,6 +41,7 @@ vi.mock("@xterm/xterm", () => ({
     }
     write(text: string, callback?: () => void) {
       writes.push(text);
+      renderedLines = text.split("\n");
       if (callback) {
         if (deferWriteCallback) {
           setTimeout(callback, 0);
@@ -55,6 +70,14 @@ vi.mock("@xterm/xterm", () => ({
     onScroll(handler: (y: number) => void) {
       onScrollHandler = handler;
     }
+    registerLinkProvider(provider: typeof linkProvider) {
+      linkProvider = provider;
+      return {
+        dispose() {
+          linkProvider = null;
+        }
+      };
+    }
   }
 }));
 
@@ -63,6 +86,7 @@ import TerminalPane from "./TerminalPane.vue";
 afterEach(() => {
   document.body.innerHTML = "";
   deferWriteCallback = false;
+  renderedLines = [];
 });
 
 describe("TerminalPane", () => {
@@ -100,6 +124,40 @@ describe("TerminalPane", () => {
     expect(wrapper.find("[data-test-id='tt-terminal-root']").exists()).toBe(true);
     expect(wrapper.find("[data-test-id='tt-terminal-input']").exists()).toBe(true);
     expect(wrapper.find("[data-test-id='tt-terminal-output']").exists()).toBe(false);
+  });
+
+  it("applies mobile keyboard suppression attributes on terminal input", () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    const input = wrapper.get("[data-test-id='tt-terminal-input']");
+    expect(input.attributes("autocorrect")).toBe("off");
+    expect(input.attributes("autocapitalize")).toBe("off");
+    expect(input.attributes("autocomplete")).toBe("off");
+    expect(input.attributes("spellcheck")).toBe("false");
+  });
+
+  it("emits terminal-focus-change on terminal input focus/blur", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    const input = wrapper.get("[data-test-id='tt-terminal-input']");
+    await input.trigger("focus");
+    await input.trigger("blur");
+    expect(wrapper.emitted("terminal-focus-change")?.[0]).toEqual([true]);
+    expect(wrapper.emitted("terminal-focus-change")?.[1]).toEqual([false]);
   });
 
   it("shows pane uuid in console header", () => {
@@ -378,6 +436,33 @@ describe("TerminalPane", () => {
     await wrapper.vm.$nextTick();
     const emitted = wrapper.emitted("terminal-history-more") ?? [];
     expect(emitted.length).toBe(1);
+  });
+
+  it("emits terminal-link-open when xterm link is activated", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    linkProvider = null;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    await wrapper.setProps({ frame: { mode: "reset", data: "see src/App.vue:12:3" } });
+    expect(linkProvider).toBeTruthy();
+
+    let links: Array<{ activate: () => void }> = [];
+    linkProvider?.provideLinks(1, (provided) => {
+      links = provided;
+    });
+    expect(links.length).toBeGreaterThan(0);
+    links[0]?.activate();
+
+    expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
+      type: "path",
+      raw: "src/App.vue:12:3"
+    });
   });
 
   it("emits terminal-image-paste when clipboard has image", async () => {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRoute, useRouter } from "vue-router";
 import TerminalPane from "./components/TerminalPane.vue";
@@ -11,6 +11,7 @@ import ActiveProjectEntry from "./components/ActiveProjectEntry.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import { createShellmanStore } from "./stores/shellman";
 import type { TerminalFrame } from "./stores/shellman";
+import { resolvePathLinkInProject } from "@/lib/terminal_path_resolver";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -737,6 +738,44 @@ async function onFileOpen(path: string) {
   }
 }
 
+function moveFileViewerCursor(line: number | null, col: number | null) {
+  if (!line || line < 1) {
+    return;
+  }
+  const input = document.querySelector("[data-test-id='shellman-file-viewer-textarea']") as HTMLTextAreaElement | null;
+  if (!input) {
+    return;
+  }
+  const lines = String(input.value ?? "").split("\n");
+  if (lines.length === 0) {
+    return;
+  }
+  const lineIndex = Math.max(0, Math.min(lines.length - 1, line - 1));
+  const lineText = lines[lineIndex] ?? "";
+  const colIndex = Math.max(0, Math.min(lineText.length, (col ?? 1) - 1));
+  let offset = colIndex;
+  for (let i = 0; i < lineIndex; i += 1) {
+    offset += lines[i].length + 1;
+  }
+  input.focus();
+  input.setSelectionRange(offset, offset);
+}
+
+async function onTerminalLinkOpen(payload: { type: "url"; raw: string } | { type: "path"; raw: string }) {
+  if (payload.type === "url") {
+    window.open(payload.raw, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const projectRoot = selectedTaskProjectRoot.value;
+  const resolved = resolvePathLinkInProject(payload.raw, projectRoot);
+  if (!resolved) {
+    return;
+  }
+  await onFileOpen(resolved.safePath);
+  await nextTick();
+  moveFileViewerCursor(resolved.line, resolved.col);
+}
+
 function buildReplacePatch(path: string, baseContent: string, nextContent: string) {
   const normalizedBase = baseContent.replace(/\r\n/g, "\n");
   const normalizedNext = nextContent.replace(/\r\n/g, "\n");
@@ -947,6 +986,7 @@ onBeforeUnmount(() => {
               :app-programs="store.state.appPrograms"
               @terminal-input="onTerminalInput"
               @terminal-image-paste="onTerminalImagePaste"
+              @terminal-link-open="onTerminalLinkOpen"
               @terminal-resize="onTerminalResize"
               @terminal-history-more="onTerminalHistoryMore"
               @manual-launch-pane="onManualLaunchPane"
@@ -1017,6 +1057,7 @@ onBeforeUnmount(() => {
       @toggle-task-check="onToggleTaskCheck"
       @terminal-input="onTerminalInput"
       @terminal-image-paste="onTerminalImagePaste"
+      @terminal-link-open="onTerminalLinkOpen"
       @terminal-resize="onTerminalResize"
       @terminal-history-more="onTerminalHistoryMore"
       @manual-launch-pane="onManualLaunchPane"

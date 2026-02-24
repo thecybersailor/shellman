@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { Card, CardContent } from "@/components/ui/card";
 import TaskHeader from "@/components/TaskHeader.vue";
 import PaneLaunchForm from "@/components/PaneLaunchForm.vue";
+import { parseTerminalLinks } from "@/lib/terminal_link_parser";
 const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -29,6 +30,8 @@ const emit = defineEmits<{
   (event: "terminal-resize", size: { cols: number; rows: number }): void;
   (event: "terminal-history-more"): void;
   (event: "terminal-image-paste", file: File): void;
+  (event: "terminal-focus-change", focused: boolean): void;
+  (event: "terminal-link-open", payload: { type: "url"; raw: string } | { type: "path"; raw: string }): void;
   (event: "manual-launch-pane", payload: { program: LaunchProgram; prompt?: string }): void;
   (event: "open-session-detail"): void;
 }>();
@@ -50,6 +53,9 @@ let onDataSeq = 0;
 let cursorMoveSeq = 0;
 let terminalInput: HTMLTextAreaElement | null = null;
 let terminalInputPasteHandler: ((event: ClipboardEvent) => void) | null = null;
+let terminalInputFocusHandler: ((event: FocusEvent) => void) | null = null;
+let terminalInputBlurHandler: ((event: FocusEvent) => void) | null = null;
+let terminalLinkProviderDisposable: { dispose?: () => void } | null = null;
 const ANSI_REPAINT_PREFIX = "\u001b[0m\u001b[H\u001b[2J";
 const launchSubmitLabel = computed(() => (props.isNoPaneTask ? t("terminal.start") : t("terminal.manual")));
 
@@ -368,10 +374,100 @@ function bindPasteHandler(input: HTMLTextAreaElement | null) {
   if (!input) {
     return;
   }
-  const handler = onPaste;
+  const pasteHandler = onPaste;
+  const focusHandler = () => emit("terminal-focus-change", true);
+  const blurHandler = () => emit("terminal-focus-change", false);
   terminalInput = input;
-  terminalInputPasteHandler = handler;
-  input.addEventListener("paste", handler);
+  terminalInputPasteHandler = pasteHandler;
+  terminalInputFocusHandler = focusHandler;
+  terminalInputBlurHandler = blurHandler;
+  input.addEventListener("paste", pasteHandler);
+  input.addEventListener("focus", focusHandler);
+  input.addEventListener("blur", blurHandler);
+}
+
+function readBufferLine(y: number) {
+  const terminal = term as unknown as {
+    buffer?: {
+      active?: {
+        getLine?: (line: number) => {
+          translateToString?: (trimRight?: boolean, startColumn?: number, endColumn?: number) => string;
+        } | null;
+      };
+    };
+  };
+  const getLine = terminal.buffer?.active?.getLine;
+  if (!getLine) {
+    return "";
+  }
+  for (const lineIndex of [y - 1, y]) {
+    if (lineIndex < 0) {
+      continue;
+    }
+    const line = getLine(lineIndex);
+    const text = line?.translateToString?.(true) ?? "";
+    if (text) {
+      return text;
+    }
+  }
+  return "";
+}
+
+function bindTerminalLinkProvider() {
+  const provider = {
+    provideLinks(y: number, callback: (links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: () => void }>) => void) {
+      const text = readBufferLine(y);
+      if (!text) {
+        callback([]);
+        return;
+      }
+      const links = parseTerminalLinks(text).map((item) => {
+        const startX = item.start + 1;
+        const endX = Math.max(startX, item.end);
+        const payload = item.type === "url" ? { type: "url" as const, raw: item.text } : { type: "path" as const, raw: item.text };
+        return {
+          text: item.text,
+          range: {
+            start: { x: startX, y },
+            end: { x: endX, y }
+          },
+          activate: () => emit("terminal-link-open", payload)
+        };
+      });
+      callback(links);
+    }
+  };
+  const terminal = term as unknown as {
+    registerLinkProvider?: (provider: {
+      provideLinks: (
+        y: number,
+        callback: (
+          links: Array<{
+            range: {
+              start: { x: number; y: number };
+              end: { x: number; y: number };
+            };
+            text?: string;
+            activate: () => void;
+          }>
+        ) => void
+      ) => void;
+    }) => { dispose?: () => void };
+  };
+  if (!terminal.registerLinkProvider) {
+    return;
+  }
+  terminalLinkProviderDisposable = terminal.registerLinkProvider(provider);
+  const g = globalThis as typeof globalThis & {
+    __SHELLMAN_TERM_DEBUG__?: boolean;
+    __SHELLMAN_TERM_LINK_PROVIDERS__?: Array<{ term: unknown; provider: unknown }>;
+  };
+  if (g.__SHELLMAN_TERM_DEBUG__ === true) {
+    if (!Array.isArray(g.__SHELLMAN_TERM_LINK_PROVIDERS__)) {
+      g.__SHELLMAN_TERM_LINK_PROVIDERS__ = [];
+    }
+    g.__SHELLMAN_TERM_LINK_PROVIDERS__.push({ term, provider });
+  }
 }
 
 function syncTerminalInputDisabled() {
@@ -385,12 +481,22 @@ function syncTerminalInputDisabled() {
 }
 
 function unbindPasteHandler() {
-  if (!terminalInput || !terminalInputPasteHandler) {
+  if (!terminalInput) {
     return;
   }
-  terminalInput.removeEventListener("paste", terminalInputPasteHandler);
+  if (terminalInputPasteHandler) {
+    terminalInput.removeEventListener("paste", terminalInputPasteHandler);
+  }
+  if (terminalInputFocusHandler) {
+    terminalInput.removeEventListener("focus", terminalInputFocusHandler);
+  }
+  if (terminalInputBlurHandler) {
+    terminalInput.removeEventListener("blur", terminalInputBlurHandler);
+  }
   terminalInput = null;
   terminalInputPasteHandler = null;
+  terminalInputFocusHandler = null;
+  terminalInputBlurHandler = null;
 }
 
 defineExpose({ writeOutput });
@@ -533,6 +639,10 @@ onMounted(async () => {
     const input = root.value?.querySelector("textarea.xterm-helper-textarea") as HTMLTextAreaElement | null;
     if (input) {
       input.setAttribute("data-test-id", "tt-terminal-input");
+      input.setAttribute("autocorrect", "off");
+      input.setAttribute("autocapitalize", "off");
+      input.setAttribute("autocomplete", "off");
+      input.setAttribute("spellcheck", "false");
       logInfo("shellman.term.view.input.ready");
       bindPasteHandler(input);
       syncTerminalInputDisabled();
@@ -574,6 +684,7 @@ onMounted(async () => {
         emit("terminal-history-more");
       }
     });
+    bindTerminalLinkProvider();
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", handleWindowResize);
     logInfo("shellman.term.view.resize_listener.added");
@@ -612,6 +723,16 @@ onBeforeUnmount(() => {
   if (taskSwitchRetryTimer !== null) {
     window.clearTimeout(taskSwitchRetryTimer);
     taskSwitchRetryTimer = null;
+  }
+  terminalLinkProviderDisposable?.dispose?.();
+  terminalLinkProviderDisposable = null;
+  {
+    const g = globalThis as typeof globalThis & {
+      __SHELLMAN_TERM_LINK_PROVIDERS__?: Array<{ term: unknown; provider: unknown }>;
+    };
+    if (Array.isArray(g.__SHELLMAN_TERM_LINK_PROVIDERS__)) {
+      g.__SHELLMAN_TERM_LINK_PROVIDERS__ = g.__SHELLMAN_TERM_LINK_PROVIDERS__.filter((item) => item.term !== term);
+    }
   }
   if (resizeObserver) {
     resizeObserver.disconnect();
