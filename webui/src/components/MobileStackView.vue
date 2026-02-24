@@ -82,6 +82,7 @@ const modifierState = ref<ModifierState>(createModifierState());
 const keyboardInsetPx = ref(0);
 const effectiveKeyboardInsetPx = computed(() => (terminalFocused.value ? keyboardInsetPx.value : 0));
 const virtualKeyboardTopPx = computed(() => 16);
+const terminalImageInput = ref<HTMLInputElement | null>(null);
 
 function onSelectTask(taskId: string) {
   emit("select-task", taskId);
@@ -141,6 +142,20 @@ function onTerminalInput(text: string) {
     }
   }
   emit("terminal-input", text);
+}
+
+function onVirtualKeyboardImagePick() {
+  terminalImageInput.value?.click();
+}
+
+function onVirtualKeyboardImagePicked(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0];
+  if (!file) {
+    return;
+  }
+  emit("terminal-image-paste", file);
+  input.value = "";
 }
 
 function syncKeyboardInset() {
@@ -293,6 +308,15 @@ onBeforeUnmount(() => {
           :alt-armed="modifierState.altArmed"
           :top-offset-px="virtualKeyboardTopPx"
           @press-key="onVirtualKeyPress"
+          @request-image-pick="onVirtualKeyboardImagePick"
+        />
+        <input
+          ref="terminalImageInput"
+          data-test-id="tt-virtual-keyboard-upload-input"
+          type="file"
+          accept="image/*"
+          class="hidden"
+          @change="onVirtualKeyboardImagePicked"
         />
 
         <!-- Overlaid Side Panel -->

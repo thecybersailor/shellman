@@ -44,7 +44,7 @@ describe("VirtualKeyboardPanel", () => {
     const classes = row.classes();
     expect(classes).toContain("overflow-x-auto");
     expect(classes).toContain("whitespace-nowrap");
-    expect(wrapper.findAll("button").length).toBe(8);
+    expect(wrapper.findAll("button").length).toBe(9);
   });
 
   it("hides scrollbar while keeping horizontal scroll", () => {
@@ -72,5 +72,24 @@ describe("VirtualKeyboardPanel", () => {
     });
     expect(wrapper.get("[data-test-id='tt-vkey-ctrl']").attributes("tabindex")).toBe("-1");
     expect(wrapper.get("[data-test-id='tt-vkey-esc']").attributes("tabindex")).toBe("-1");
+    expect(wrapper.get("[data-test-id='tt-vkey-upload']").attributes("tabindex")).toBe("-1");
+  });
+
+  it("emits request-image-pick when upload button is pressed", async () => {
+    const wrapper = mount(VirtualKeyboardPanel, {
+      props: { ctrlArmed: false, altArmed: false }
+    });
+    await wrapper.get("[data-test-id='tt-vkey-upload']").trigger("click");
+    expect(wrapper.emitted("request-image-pick")?.[0]).toEqual([]);
+  });
+
+  it("renders fixed upload button on right side", () => {
+    const wrapper = mount(VirtualKeyboardPanel, {
+      props: { ctrlArmed: false, altArmed: false }
+    });
+    const main = wrapper.get("[data-test-id='tt-virtual-keyboard-main']");
+    const upload = wrapper.get("[data-test-id='tt-vkey-upload']");
+    expect(main.classes()).toContain("flex");
+    expect(upload.classes()).toContain("shrink-0");
   });
 });

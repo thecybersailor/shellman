@@ -309,6 +309,36 @@ describe("MobileStackView", () => {
     expect(wrapper.emitted("terminal-input")?.[0]).toEqual(["\u0003"]);
   });
 
+  it("forwards image file picked from virtual keyboard upload entry", async () => {
+    const TerminalPaneStub = defineComponent({
+      name: "TerminalPane",
+      emits: ["terminal-focus-change"],
+      template: "<button data-test-id='focus-on' @click=\"$emit('terminal-focus-change', true)\">focus</button>"
+    });
+
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Root", status: "running" }] }],
+        selectedTaskId: "t1",
+        darkMode: "dark"
+      },
+      global: {
+        stubs: {
+          TerminalPane: TerminalPaneStub
+        }
+      }
+    });
+
+    await wrapper.get("[data-test-id='focus-on']").trigger("click");
+    await wrapper.get("[data-test-id='tt-vkey-upload']").trigger("click");
+    const file = new File(["img"], "capture.png", { type: "image/png" });
+    const input = wrapper.get("[data-test-id='tt-virtual-keyboard-upload-input']");
+    Object.defineProperty(input.element, "files", { value: [file], configurable: true });
+    await input.trigger("change");
+
+    expect(wrapper.emitted("terminal-image-paste")?.[0]).toEqual([file]);
+  });
+
   it("moves terminal viewport up with visualViewport keyboard inset", async () => {
     const listeners = new Map<string, (event: Event) => void>();
     const visualViewportMock = {
