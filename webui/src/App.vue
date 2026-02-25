@@ -232,6 +232,13 @@ const selectedTaskUiLoading = computed(
     Boolean(store.state.selectedTaskId) &&
     (!selectedTaskReady.value || selectedTaskPaneLoading.value || !selectedTaskPaneLookupResolved.value)
 );
+const selectedTaskHistoryMoreLoading = computed(() => {
+  const taskId = store.state.selectedTaskId;
+  if (!taskId) {
+    return false;
+  }
+  return Boolean(store.state.taskPaneHistoryLoadingByTaskId[taskId]);
+});
 const selectedTaskMessages = computed(() => store.state.taskMessagesByTaskId[store.state.selectedTaskId] ?? []);
 const selectedTaskNotes = computed(() => []);
 const selectedTaskFrame = computed<TerminalFrame>(() => store.state.terminalFrame);
@@ -1025,6 +1032,7 @@ onBeforeUnmount(() => {
               :frame="selectedTaskFrame"
               :cursor="selectedTaskCursor"
               :is-ended="selectedTaskEnded"
+              :history-more-loading="selectedTaskHistoryMoreLoading"
               :show-manual-launch-button="showManualLaunchPaneButton"
               :is-no-pane-task="selectedTaskIsNoPane"
               :default-launch-program="store.state.defaultLaunchProgram"
@@ -1081,6 +1089,7 @@ onBeforeUnmount(() => {
       :selected-pane-uuid="selectedPaneUuid"
       :selected-task-title="selectedTaskTitle"
       :selected-task-loading="selectedTaskUiLoading"
+      :selected-task-history-more-loading="selectedTaskHistoryMoreLoading"
       :selected-task-description="selectedTaskDescription"
       :selected-task-messages="selectedTaskMessages"
       :selected-task-notes="selectedTaskNotes"

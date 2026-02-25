@@ -34,4 +34,18 @@ describe("TaskHeader", () => {
     expect(Array.from(titleRow!.classList)).toContain("hidden");
     expect(Array.from(titleRow!.classList)).toContain("md:flex");
   });
+
+  it("shows history-more button and emits history-more", async () => {
+    const wrapper = mount(TaskHeader, {
+      props: {
+        taskTitle: "T"
+      }
+    });
+
+    const button = wrapper.get("[data-test-id='shellman-task-history-more']");
+    await button.trigger("click");
+
+    expect(wrapper.emitted("history-more")?.length).toBe(1);
+    expect(wrapper.emitted("open-session-detail")).toBeUndefined();
+  });
 });

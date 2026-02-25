@@ -20,6 +20,7 @@ const props = defineProps<{
   paneUuid?: string;
   currentCommand?: string;
   isEnded?: boolean;
+  historyMoreLoading?: boolean;
   showManualLaunchButton?: boolean;
   isNoPaneTask?: boolean;
   defaultLaunchProgram?: LaunchProgram;
@@ -531,6 +532,10 @@ function onRootPointerCancel() {
   touchLinkCandidate = null;
 }
 
+function onHistoryMoreClick() {
+  emit("terminal-history-more");
+}
+
 function syncTerminalInputDisabled() {
   if (!terminalInput) {
     return;
@@ -714,7 +719,6 @@ onMounted(async () => {
     }
     const terminal = term as unknown as {
       onData?: (handler: (data: string) => void) => void;
-      onScroll?: (handler: (y: number) => void) => void;
       attachCustomKeyEventHandler?: (handler: (ev: KeyboardEvent) => boolean) => void;
     };
     terminal.attachCustomKeyEventHandler?.((ev: KeyboardEvent) => {
@@ -743,11 +747,6 @@ onMounted(async () => {
         textEscaped: escapeForLog(data)
       });
       emit("terminal-input", data);
-    });
-    terminal.onScroll?.((y: number) => {
-      if (typeof y === "number" && y <= 0) {
-        emit("terminal-history-more");
-      }
     });
     root.value.addEventListener("pointerdown", onRootPointerDown, { capture: true });
     root.value.addEventListener("pointerup", onRootPointerUp, { capture: true });
@@ -825,7 +824,9 @@ onBeforeUnmount(() => {
       :task-description="taskDescription"
       :pane-uuid="paneUuid"
       :current-command="currentCommand"
+      :history-more-loading="Boolean(props.historyMoreLoading)"
       @open-session-detail="() => emit('open-session-detail')"
+      @history-more="onHistoryMoreClick"
     />
     <CardContent v-show="!props.isNoPaneTask" class="p-1 flex-1 min-h-0 relative">
       <slot name="terminal">

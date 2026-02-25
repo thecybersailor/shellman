@@ -83,6 +83,9 @@ const TMUX_PANE_NOT_FOUND_CODE = "TMUX_PANE_NOT_FOUND";
 const TERMINAL_CACHE_MAX_LINES = 2000;
 const ACTIVE_PANE_CACHE_LIMIT = 5;
 const GAP_RECOVER_HISTORY_LINES = 4000;
+const PANE_HISTORY_PAGE_LINES = 2000;
+const PANE_HISTORY_MIN_LINES = 200;
+const PANE_HISTORY_MAX_LINES = 10000;
 const GAP_RECOVER_FRAME_HOLD_MS = 2000;
 const GAP_RECOVER_SHORT_REPAINT_MAX_BYTES = 256;
 
@@ -468,6 +471,7 @@ export function createShellmanStore(
     treesByProject: {} as Record<string, TaskNode[]>,
     paneByTaskId: {} as Record<string, PaneBinding>,
     taskPaneLoadingByTaskId: {} as Record<string, boolean>,
+    taskPaneHistoryLoadingByTaskId: {} as Record<string, boolean>,
     taskMessagesByTaskId: {} as Record<string, TaskMessage[]>,
     pmSessionsByProjectId: {} as Record<string, PMChatSession[]>,
     pmMessagesBySessionId: {} as Record<string, PMChatMessage[]>,
@@ -514,6 +518,8 @@ export function createShellmanStore(
   const persistedSnapshotByPaneUuid: Record<string, TerminalCacheEntry> = {};
   const paneGapByPaneUuid: Record<string, true> = {};
   const pendingGapRecoverByPaneUuid: Record<string, number> = {};
+  const paneHistoryLinesByTaskID: Record<string, number> = {};
+  const paneHistoryRequestByTaskID: Record<string, Promise<void> | undefined> = {};
   const activePaneOrderByUuid: string[] = [];
   let latestTerminalSize: { cols: number; rows: number } | null = null;
 
@@ -1847,39 +1853,72 @@ export function createShellmanStore(
     sendResizeToTarget(target, size, "terminal-pane");
   }
 
-  async function loadMorePaneHistory(taskId: string, lines = GAP_RECOVER_HISTORY_LINES) {
+  function normalizePaneHistoryLines(lines: number) {
+    return Math.max(PANE_HISTORY_MIN_LINES, Math.min(PANE_HISTORY_MAX_LINES, Math.floor(lines)));
+  }
+
+  function resolvePaneHistoryLines(taskId: string, lines?: number) {
+    if (typeof lines === "number" && Number.isFinite(lines)) {
+      return normalizePaneHistoryLines(lines);
+    }
+    const previous = paneHistoryLinesByTaskID[taskId];
+    if (typeof previous === "number" && previous > 0) {
+      return normalizePaneHistoryLines(previous + PANE_HISTORY_PAGE_LINES);
+    }
+    return GAP_RECOVER_HISTORY_LINES;
+  }
+
+  async function loadMorePaneHistory(taskId: string, lines?: number) {
     const nextTaskID = String(taskId ?? "").trim();
     if (!nextTaskID) {
       return;
     }
-    const nextLines = Math.max(200, Math.min(10000, Math.floor(lines)));
-    const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/pane-history?lines=${encodeURIComponent(String(nextLines))}`), {
-      headers: apiHeaders()
-    }).then((r) => r.json())) as APIResponse<{
-      task_id: string;
-      pane_uuid?: string;
-      pane_id?: string;
-      pane_target?: string;
-      snapshot?: PaneSnapshotPayload | null;
-    }>;
-    if (!res.ok) {
-      throw new Error(res.error?.code || "TASK_PANE_HISTORY_LOAD_FAILED");
-    }
-    const paneUuid =
-      String(res.data?.pane_uuid ?? "").trim() ||
-      String(state.paneByTaskId[nextTaskID]?.paneUuid ?? "").trim() ||
-      String(res.data?.pane_id ?? "").trim();
-    const snapshotCache = toTerminalCacheEntry(res.data?.snapshot);
-    if (!paneUuid || !snapshotCache) {
+    const pending = paneHistoryRequestByTaskID[nextTaskID];
+    if (pending) {
+      await pending;
       return;
     }
-    state.terminalByPaneUuid[paneUuid] = snapshotCache;
-    persistedSnapshotByPaneUuid[paneUuid] = snapshotCache;
-    if (state.selectedTaskId === nextTaskID && state.selectedPaneUuid === paneUuid) {
-      state.terminalOutput = snapshotCache.output;
-      state.terminalFrame = snapshotCache.frame;
-      state.terminalCursor = snapshotCache.cursor;
-      state.terminalEnded = false;
+    const nextLines = resolvePaneHistoryLines(nextTaskID, lines);
+    state.taskPaneHistoryLoadingByTaskId[nextTaskID] = true;
+    const request = (async () => {
+      const res = (await fetchImpl(apiURL(`/api/v1/tasks/${nextTaskID}/pane-history?lines=${encodeURIComponent(String(nextLines))}`), {
+        headers: apiHeaders()
+      }).then((r) => r.json())) as APIResponse<{
+        task_id: string;
+        pane_uuid?: string;
+        pane_id?: string;
+        pane_target?: string;
+        snapshot?: PaneSnapshotPayload | null;
+      }>;
+      if (!res.ok) {
+        throw new Error(res.error?.code || "TASK_PANE_HISTORY_LOAD_FAILED");
+      }
+      paneHistoryLinesByTaskID[nextTaskID] = nextLines;
+      const paneUuid =
+        String(res.data?.pane_uuid ?? "").trim() ||
+        String(state.paneByTaskId[nextTaskID]?.paneUuid ?? "").trim() ||
+        String(res.data?.pane_id ?? "").trim();
+      const snapshotCache = toTerminalCacheEntry(res.data?.snapshot);
+      if (!paneUuid || !snapshotCache) {
+        return;
+      }
+      state.terminalByPaneUuid[paneUuid] = snapshotCache;
+      persistedSnapshotByPaneUuid[paneUuid] = snapshotCache;
+      if (state.selectedTaskId === nextTaskID && state.selectedPaneUuid === paneUuid) {
+        state.terminalOutput = snapshotCache.output;
+        state.terminalFrame = snapshotCache.frame;
+        state.terminalCursor = snapshotCache.cursor;
+        state.terminalEnded = false;
+      }
+    })();
+    paneHistoryRequestByTaskID[nextTaskID] = request;
+    try {
+      await request;
+    } finally {
+      if (paneHistoryRequestByTaskID[nextTaskID] === request) {
+        delete paneHistoryRequestByTaskID[nextTaskID];
+      }
+      state.taskPaneHistoryLoadingByTaskId[nextTaskID] = false;
     }
   }
 
@@ -2198,6 +2237,8 @@ export function createShellmanStore(
       delete state.taskRuntimeByTaskId[taskId];
       delete paneLookupStatus[taskId];
       delete messagesHydratedByTaskID[taskId];
+      delete paneHistoryLinesByTaskID[taskId];
+      delete paneHistoryRequestByTaskID[taskId];
     }
 
     if (removedTasks.has(state.selectedTaskId)) {
@@ -2296,6 +2337,8 @@ export function createShellmanStore(
       delete state.taskRuntimeByTaskId[taskId];
       delete paneLookupStatus[taskId];
       delete messagesHydratedByTaskID[taskId];
+      delete paneHistoryLinesByTaskID[taskId];
+      delete paneHistoryRequestByTaskID[taskId];
     }
     if (state.selectedTaskId && !aliveTaskIds.has(state.selectedTaskId)) {
       state.selectedTaskId = "";

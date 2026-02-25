@@ -11,6 +11,7 @@ defineProps<{
 const emit = defineEmits<{
   (event: "press-key", key: VirtualKey): void;
   (event: "request-image-pick"): void;
+  (event: "history-more"): void;
 }>();
 
 const specialKeys: Array<{ key: VirtualKey; label: string; ariaLabel: string }> = [
@@ -27,6 +28,10 @@ function onPress(key: VirtualKey) {
 
 function triggerImagePicker() {
   emit("request-image-pick");
+}
+
+function triggerHistoryMore() {
+  emit("history-more");
 }
 </script>
 
@@ -74,6 +79,16 @@ function triggerImagePicker() {
           @click="onPress('alt')"
         >
           Alt
+        </button>
+        <button
+          data-test-id="tt-vkey-history-more"
+          type="button"
+          tabindex="-1"
+          class="h-8 shrink-0 rounded-md border border-border bg-background px-2 text-sm font-medium text-foreground transition hover:bg-accent"
+          aria-label="Load previous page"
+          @click="triggerHistoryMore"
+        >
+          PgUp
         </button>
         <button
           v-for="item in specialKeys"

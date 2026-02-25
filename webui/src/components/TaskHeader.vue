@@ -11,14 +11,21 @@ const props = defineProps<{
   taskDescription?: string;
   paneUuid?: string;
   currentCommand?: string;
+  historyMoreLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
   (event: "open-session-detail"): void;
+  (event: "history-more"): void;
 }>();
 
 function onOpenSessionDetail() {
   emit("open-session-detail");
+}
+
+function onHistoryMore(event: MouseEvent) {
+  event.stopPropagation();
+  emit("history-more");
 }
 </script>
 
@@ -50,6 +57,19 @@ function onOpenSessionDetail() {
         </div>
         <div v-else class="text-[10px] text-muted-foreground/30 italic">{{ t("task.noDescription") }}</div>
       </div>
+      <button
+        data-test-id="shellman-task-history-more"
+        type="button"
+        :disabled="Boolean(props.historyMoreLoading)"
+        :aria-busy="props.historyMoreLoading ? 'true' : 'false'"
+        :class="[
+          'ml-2 shrink-0 rounded border border-border/60 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground/80 transition-colors hover:bg-background',
+          props.historyMoreLoading ? 'cursor-not-allowed opacity-60' : ''
+        ]"
+        @click="onHistoryMore"
+      >
+        {{ props.historyMoreLoading ? t("common.loading") : t("terminal.loadPreviousPage") }}
+      </button>
     </CardTitle>
   </CardHeader>
 </template>

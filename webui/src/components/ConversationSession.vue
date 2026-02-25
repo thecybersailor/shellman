@@ -160,7 +160,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
 
 <template>
   <div data-test-id="shellman-conversation-session" class="min-h-0 h-full flex flex-col">
-    <Conversation class="min-h-0 h-full">
+    <Conversation class="min-h-0 flex-1">
       <ConversationContent>
         <ConversationEmptyState v-if="(props.taskMessages ?? []).length === 0" class="text-[11px]" />
         <Message

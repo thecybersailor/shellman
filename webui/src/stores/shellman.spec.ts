@@ -680,6 +680,112 @@ describe("shellman store", () => {
     expect(store.state.terminalOutput).toBe("older-1\nolder-2\n");
   });
 
+  it("loadMorePaneHistory grows history lines on repeated pull when lines are not specified", async () => {
+    const historyLinesRequests: number[] = [];
+    const fakeFetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", nodes: [{ task_id: "t1", title: "root", status: "running" }] } })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/pane-history")) {
+        const parsed = new URL(url);
+        const lines = Number(parsed.searchParams.get("lines") ?? "0");
+        historyLinesRequests.push(lines);
+        const output = `older-${lines}\n`;
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: "t1",
+              pane_uuid: "uuid-t1",
+              pane_id: "e2e:0.0",
+              pane_target: "e2e:0.0",
+              snapshot: {
+                output,
+                frame: { mode: "reset", data: output },
+                cursor: null
+              }
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.selectTask("t1");
+    await store.loadMorePaneHistory("t1");
+    await store.loadMorePaneHistory("t1");
+
+    expect(historyLinesRequests).toEqual([4000, 6000]);
+    expect(store.state.terminalFrame).toEqual({ mode: "reset", data: "older-6000\n" });
+    expect(store.state.terminalOutput).toBe("older-6000\n");
+  });
+
+  it("loadMorePaneHistory deduplicates concurrent pulls for the same task", async () => {
+    let historyFetchCalls = 0;
+    let resolveHistory: (() => void) | null = null;
+    const fakeFetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", nodes: [{ task_id: "t1", title: "root", status: "running" }] } })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/pane-history")) {
+        historyFetchCalls += 1;
+        await new Promise<void>((resolve) => {
+          resolveHistory = resolve;
+        });
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: "t1",
+              pane_uuid: "uuid-t1",
+              pane_id: "e2e:0.0",
+              pane_target: "e2e:0.0",
+              snapshot: {
+                output: "older-once\n",
+                frame: { mode: "reset", data: "older-once\n" },
+                cursor: null
+              }
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.selectTask("t1");
+    const first = store.loadMorePaneHistory("t1");
+    const second = store.loadMorePaneHistory("t1");
+    await Promise.resolve();
+
+    expect(historyFetchCalls).toBe(1);
+
+    resolveHistory?.();
+    await Promise.all([first, second]);
+    expect(store.state.terminalOutput).toBe("older-once\n");
+  });
+
   it("does not restore persisted snapshot for running task and does not patch pane snapshot", async () => {
     const sock = new FakeSocket();
     const calls: Array<{ url: string; method: string; body?: string }> = [];

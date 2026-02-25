@@ -221,6 +221,44 @@ describe("MobileStackView", () => {
     });
   });
 
+  it("shows sidecar mode select in session header and forwards mode updates", async () => {
+    const SidecarModeSelectStub = defineComponent({
+      name: "SidecarModeSelect",
+      props: {
+        modelValue: { type: String, default: "advisor" }
+      },
+      emits: ["update:modelValue"],
+      template: `
+        <button
+          data-test-id="sidecar-mode-select-stub"
+          @click="$emit('update:modelValue', 'observer')"
+        >
+          {{ modelValue }}
+        </button>
+      `
+    });
+
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Root", status: "running" }] }],
+        selectedTaskId: "t1",
+        selectedTaskSidecarMode: "advisor",
+        darkMode: "dark"
+      },
+      global: {
+        stubs: {
+          SidecarModeSelect: SidecarModeSelectStub
+        }
+      }
+    });
+
+    const select = wrapper.getComponent(SidecarModeSelectStub);
+    expect(select.props("modelValue")).toBe("advisor");
+
+    await wrapper.get("[data-test-id='sidecar-mode-select-stub']").trigger("click");
+    expect(wrapper.emitted("set-sidecar-mode")?.[0]).toEqual([{ mode: "observer" }]);
+  });
+
   it("shows virtual keyboard only when terminal is focused", async () => {
     const TerminalPaneStub = defineComponent({
       name: "TerminalPane",

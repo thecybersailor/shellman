@@ -7,7 +7,6 @@ let resized: Array<{ cols: number; rows: number }> = [];
 let resetCalls = 0;
 let scrollToBottomCalls = 0;
 let customKeyEventHandler: ((ev: KeyboardEvent) => boolean) | null = null;
-let onScrollHandler: ((y: number) => void) | null = null;
 let linkProvider: {
   provideLinks: (
     lineNumber: number,
@@ -67,9 +66,6 @@ vi.mock("@xterm/xterm", () => ({
       customKeyEventHandler = handler;
     }
     onData() {}
-    onScroll(handler: (y: number) => void) {
-      onScrollHandler = handler;
-    }
     registerLinkProvider(provider: typeof linkProvider) {
       linkProvider = provider;
       return {
@@ -115,7 +111,6 @@ describe("TerminalPane", () => {
     resized = [];
     resetCalls = 0;
     customKeyEventHandler = null;
-    onScrollHandler = null;
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
@@ -441,21 +436,23 @@ describe("TerminalPane", () => {
     expect(emitted.length).toBeGreaterThan(0);
   });
 
-  it("emits terminal-history-more when terminal viewport reaches top", async () => {
+  it("shows history button in header at top and emits terminal-history-more on click", async () => {
     terminalOptions = undefined;
     writes = [];
     resized = [];
     resetCalls = 0;
-    onScrollHandler = null;
     Object.defineProperty(window, "matchMedia", {
       writable: true,
       value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
     });
     const wrapper = mount(TerminalPane);
-    onScrollHandler?.(0);
     await wrapper.vm.$nextTick();
+    expect(wrapper.find("[data-test-id='shellman-task-history-more']").exists()).toBe(true);
     const emitted = wrapper.emitted("terminal-history-more") ?? [];
-    expect(emitted.length).toBe(1);
+    expect(emitted.length).toBe(0);
+
+    await wrapper.get("[data-test-id='shellman-task-history-more']").trigger("click");
+    expect((wrapper.emitted("terminal-history-more") ?? []).length).toBe(1);
   });
 
   it("emits terminal-link-open when xterm link is activated", async () => {

@@ -9,6 +9,7 @@ import ProjectTaskTree from "./ProjectTaskTree.vue";
 import TerminalPane from "./TerminalPane.vue";
 import VirtualKeyboardPanel from "./VirtualKeyboardPanel.vue";
 import TaskTitleResolver from "./TaskTitleResolver.vue";
+import SidecarModeSelect from "./SidecarModeSelect.vue";
 import { 
   Settings,
   ChevronLeft,
@@ -28,6 +29,7 @@ const props = defineProps<{
   selectedPaneUuid?: string;
   selectedTaskTitle?: string;
   selectedTaskLoading?: boolean;
+  selectedTaskHistoryMoreLoading?: boolean;
   selectedTaskDescription?: string;
   selectedTaskMessages?: TaskMessage[];
   selectedTaskNotes?: Array<{ task_id: string; created_at: number; flag?: "success" | "notify" | "error"; notes: string }>;
@@ -260,9 +262,20 @@ onBeforeUnmount(() => {
             />
           </div>
         </div>
-        <Button variant="ghost" size="icon" @click="showInfoPanel = !showInfoPanel" :class="['h-8 w-8', showInfoPanel ? 'text-primary bg-primary/10' : 'text-muted-foreground']">
-          <Info class="h-5 w-5" />
-        </Button>
+        <div class="flex items-center gap-2">
+          <SidecarModeSelect
+            :model-value="props.selectedTaskSidecarMode ?? 'advisor'"
+            content-side="bottom"
+            content-align="end"
+            :content-side-offset="6"
+            content-class="z-[140] shellman-mobile-sidecar-dropdown"
+            trigger-class="h-8 max-w-[46vw] px-2 text-xs border-0 shadow-none bg-transparent"
+            @update:model-value="(next) => emit('set-sidecar-mode', { mode: next as 'advisor' | 'observer' | 'autopilot' })"
+          />
+          <Button variant="ghost" size="icon" @click="showInfoPanel = !showInfoPanel" :class="['h-8 w-8', showInfoPanel ? 'text-primary bg-primary/10' : 'text-muted-foreground']">
+            <Info class="h-5 w-5" />
+          </Button>
+        </div>
       </header>
 
       <main
@@ -297,6 +310,7 @@ onBeforeUnmount(() => {
                 :frame="props.frame ?? null"
                 :cursor="props.cursor ?? null"
                 :is-ended="Boolean(props.isEnded)"
+                :history-more-loading="Boolean(props.selectedTaskHistoryMoreLoading)"
                 :show-manual-launch-button="Boolean(props.showManualLaunchPaneButton)"
                 :is-no-pane-task="Boolean(props.isNoPaneTask)"
                 :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
@@ -320,6 +334,7 @@ onBeforeUnmount(() => {
           :top-offset-px="virtualKeyboardTopPx"
           @press-key="onVirtualKeyPress"
           @request-image-pick="onVirtualKeyboardImagePick"
+          @history-more="() => emit('terminal-history-more')"
         />
         <input
           ref="terminalImageInput"
@@ -381,5 +396,13 @@ onBeforeUnmount(() => {
   right: 0;
   bottom: 0;
   z-index: 100;
+}
+
+.shellman-mobile :deep(.shellman-mobile-sidecar-dropdown) {
+  position: fixed !important;
+  left: 50% !important;
+  top: 3.5rem !important;
+  transform: translateX(-50%) !important;
+  width: min(92vw, 22rem);
 }
 </style>
