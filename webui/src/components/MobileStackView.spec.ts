@@ -253,6 +253,21 @@ describe("MobileStackView", () => {
     expect(wrapper.find("[data-test-id='tt-virtual-keyboard']").exists()).toBe(false);
   });
 
+  it("shows session loading state before task data is ready", () => {
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Root", status: "running" }] }],
+        selectedTaskId: "t1",
+        selectedTaskLoading: true,
+        darkMode: "dark"
+      }
+    });
+
+    expect(wrapper.find("[data-test-id='shellman-mobile-session-loading']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='tt-terminal-root']").exists()).toBe(false);
+    expect(wrapper.find("[data-test-id='tt-vkey-upload']").exists()).toBe(false);
+  });
+
   it("forwards virtual keyboard key press as terminal-input", async () => {
     const TerminalPaneStub = defineComponent({
       name: "TerminalPane",

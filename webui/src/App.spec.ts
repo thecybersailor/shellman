@@ -72,6 +72,7 @@ describe("App project entry wiring", () => {
 
   it("wires mobile thread send-message passthrough", () => {
     expect(appSource).toContain("@send-message=\"onSendTaskMessage\"");
+    expect(appSource).toContain(":selected-task-loading=\"selectedTaskUiLoading\"");
   });
 
   it("wires file editor header actions for close and save", () => {

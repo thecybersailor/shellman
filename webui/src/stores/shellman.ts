@@ -467,6 +467,7 @@ export function createShellmanStore(
     projects: [] as ActiveProject[],
     treesByProject: {} as Record<string, TaskNode[]>,
     paneByTaskId: {} as Record<string, PaneBinding>,
+    taskPaneLoadingByTaskId: {} as Record<string, boolean>,
     taskMessagesByTaskId: {} as Record<string, TaskMessage[]>,
     pmSessionsByProjectId: {} as Record<string, PMChatSession[]>,
     pmMessagesBySessionId: {} as Record<string, PMChatMessage[]>,
@@ -916,10 +917,12 @@ export function createShellmanStore(
 
   async function loadTaskPane(taskId: string) {
     if (paneLookupStatus[taskId] === "missing") {
+      state.taskPaneLoadingByTaskId[taskId] = false;
       logInfo("shellman.http.pane_lookup.skip", { taskId, reason: "cached-missing" });
       recomputePaneLookupComplete();
       return;
     }
+    state.taskPaneLoadingByTaskId[taskId] = true;
     logInfo("shellman.http.pane_lookup.start", { taskId });
     try {
       const paneRes = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/pane`), {
@@ -943,14 +946,12 @@ export function createShellmanStore(
           code: String(paneRes.error?.code ?? "UNKNOWN"),
           message: String(paneRes.error?.message ?? "")
         });
-
         return;
       }
       const paneID = String(paneRes.data.pane_id ?? "");
       if (!paneID) {
         paneLookupStatus[taskId] = "missing";
         logInfo("shellman.http.pane_lookup.empty", { taskId });
-
         return;
       }
       state.paneByTaskId[taskId] = {
@@ -973,6 +974,8 @@ export function createShellmanStore(
     } catch {
       paneLookupStatus[taskId] = "missing";
       logInfo("shellman.http.pane_lookup.error", { taskId });
+    } finally {
+      state.taskPaneLoadingByTaskId[taskId] = false;
     }
     recomputePaneLookupComplete();
   }

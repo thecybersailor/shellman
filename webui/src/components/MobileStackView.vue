@@ -27,6 +27,7 @@ const props = defineProps<{
   selectedTaskId: string;
   selectedPaneUuid?: string;
   selectedTaskTitle?: string;
+  selectedTaskLoading?: boolean;
   selectedTaskDescription?: string;
   selectedTaskMessages?: TaskMessage[];
   selectedTaskNotes?: Array<{ task_id: string; created_at: number; flag?: "success" | "notify" | "error"; notes: string }>;
@@ -83,6 +84,7 @@ const keyboardInsetPx = ref(0);
 const effectiveKeyboardInsetPx = computed(() => (terminalFocused.value ? keyboardInsetPx.value : 0));
 const virtualKeyboardTopPx = computed(() => 16);
 const terminalImageInput = ref<HTMLInputElement | null>(null);
+const sessionLoading = computed(() => Boolean(props.selectedTaskId) && props.selectedTaskLoading === true);
 
 function onSelectTask(taskId: string) {
   emit("select-task", taskId);
@@ -269,38 +271,47 @@ onBeforeUnmount(() => {
         :style="{ paddingBottom: `${effectiveKeyboardInsetPx}px` }"
       >
         <div class="h-full w-full" :class="{ 'opacity-20 blur-sm pointer-events-none': showInfoPanel }">
-          <slot name="terminal" v-bind="{
-            taskId: props.selectedTaskId,
-            taskTitle: props.selectedTaskTitle ?? resolveSelectedTaskTitle(),
-            taskDescription: props.selectedTaskDescription ?? '',
-            frame: props.frame ?? null,
-            cursor: props.cursor ?? null,
-            isEnded: Boolean(props.isEnded),
-            showManualLaunchButton: Boolean(props.showManualLaunchPaneButton)
-          }">
-            <TerminalPane
-              :task-id="props.selectedTaskId"
-              :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
-              :task-description="props.selectedTaskDescription ?? ''"
-              :pane-uuid="props.selectedPaneUuid ?? ''"
-              :current-command="props.selectedCurrentCommand ?? ''"
-              :frame="props.frame ?? null"
-              :cursor="props.cursor ?? null"
-              :is-ended="Boolean(props.isEnded)"
-              :show-manual-launch-button="Boolean(props.showManualLaunchPaneButton)"
-              :is-no-pane-task="Boolean(props.isNoPaneTask)"
-              :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
-              :app-programs="props.appPrograms ?? []"
-              @terminal-input="onTerminalInput"
-              @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
-              @terminal-link-open="(payload) => emit('terminal-link-open', payload)"
-              @terminal-resize="(size) => emit('terminal-resize', size)"
-              @terminal-history-more="() => emit('terminal-history-more')"
-              @manual-launch-pane="(payload) => emit('manual-launch-pane', payload)"
-              @open-session-detail="openSessionDetailPanel"
-              @terminal-focus-change="onTerminalFocusChange"
-            />
-          </slot>
+          <div
+            v-if="sessionLoading"
+            data-test-id="shellman-mobile-session-loading"
+            class="h-full w-full flex items-center justify-center px-6 text-center text-sm text-muted-foreground/80"
+          >
+            {{ t("common.loading") }}
+          </div>
+          <template v-else>
+            <slot name="terminal" v-bind="{
+              taskId: props.selectedTaskId,
+              taskTitle: props.selectedTaskTitle ?? resolveSelectedTaskTitle(),
+              taskDescription: props.selectedTaskDescription ?? '',
+              frame: props.frame ?? null,
+              cursor: props.cursor ?? null,
+              isEnded: Boolean(props.isEnded),
+              showManualLaunchButton: Boolean(props.showManualLaunchPaneButton)
+            }">
+              <TerminalPane
+                :task-id="props.selectedTaskId"
+                :task-title="props.selectedTaskTitle ?? resolveSelectedTaskTitle()"
+                :task-description="props.selectedTaskDescription ?? ''"
+                :pane-uuid="props.selectedPaneUuid ?? ''"
+                :current-command="props.selectedCurrentCommand ?? ''"
+                :frame="props.frame ?? null"
+                :cursor="props.cursor ?? null"
+                :is-ended="Boolean(props.isEnded)"
+                :show-manual-launch-button="Boolean(props.showManualLaunchPaneButton)"
+                :is-no-pane-task="Boolean(props.isNoPaneTask)"
+                :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
+                :app-programs="props.appPrograms ?? []"
+                @terminal-input="onTerminalInput"
+                @terminal-image-paste="(file) => emit('terminal-image-paste', file)"
+                @terminal-link-open="(payload) => emit('terminal-link-open', payload)"
+                @terminal-resize="(size) => emit('terminal-resize', size)"
+                @terminal-history-more="() => emit('terminal-history-more')"
+                @manual-launch-pane="(payload) => emit('manual-launch-pane', payload)"
+                @open-session-detail="openSessionDetailPanel"
+                @terminal-focus-change="onTerminalFocusChange"
+              />
+            </slot>
+          </template>
         </div>
         <VirtualKeyboardPanel
           v-if="terminalFocused"

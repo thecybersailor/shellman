@@ -206,6 +206,32 @@ const selectedTaskProjectIsGitRepo = computed(() => {
 });
 const selectedTaskTitle = computed(() => String(selectedTaskNode.value?.title ?? ""));
 const selectedTaskDescription = computed(() => String(selectedTaskNode.value?.description ?? ""));
+const selectedTaskReady = computed(() => Boolean(store.state.selectedTaskId) && Boolean(selectedTaskNode.value));
+const selectedTaskPaneLoading = computed(() => {
+  const taskId = store.state.selectedTaskId;
+  if (!taskId) {
+    return false;
+  }
+  return Boolean(store.state.taskPaneLoadingByTaskId[taskId]);
+});
+const selectedTaskPaneLookupResolved = computed(() => {
+  const taskId = store.state.selectedTaskId;
+  if (!taskId) {
+    return false;
+  }
+  if (selectedTaskHasPaneBinding.value || selectedTaskPaneLoading.value) {
+    return true;
+  }
+  if (Object.prototype.hasOwnProperty.call(store.state.taskPaneLoadingByTaskId, taskId)) {
+    return true;
+  }
+  return Boolean(store.state.paneLookupComplete);
+});
+const selectedTaskUiLoading = computed(
+  () =>
+    Boolean(store.state.selectedTaskId) &&
+    (!selectedTaskReady.value || selectedTaskPaneLoading.value || !selectedTaskPaneLookupResolved.value)
+);
 const selectedTaskMessages = computed(() => store.state.taskMessagesByTaskId[store.state.selectedTaskId] ?? []);
 const selectedTaskNotes = computed(() => []);
 const selectedTaskFrame = computed<TerminalFrame>(() => store.state.terminalFrame);
@@ -219,11 +245,22 @@ const selectedTaskHasPaneBinding = computed(() => {
   const binding = store.state.paneByTaskId[taskId];
   return Boolean(binding?.paneTarget);
 });
-const selectedTaskIsNoPane = computed(() => Boolean(store.state.selectedTaskId) && !selectedTaskHasPaneBinding.value);
+const selectedTaskIsNoPane = computed(() => {
+  if (!store.state.selectedTaskId) {
+    return false;
+  }
+  if (!selectedTaskReady.value || selectedTaskPaneLoading.value || !selectedTaskPaneLookupResolved.value) {
+    return false;
+  }
+  return !selectedTaskHasPaneBinding.value;
+});
 const orphanPanes = computed(() => store.getOrphanPaneItems());
 const appBootstrapped = ref(false);
 const showManualLaunchPaneButton = computed(() => {
   if (!store.state.selectedTaskId) {
+    return false;
+  }
+  if (!selectedTaskReady.value || selectedTaskPaneLoading.value) {
     return false;
   }
   if (selectedTaskIsNoPane.value) {
@@ -1043,6 +1080,7 @@ onBeforeUnmount(() => {
       :selected-task-id="selectedTaskIdForMobileView" 
       :selected-pane-uuid="selectedPaneUuid"
       :selected-task-title="selectedTaskTitle"
+      :selected-task-loading="selectedTaskUiLoading"
       :selected-task-description="selectedTaskDescription"
       :selected-task-messages="selectedTaskMessages"
       :selected-task-notes="selectedTaskNotes"
