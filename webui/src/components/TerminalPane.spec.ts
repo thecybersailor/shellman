@@ -321,6 +321,26 @@ describe("TerminalPane", () => {
     expect(resetCalls).toBe(1);
   });
 
+  it("replays initial frame on mount even when frame does not change afterwards", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    mount(TerminalPane, {
+      props: {
+        frame: { mode: "reset", data: "bash-5.3$ " }
+      }
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    expect(writes).toContain("bash-5.3$ ");
+    expect(resetCalls).toBe(1);
+  });
+
   it("trims trailing newline for ansi repaint append frame", async () => {
     terminalOptions = undefined;
     writes = [];

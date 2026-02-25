@@ -562,43 +562,47 @@ function unbindPasteHandler() {
 
 defineExpose({ writeOutput });
 
+function applyFrame(next: { mode: "reset" | "append"; data: string } | null | undefined) {
+  if (hasTerminalSlot.value || !opened.value || !next) {
+    return;
+  }
+  const rawText = next.data ?? "";
+  const text = next.mode === "reset" ? normalizeResetFrameData(rawText) : normalizeAppendFrameData(rawText);
+  logInfo("shellman.term.view.frame.apply", { mode: next.mode, dataLen: text.length, rawDataLen: rawText.length });
+  if (next.mode === "reset") {
+    const beforeReset = readBufferSnapshot();
+    (term as unknown as { reset?: () => void }).reset?.();
+    const afterReset = readBufferSnapshot();
+    logInfo("shellman.term.view.frame.reset", {
+      dataLen: text.length,
+      ...withSnapshot("bufferBefore", beforeReset),
+      ...withSnapshot("bufferAfter", afterReset)
+    });
+    if (text) {
+      writeOutput(text, () => {
+        moveCursor(props.cursor ?? null);
+        scheduleScrollToBottom("frame-reset");
+      });
+    } else {
+      moveCursor(props.cursor ?? null);
+      scheduleScrollToBottom("frame-reset-empty");
+    }
+    return;
+  }
+
+  if (text) {
+    writeOutput(text);
+  }
+  logInfo("shellman.term.view.frame.append", { dataLen: text.length });
+}
+
 watch(
   () => props.frame ?? null,
   (next) => {
-    if (hasTerminalSlot.value) {
-      return;
-    }
     if (!next) {
       return;
     }
-    const rawText = next.data ?? "";
-    const text = next.mode === "reset" ? normalizeResetFrameData(rawText) : normalizeAppendFrameData(rawText);
-    logInfo("shellman.term.view.frame.watch", { mode: next.mode, dataLen: text.length, rawDataLen: rawText.length });
-    if (next.mode === "reset") {
-      const beforeReset = readBufferSnapshot();
-      (term as unknown as { reset?: () => void }).reset?.();
-      const afterReset = readBufferSnapshot();
-      logInfo("shellman.term.view.frame.reset", {
-        dataLen: text.length,
-        ...withSnapshot("bufferBefore", beforeReset),
-        ...withSnapshot("bufferAfter", afterReset)
-      });
-      if (text) {
-        writeOutput(text, () => {
-          moveCursor(props.cursor ?? null);
-          scheduleScrollToBottom("frame-reset");
-        });
-      } else {
-        moveCursor(props.cursor ?? null);
-        scheduleScrollToBottom("frame-reset-empty");
-      }
-      return;
-    }
-
-    if (text) {
-      writeOutput(text);
-    }
-    logInfo("shellman.term.view.frame.append", { dataLen: text.length });
+    applyFrame(next);
   }
 );
 
@@ -749,6 +753,7 @@ onMounted(async () => {
     root.value.addEventListener("pointerup", onRootPointerUp, { capture: true });
     root.value.addEventListener("pointercancel", onRootPointerCancel, { capture: true });
     bindTerminalLinkProvider();
+    applyFrame(props.frame ?? null);
     scheduleTerminalSizeSync(true);
     window.addEventListener("resize", handleWindowResize);
     logInfo("shellman.term.view.resize_listener.added");
