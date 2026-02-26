@@ -270,6 +270,110 @@ func TestAddonRoutes_FileOps_RenameDeleteCopyMove(t *testing.T) {
 	}
 }
 
+func TestAddonRoutes_FileOps_SafetyAndConflict(t *testing.T) {
+	repo := t.TempDir()
+	mustRunGit(t, repo, "init")
+	mustRunGit(t, repo, "config", "user.email", "shellman@example.com")
+	mustRunGit(t, repo, "config", "user.name", "Shellman Test")
+
+	if err := os.MkdirAll(filepath.Join(repo, "dir"), 0o755); err != nil {
+		t.Fatalf("mkdir dir failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "dir", "a.txt"), []byte("a"), 0o644); err != nil {
+		t.Fatalf("write a.txt failed: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "dir", "b.txt"), []byte("b"), 0o644); err != nil {
+		t.Fatalf("write b.txt failed: %v", err)
+	}
+
+	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, PaneService: &fakePaneService{}})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Post(ts.URL+"/api/v1/tasks", "application/json", bytes.NewBufferString(`{"project_id":"p1","title":"root"}`))
+	if err != nil {
+		t.Fatalf("POST tasks failed: %v", err)
+	}
+	var createRes struct {
+		Data struct {
+			TaskID string `json:"task_id"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&createRes); err != nil {
+		t.Fatalf("decode create failed: %v", err)
+	}
+	if strings.TrimSpace(createRes.Data.TaskID) == "" {
+		t.Fatal("expected task id")
+	}
+
+	copyResp, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/copy",
+		"application/json",
+		bytes.NewBufferString(`{"source_path":"dir/a.txt","target_path":"dir/b.txt"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST copy conflict failed: %v", err)
+	}
+	if copyResp.StatusCode != http.StatusConflict {
+		t.Fatalf("POST copy conflict expected 409, got %d", copyResp.StatusCode)
+	}
+	var copyErr struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(copyResp.Body).Decode(&copyErr); err != nil {
+		t.Fatalf("decode copy conflict failed: %v", err)
+	}
+	if strings.TrimSpace(copyErr.Error.Code) != "FILE_ALREADY_EXISTS" {
+		t.Fatalf("expected FILE_ALREADY_EXISTS, got %q", copyErr.Error.Code)
+	}
+
+	renameResp, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/rename",
+		"application/json",
+		bytes.NewBufferString(`{"path":"dir/a.txt","new_name":"x/y.txt"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST rename invalid failed: %v", err)
+	}
+	if renameResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST rename invalid expected 400, got %d", renameResp.StatusCode)
+	}
+	var renameErr struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(renameResp.Body).Decode(&renameErr); err != nil {
+		t.Fatalf("decode rename invalid failed: %v", err)
+	}
+	if strings.TrimSpace(renameErr.Error.Code) != "INVALID_PATH" {
+		t.Fatalf("expected INVALID_PATH, got %q", renameErr.Error.Code)
+	}
+
+	deleteReq, _ := http.NewRequest(http.MethodDelete, ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files?path=.", nil)
+	deleteResp, err := http.DefaultClient.Do(deleteReq)
+	if err != nil {
+		t.Fatalf("DELETE root path failed: %v", err)
+	}
+	if deleteResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("DELETE root path expected 400, got %d", deleteResp.StatusCode)
+	}
+	var deleteErr struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(deleteResp.Body).Decode(&deleteErr); err != nil {
+		t.Fatalf("decode delete root path failed: %v", err)
+	}
+	if strings.TrimSpace(deleteErr.Error.Code) != "INVALID_PATH" {
+		t.Fatalf("expected INVALID_PATH, got %q", deleteErr.Error.Code)
+	}
+}
+
 func TestAddonRoutes_DiffFilesAndContent(t *testing.T) {
 	repo := t.TempDir()
 	mustRunGit(t, repo, "init")
