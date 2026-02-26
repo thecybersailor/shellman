@@ -5,7 +5,9 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
@@ -56,7 +58,13 @@ const searchEntries = ref<FileTreeEntry[]>([]);
 const previewLoading = ref(false);
 const selectedFilePath = ref("");
 const selectedFileContent = ref("");
-const contextMenuPath = ref("");
+const renameDialogOpen = ref(false);
+const pathDialogOpen = ref(false);
+const deleteDialogOpen = ref(false);
+const renameInput = ref("");
+const pathTargetInput = ref("");
+const pendingEntry = ref<FileTreeEntry | null>(null);
+const pendingPathAction = ref<"move" | "copy" | null>(null);
 const storageKey = computed(() => `shellman.project-panel.file.project:${String(props.projectId ?? "").trim()}`);
 
 type FilePanelDraftSnapshot = {
@@ -341,13 +349,43 @@ function indentStyle(depth: number) {
   return { paddingLeft: `${depth * 14 + 8}px` };
 }
 
-function onOpenContextMenu(entry: FileTreeEntry) {
-  contextMenuPath.value = entry.path;
+const pathDialogTitle = computed(() =>
+  pendingPathAction.value === "move" ? t("filePanel.pathDialog.moveTitle") : t("filePanel.pathDialog.copyTitle")
+);
+
+const pathDialogConfirmLabel = computed(() =>
+  pendingPathAction.value === "move" ? t("filePanel.pathDialog.moveConfirm") : t("filePanel.pathDialog.copyConfirm")
+);
+
+function clearPendingContextAction() {
+  pendingEntry.value = null;
+  pendingPathAction.value = null;
+  renameInput.value = "";
+  pathTargetInput.value = "";
 }
 
-function onContextMenuOpenChange(entry: FileTreeEntry, open: boolean) {
-  if (open) {
-    contextMenuPath.value = entry.path;
+function onRenameDialogOpenChange(open: boolean) {
+  renameDialogOpen.value = open;
+  if (!open) {
+    clearPendingContextAction();
+  }
+}
+
+function onPathDialogOpenChange(open: boolean) {
+  pathDialogOpen.value = open;
+  if (!open) {
+    clearPendingContextAction();
+  }
+}
+
+function onDeleteDialogOpenChange(open: boolean) {
+  deleteDialogOpen.value = open;
+  if (!open) {
+    requestAnimationFrame(() => {
+      if (!deleteDialogOpen.value) {
+        clearPendingContextAction();
+      }
+    });
   }
 }
 
@@ -394,79 +432,93 @@ async function requestTaskFileAction(path: string, init?: RequestInit) {
   return res.data ?? {};
 }
 
-async function onContextRename(entry: FileTreeEntry) {
-  if (!props.taskId) {
+function onContextRename(entry: FileTreeEntry) {
+  pendingEntry.value = entry;
+  renameInput.value = entry.name;
+  renameDialogOpen.value = true;
+}
+
+function onContextDelete(entry: FileTreeEntry) {
+  pendingEntry.value = entry;
+  deleteDialogOpen.value = true;
+}
+
+function onContextCut(entry: FileTreeEntry) {
+  pendingEntry.value = entry;
+  pendingPathAction.value = "move";
+  pathTargetInput.value = entry.path;
+  pathDialogOpen.value = true;
+}
+
+function onContextCopy(entry: FileTreeEntry) {
+  pendingEntry.value = entry;
+  pendingPathAction.value = "copy";
+  pathTargetInput.value = entry.path;
+  pathDialogOpen.value = true;
+}
+
+async function submitContextRename() {
+  if (!props.taskId || !pendingEntry.value) {
     return;
   }
-  const nextName = window.prompt("Rename to", entry.name);
-  const trimmed = String(nextName ?? "").trim();
+  const sourceEntry = pendingEntry.value;
+  const trimmed = String(renameInput.value ?? "").trim();
   if (!trimmed) {
     return;
   }
   const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/rename`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path: entry.path, new_name: trimmed })
+    body: JSON.stringify({ path: sourceEntry.path, new_name: trimmed })
   });
   const targetPath = String(data.target_path ?? "").trim();
-  await refreshAffectedDirs([entry.path, targetPath]);
-  if (selectedFilePath.value === entry.path && targetPath) {
+  await refreshAffectedDirs([sourceEntry.path, targetPath]);
+  if (selectedFilePath.value === sourceEntry.path && targetPath) {
     await selectFile(targetPath);
   }
+  renameDialogOpen.value = false;
+  clearPendingContextAction();
 }
 
-async function onContextDelete(entry: FileTreeEntry) {
-  if (!props.taskId) {
+async function submitContextDelete() {
+  if (!props.taskId || !pendingEntry.value) {
     return;
   }
-  if (!window.confirm(`Delete ${entry.name}?`)) {
-    return;
-  }
-  await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files?path=${encodeURIComponent(entry.path)}`, {
+  const sourceEntry = pendingEntry.value;
+  await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files?path=${encodeURIComponent(sourceEntry.path)}`, {
     method: "DELETE"
   });
-  await refreshAffectedDirs([entry.path]);
-  if (selectedFilePath.value === entry.path) {
+  await refreshAffectedDirs([sourceEntry.path]);
+  if (selectedFilePath.value === sourceEntry.path) {
     selectedFilePath.value = "";
     selectedFileContent.value = "";
   }
+  deleteDialogOpen.value = false;
+  clearPendingContextAction();
 }
 
-async function onContextCut(entry: FileTreeEntry) {
-  if (!props.taskId) {
+async function submitContextPathAction() {
+  if (!props.taskId || !pendingEntry.value || !pendingPathAction.value) {
     return;
   }
-  const targetPath = String(window.prompt("Move to path", entry.path) ?? "").trim();
+  const sourceEntry = pendingEntry.value;
+  const targetPath = String(pathTargetInput.value ?? "").trim();
   if (!targetPath) {
     return;
   }
-  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/move`, {
+  const endpoint = pendingPathAction.value === "move" ? "move" : "copy";
+  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/${endpoint}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source_path: entry.path, target_path: targetPath })
+    body: JSON.stringify({ source_path: sourceEntry.path, target_path: targetPath })
   });
-  const movedPath = String(data.target_path ?? targetPath).trim();
-  await refreshAffectedDirs([entry.path, movedPath]);
-  if (selectedFilePath.value === entry.path && movedPath) {
-    await selectFile(movedPath);
+  const resultPath = String(data.target_path ?? targetPath).trim();
+  await refreshAffectedDirs([sourceEntry.path, resultPath]);
+  if (pendingPathAction.value === "move" && selectedFilePath.value === sourceEntry.path && resultPath) {
+    await selectFile(resultPath);
   }
-}
-
-async function onContextCopy(entry: FileTreeEntry) {
-  if (!props.taskId) {
-    return;
-  }
-  const targetPath = String(window.prompt("Copy to path", entry.path) ?? "").trim();
-  if (!targetPath) {
-    return;
-  }
-  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/copy`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source_path: entry.path, target_path: targetPath })
-  });
-  const copiedPath = String(data.target_path ?? targetPath).trim();
-  await refreshAffectedDirs([entry.path, copiedPath]);
+  pathDialogOpen.value = false;
+  clearPendingContextAction();
 }
 
 async function onContextCopyPath(entry: FileTreeEntry) {
@@ -487,10 +539,9 @@ async function onContextCopyRelativePath(entry: FileTreeEntry) {
   }
 }
 
-async function runContextAction(entry: FileTreeEntry, action: (entry: FileTreeEntry) => Promise<void>) {
-  contextMenuPath.value = "";
+async function runContextAction(action: () => Promise<void> | void) {
   try {
-    await action(entry);
+    await action();
   } catch (e: any) {
     const text = String(e?.message ?? "TASK_FILE_ACTION_FAILED");
     error.value = text;
@@ -556,13 +607,11 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
               <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-file-tree-loading">loading...</div>
               <div v-else class="p-1.5 space-y-1" data-test-id="shellman-file-tree-list">
                 <div v-if="searching" class="text-xs text-muted-foreground px-2 py-1">searching...</div>
-                <DropdownMenu
+                <ContextMenu
                   v-for="node in displayNodes"
                   :key="node.key"
-                  :open="contextMenuPath === node.entry.path"
-                  @update:open="(open) => onContextMenuOpenChange(node.entry, Boolean(open))"
                 >
-                  <DropdownMenuTrigger as-child>
+                  <ContextMenuTrigger as-child>
                     <Button
                       type="button"
                       variant="ghost"
@@ -573,7 +622,6 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                       :data-test-id="`shellman-file-item-${node.entry.path}`"
                       :data-ignored="node.entry.ignored ? 'true' : 'false'"
                       @click="onClickEntry(node.entry)"
-                      @contextmenu.prevent.stop="onOpenContextMenu(node.entry)"
                     >
                       <Loader2
                         v-if="node.entry.is_dir && loadingDirs[node.entry.path]"
@@ -595,49 +643,49 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                       </template>
                       <span class="truncate">{{ node.entry.name }}</span>
                     </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="start" class="w-48">
-                    <DropdownMenuItem
+                  </ContextMenuTrigger>
+                  <ContextMenuContent align="start" class="w-48">
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-cut"
-                      @select.prevent="runContextAction(node.entry, onContextCut)"
+                      @select.prevent="runContextAction(() => onContextCut(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.cut") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
+                    </ContextMenuItem>
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-copy"
-                      @select.prevent="runContextAction(node.entry, onContextCopy)"
+                      @select.prevent="runContextAction(() => onContextCopy(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.copy") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-copy-path"
-                      @select.prevent="runContextAction(node.entry, onContextCopyPath)"
+                      @select.prevent="runContextAction(() => onContextCopyPath(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.copyPath") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
+                    </ContextMenuItem>
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-copy-relative-path"
-                      @select.prevent="runContextAction(node.entry, onContextCopyRelativePath)"
+                      @select.prevent="runContextAction(() => onContextCopyRelativePath(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.copyRelativePath") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem
+                    </ContextMenuItem>
+                    <ContextMenuSeparator />
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-rename"
-                      @select.prevent="runContextAction(node.entry, onContextRename)"
+                      @select.prevent="runContextAction(() => onContextRename(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.rename") }}
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
+                    </ContextMenuItem>
+                    <ContextMenuItem
                       data-test-id="shellman-file-context-delete"
                       variant="destructive"
-                      @select.prevent="runContextAction(node.entry, onContextDelete)"
+                      @select.prevent="runContextAction(() => onContextDelete(node.entry))"
                     >
                       {{ t("filePanel.contextMenu.delete") }}
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
                 <div v-if="displayNodes.length === 0" class="text-xs text-muted-foreground px-2 py-1">
                   {{ t("filePanel.noFiles") }}
                 </div>
@@ -692,6 +740,85 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
         </ResizablePanel>
       </ResizablePanelGroup>
     </section>
+
+    <Dialog :open="renameDialogOpen" @update:open="(open) => onRenameDialogOpenChange(Boolean(open))">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ t("filePanel.renameDialog.title") }}</DialogTitle>
+          <DialogDescription>{{ t("filePanel.renameDialog.description") }}</DialogDescription>
+        </DialogHeader>
+        <Input
+          v-model="renameInput"
+          data-test-id="shellman-file-rename-input"
+          :placeholder="t('filePanel.renameDialog.placeholder')"
+          @keyup.enter="runContextAction(() => submitContextRename())"
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            data-test-id="shellman-file-rename-cancel"
+            @click="onRenameDialogOpenChange(false)"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button type="button" data-test-id="shellman-file-rename-confirm" @click="runContextAction(() => submitContextRename())">
+            {{ t("common.save") }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <Dialog :open="pathDialogOpen" @update:open="(open) => onPathDialogOpenChange(Boolean(open))">
+      <DialogContent class="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{{ pathDialogTitle }}</DialogTitle>
+          <DialogDescription>{{ t("filePanel.pathDialog.description") }}</DialogDescription>
+        </DialogHeader>
+        <Input
+          v-model="pathTargetInput"
+          data-test-id="shellman-file-path-action-input"
+          :placeholder="t('filePanel.pathDialog.placeholder')"
+          @keyup.enter="runContextAction(() => submitContextPathAction())"
+        />
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            data-test-id="shellman-file-path-action-cancel"
+            @click="onPathDialogOpenChange(false)"
+          >
+            {{ t("common.cancel") }}
+          </Button>
+          <Button type="button" data-test-id="shellman-file-path-action-confirm" @click="runContextAction(() => submitContextPathAction())">
+            {{ pathDialogConfirmLabel }}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+    <AlertDialog :open="deleteDialogOpen" @update:open="(open) => onDeleteDialogOpenChange(Boolean(open))">
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{{ t("filePanel.deleteDialog.title") }}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {{ t("filePanel.deleteDialog.description", { name: pendingEntry?.name || "" }) }}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel data-test-id="shellman-file-delete-cancel">
+            {{ t("common.cancel") }}
+          </AlertDialogCancel>
+          <AlertDialogAction
+            data-test-id="shellman-file-delete-confirm"
+            class="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            @click.prevent="runContextAction(() => submitContextDelete())"
+          >
+            {{ t("filePanel.contextMenu.delete") }}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
 
     <p v-if="error" class="text-xs text-destructive px-1">{{ error }}</p>
   </div>

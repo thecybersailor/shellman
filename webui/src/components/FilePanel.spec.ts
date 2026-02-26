@@ -215,7 +215,6 @@ describe("FilePanel", () => {
       return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
     });
     vi.stubGlobal("fetch", fakeFetch);
-    vi.spyOn(window, "prompt").mockReturnValue("renamed.ts");
 
     const wrapper = mount(FilePanel, {
       props: {
@@ -229,6 +228,12 @@ describe("FilePanel", () => {
     await wrapper.get("[data-test-id='shellman-file-item-main.ts']").trigger("contextmenu");
     await flushPromises();
     (document.body.querySelector("[data-test-id='shellman-file-context-rename']") as HTMLElement).click();
+    await flushPromises();
+    const renameInput = document.body.querySelector("[data-test-id='shellman-file-rename-input']") as HTMLInputElement;
+    renameInput.value = "renamed.ts";
+    renameInput.dispatchEvent(new Event("input", { bubbles: true }));
+    await flushPromises();
+    (document.body.querySelector("[data-test-id='shellman-file-rename-confirm']") as HTMLElement).click();
     await flushPromises();
 
     const renameCall = fakeFetch.mock.calls.find((call) => String(call[0]).includes("/api/v1/tasks/t1/files/rename"));
@@ -263,7 +268,6 @@ describe("FilePanel", () => {
       return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
     });
     vi.stubGlobal("fetch", fakeFetch);
-    vi.spyOn(window, "confirm").mockReturnValue(true);
 
     const wrapper = mount(FilePanel, {
       props: {
@@ -277,6 +281,8 @@ describe("FilePanel", () => {
     await wrapper.get("[data-test-id='shellman-file-item-main.ts']").trigger("contextmenu");
     await flushPromises();
     (document.body.querySelector("[data-test-id='shellman-file-context-delete']") as HTMLElement).click();
+    await flushPromises();
+    (document.body.querySelector("[data-test-id='shellman-file-delete-confirm']") as HTMLElement).click();
     await flushPromises();
 
     const deleteCall = fakeFetch.mock.calls.find((call) => String(call[0]).includes("/api/v1/tasks/t1/files?path=main.ts"));

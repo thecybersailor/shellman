@@ -110,6 +110,23 @@
       "copyRelativePath": "Copy Relative Path",
       "rename": "Rename...",
       "delete": "Delete"
+    },
+    "renameDialog": {
+      "title": "Rename file",
+      "description": "Enter a new file name.",
+      "placeholder": "New file name"
+    },
+    "pathDialog": {
+      "moveTitle": "Move file",
+      "copyTitle": "Copy file",
+      "description": "Enter a destination path.",
+      "placeholder": "Destination path",
+      "moveConfirm": "Move",
+      "copyConfirm": "Copy"
+    },
+    "deleteDialog": {
+      "title": "Delete file?",
+      "description": "This will permanently delete \"{name}\"."
     }
   },
   "terminal": {
