@@ -102,7 +102,15 @@
     "noFiles": "No files.",
     "clickTreeToPreview": "Click the file tree to preview",
     "previewImage": "preview image",
-    "previewNotSupported": "Preview not supported"
+    "previewNotSupported": "Preview not supported",
+    "contextMenu": {
+      "cut": "Cut",
+      "copy": "Copy",
+      "copyPath": "Copy Path",
+      "copyRelativePath": "Copy Relative Path",
+      "rename": "Rename...",
+      "delete": "Delete"
+    }
   },
   "terminal": {
     "start": "Start",

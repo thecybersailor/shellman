@@ -229,6 +229,277 @@ func (s *Server) handlePatchTaskFileContent(w http.ResponseWriter, r *http.Reque
 	})
 }
 
+type taskFileTransferRequest struct {
+	SourcePath string `json:"source_path"`
+	TargetPath string `json:"target_path"`
+	Overwrite  bool   `json:"overwrite"`
+}
+
+type taskFileRenameRequest struct {
+	Path      string `json:"path"`
+	NewName   string `json:"new_name"`
+	Overwrite bool   `json:"overwrite"`
+}
+
+func (s *Server) resolveTaskRepoRoot(taskID string) (string, error) {
+	projectID, _, _, err := s.findTask(taskID)
+	if err != nil {
+		return "", errors.New("TASK_NOT_FOUND:" + err.Error())
+	}
+	repoRoot, err := s.findProjectRepoRoot(projectID)
+	if err != nil {
+		return "", errors.New("PROJECT_NOT_FOUND:" + err.Error())
+	}
+	return repoRoot, nil
+}
+
+func (s *Server) resolveSafeTaskPath(repoRoot, rel string) (string, string, error) {
+	trimmed := strings.TrimSpace(rel)
+	if trimmed == "" {
+		return "", "", errors.New("INVALID_PATH:path is required")
+	}
+	rootAbs, err := filepath.Abs(repoRoot)
+	if err != nil {
+		return "", "", errors.New("INVALID_REPO_ROOT:" + err.Error())
+	}
+	absPath, err := filepath.Abs(filepath.Join(rootAbs, trimmed))
+	if err != nil {
+		return "", "", errors.New("INVALID_PATH:" + err.Error())
+	}
+	if absPath != rootAbs && !strings.HasPrefix(absPath, rootAbs+string(os.PathSeparator)) {
+		return "", "", errors.New("INVALID_PATH:path escapes repo root")
+	}
+	relPath, err := filepath.Rel(rootAbs, absPath)
+	if err != nil {
+		return "", "", errors.New("INVALID_PATH:" + err.Error())
+	}
+	relPath = filepath.ToSlash(filepath.Clean(relPath))
+	if relPath == "" || relPath == "." || strings.HasPrefix(relPath, "../") {
+		return "", "", errors.New("INVALID_PATH:path is required")
+	}
+	return relPath, absPath, nil
+}
+
+func (s *Server) ensureTaskFileTargetAvailable(targetAbs string, overwrite bool) error {
+	if !overwrite {
+		if _, err := os.Stat(targetAbs); err == nil {
+			return errors.New("FILE_ALREADY_EXISTS")
+		} else if !os.IsNotExist(err) {
+			return err
+		}
+		return nil
+	}
+	if _, err := os.Stat(targetAbs); err == nil {
+		if removeErr := os.RemoveAll(targetAbs); removeErr != nil {
+			return removeErr
+		}
+		return nil
+	} else if os.IsNotExist(err) {
+		return nil
+	} else {
+		return err
+	}
+}
+
+func (s *Server) handlePostTaskFileCopy(w http.ResponseWriter, r *http.Request, taskID string) {
+	var req taskFileTransferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	repoRoot, err := s.resolveTaskRepoRoot(taskID)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	sourceRel, sourceAbs, err := s.resolveSafeTaskPath(repoRoot, req.SourcePath)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	targetRel, targetAbs, err := s.resolveSafeTaskPath(repoRoot, req.TargetPath)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	sourceInfo, err := os.Stat(sourceAbs)
+	if err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_STAT_FAILED", err.Error())
+		return
+	}
+	if sourceInfo.IsDir() {
+		respondError(w, http.StatusBadRequest, "INVALID_PATH", "directory copy is not supported")
+		return
+	}
+	if err := s.ensureTaskFileTargetAvailable(targetAbs, req.Overwrite); err != nil {
+		if strings.TrimSpace(err.Error()) == "FILE_ALREADY_EXISTS" {
+			respondError(w, http.StatusConflict, "FILE_ALREADY_EXISTS", "target path already exists")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(targetAbs), 0o755); err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+		return
+	}
+	data, err := os.ReadFile(sourceAbs)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_READ_FAILED", err.Error())
+		return
+	}
+	if err := os.WriteFile(targetAbs, data, sourceInfo.Mode().Perm()); err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+		return
+	}
+	respondOK(w, map[string]any{
+		"task_id":     taskID,
+		"path":        sourceRel,
+		"target_path": targetRel,
+	})
+}
+
+func (s *Server) handlePostTaskFileMove(w http.ResponseWriter, r *http.Request, taskID string) {
+	var req taskFileTransferRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	repoRoot, err := s.resolveTaskRepoRoot(taskID)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	sourceRel, sourceAbs, err := s.resolveSafeTaskPath(repoRoot, req.SourcePath)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	targetRel, targetAbs, err := s.resolveSafeTaskPath(repoRoot, req.TargetPath)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	if _, err := os.Stat(sourceAbs); err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_STAT_FAILED", err.Error())
+		return
+	}
+	if err := s.ensureTaskFileTargetAvailable(targetAbs, req.Overwrite); err != nil {
+		if strings.TrimSpace(err.Error()) == "FILE_ALREADY_EXISTS" {
+			respondError(w, http.StatusConflict, "FILE_ALREADY_EXISTS", "target path already exists")
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+		return
+	}
+	if err := os.MkdirAll(filepath.Dir(targetAbs), 0o755); err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+		return
+	}
+	if err := os.Rename(sourceAbs, targetAbs); err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_MOVE_FAILED", err.Error())
+		return
+	}
+	respondOK(w, map[string]any{
+		"task_id":     taskID,
+		"path":        sourceRel,
+		"target_path": targetRel,
+	})
+}
+
+func (s *Server) handlePostTaskFileRename(w http.ResponseWriter, r *http.Request, taskID string) {
+	var req taskFileRenameRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+		return
+	}
+	newName := strings.TrimSpace(req.NewName)
+	if newName == "" || newName == "." || strings.Contains(newName, "/") || strings.Contains(newName, "\\") {
+		respondError(w, http.StatusBadRequest, "INVALID_PATH", "new_name is invalid")
+		return
+	}
+	repoRoot, err := s.resolveTaskRepoRoot(taskID)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	sourceRel, sourceAbs, err := s.resolveSafeTaskPath(repoRoot, req.Path)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	if _, err := os.Stat(sourceAbs); err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_STAT_FAILED", err.Error())
+		return
+	}
+	targetCandidate := filepath.ToSlash(filepath.Join(filepath.Dir(sourceRel), newName))
+	targetRel, targetAbs, err := s.resolveSafeTaskPath(repoRoot, targetCandidate)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	if sourceAbs != targetAbs {
+		if err := s.ensureTaskFileTargetAvailable(targetAbs, req.Overwrite); err != nil {
+			if strings.TrimSpace(err.Error()) == "FILE_ALREADY_EXISTS" {
+				respondError(w, http.StatusConflict, "FILE_ALREADY_EXISTS", "target path already exists")
+				return
+			}
+			respondError(w, http.StatusInternalServerError, "FILE_WRITE_FAILED", err.Error())
+			return
+		}
+		if err := os.Rename(sourceAbs, targetAbs); err != nil {
+			respondError(w, http.StatusInternalServerError, "FILE_MOVE_FAILED", err.Error())
+			return
+		}
+	}
+	respondOK(w, map[string]any{
+		"task_id":     taskID,
+		"path":        sourceRel,
+		"target_path": targetRel,
+	})
+}
+
+func (s *Server) handleDeleteTaskFile(w http.ResponseWriter, r *http.Request, taskID string) {
+	repoRoot, err := s.resolveTaskRepoRoot(taskID)
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	relPath, absPath, err := s.resolveSafeTaskPath(repoRoot, strings.TrimSpace(r.URL.Query().Get("path")))
+	if err != nil {
+		s.respondFilePathResolveError(w, err)
+		return
+	}
+	if _, err := os.Stat(absPath); err != nil {
+		if os.IsNotExist(err) {
+			respondError(w, http.StatusNotFound, "FILE_NOT_FOUND", err.Error())
+			return
+		}
+		respondError(w, http.StatusInternalServerError, "FILE_STAT_FAILED", err.Error())
+		return
+	}
+	if err := os.RemoveAll(absPath); err != nil {
+		respondError(w, http.StatusInternalServerError, "FILE_DELETE_FAILED", err.Error())
+		return
+	}
+	respondOK(w, map[string]any{
+		"task_id": taskID,
+		"path":    relPath,
+	})
+}
+
 func (s *Server) handleGetTaskFileRaw(w http.ResponseWriter, r *http.Request, taskID string) {
 	projectID, _, _, err := s.findTask(taskID)
 	if err != nil {
