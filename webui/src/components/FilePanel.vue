@@ -351,6 +351,153 @@ function onContextMenuOpenChange(entry: FileTreeEntry, open: boolean) {
   }
 }
 
+function getParentDir(path: string): string {
+  const normalized = String(path).trim().replaceAll("\\", "/").replace(/^\/+/, "").replace(/\/+$/, "");
+  if (!normalized || normalized === ".") {
+    return ROOT;
+  }
+  const idx = normalized.lastIndexOf("/");
+  if (idx <= 0) {
+    return ROOT;
+  }
+  return normalized.slice(0, idx);
+}
+
+function getFullPath(path: string): string {
+  const rel = String(path).trim().replaceAll("\\", "/").replace(/^\/+/, "");
+  const root = String(props.repoRoot ?? "").trim().replace(/\/+$/, "");
+  if (!root) {
+    return rel;
+  }
+  if (!rel) {
+    return root;
+  }
+  return `${root}/${rel}`;
+}
+
+async function refreshAffectedDirs(paths: string[]) {
+  const dirs = new Set<string>([ROOT]);
+  for (const path of paths) {
+    const parent = getParentDir(path);
+    dirs.add(parent || ROOT);
+  }
+  for (const dir of dirs) {
+    await loadDir(dir, dir !== ROOT);
+  }
+}
+
+async function requestTaskFileAction(path: string, init?: RequestInit) {
+  const res = (await fetch(path, init).then((r) => r.json())) as APIResponse<Record<string, unknown>>;
+  if (!res.ok) {
+    throw new Error(String(res.error?.code ?? "TASK_FILE_ACTION_FAILED"));
+  }
+  return res.data ?? {};
+}
+
+async function onContextRename(entry: FileTreeEntry) {
+  if (!props.taskId) {
+    return;
+  }
+  const nextName = window.prompt("Rename to", entry.name);
+  const trimmed = String(nextName ?? "").trim();
+  if (!trimmed) {
+    return;
+  }
+  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path: entry.path, new_name: trimmed })
+  });
+  const targetPath = String(data.target_path ?? "").trim();
+  await refreshAffectedDirs([entry.path, targetPath]);
+  if (selectedFilePath.value === entry.path && targetPath) {
+    await selectFile(targetPath);
+  }
+}
+
+async function onContextDelete(entry: FileTreeEntry) {
+  if (!props.taskId) {
+    return;
+  }
+  if (!window.confirm(`Delete ${entry.name}?`)) {
+    return;
+  }
+  await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files?path=${encodeURIComponent(entry.path)}`, {
+    method: "DELETE"
+  });
+  await refreshAffectedDirs([entry.path]);
+  if (selectedFilePath.value === entry.path) {
+    selectedFilePath.value = "";
+    selectedFileContent.value = "";
+  }
+}
+
+async function onContextCut(entry: FileTreeEntry) {
+  if (!props.taskId) {
+    return;
+  }
+  const targetPath = String(window.prompt("Move to path", entry.path) ?? "").trim();
+  if (!targetPath) {
+    return;
+  }
+  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/move`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_path: entry.path, target_path: targetPath })
+  });
+  const movedPath = String(data.target_path ?? targetPath).trim();
+  await refreshAffectedDirs([entry.path, movedPath]);
+  if (selectedFilePath.value === entry.path && movedPath) {
+    await selectFile(movedPath);
+  }
+}
+
+async function onContextCopy(entry: FileTreeEntry) {
+  if (!props.taskId) {
+    return;
+  }
+  const targetPath = String(window.prompt("Copy to path", entry.path) ?? "").trim();
+  if (!targetPath) {
+    return;
+  }
+  const data = await requestTaskFileAction(`/api/v1/tasks/${props.taskId}/files/copy`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source_path: entry.path, target_path: targetPath })
+  });
+  const copiedPath = String(data.target_path ?? targetPath).trim();
+  await refreshAffectedDirs([entry.path, copiedPath]);
+}
+
+async function onContextCopyPath(entry: FileTreeEntry) {
+  try {
+    await navigator.clipboard.writeText(getFullPath(entry.path));
+    toast.success(t("filePanel.copiedFilePath"));
+  } catch {
+    toast.error(t("filePanel.copyFailed"));
+  }
+}
+
+async function onContextCopyRelativePath(entry: FileTreeEntry) {
+  try {
+    await navigator.clipboard.writeText(entry.path);
+    toast.success(t("filePanel.copiedFilePath"));
+  } catch {
+    toast.error(t("filePanel.copyFailed"));
+  }
+}
+
+async function runContextAction(entry: FileTreeEntry, action: (entry: FileTreeEntry) => Promise<void>) {
+  contextMenuPath.value = "";
+  try {
+    await action(entry);
+  } catch (e: any) {
+    const text = String(e?.message ?? "TASK_FILE_ACTION_FAILED");
+    error.value = text;
+    toast.error(text);
+  }
+}
+
 async function copyPath() {
   if (!selectedFilePath.value) {
     return;
@@ -450,27 +597,42 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="start" class="w-48">
-                    <DropdownMenuItem data-test-id="shellman-file-context-cut" @select.prevent>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-cut"
+                      @select.prevent="runContextAction(node.entry, onContextCut)"
+                    >
                       {{ t("filePanel.contextMenu.cut") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem data-test-id="shellman-file-context-copy" @select.prevent>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-copy"
+                      @select.prevent="runContextAction(node.entry, onContextCopy)"
+                    >
                       {{ t("filePanel.contextMenu.copy") }}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem data-test-id="shellman-file-context-copy-path" @select.prevent>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-copy-path"
+                      @select.prevent="runContextAction(node.entry, onContextCopyPath)"
+                    >
                       {{ t("filePanel.contextMenu.copyPath") }}
                     </DropdownMenuItem>
-                    <DropdownMenuItem data-test-id="shellman-file-context-copy-relative-path" @select.prevent>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-copy-relative-path"
+                      @select.prevent="runContextAction(node.entry, onContextCopyRelativePath)"
+                    >
                       {{ t("filePanel.contextMenu.copyRelativePath") }}
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem data-test-id="shellman-file-context-rename" @select.prevent>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-rename"
+                      @select.prevent="runContextAction(node.entry, onContextRename)"
+                    >
                       {{ t("filePanel.contextMenu.rename") }}
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       data-test-id="shellman-file-context-delete"
                       variant="destructive"
-                      @select.prevent
+                      @select.prevent="runContextAction(node.entry, onContextDelete)"
                     >
                       {{ t("filePanel.contextMenu.delete") }}
                     </DropdownMenuItem>
