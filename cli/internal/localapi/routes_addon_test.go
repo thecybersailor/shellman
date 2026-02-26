@@ -179,6 +179,29 @@ func TestAddonRoutes_FileOps_RenameDeleteCopyMove(t *testing.T) {
 		t.Fatal("expected task id")
 	}
 
+	badCopyResp, err := http.Post(
+		ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/copy",
+		"application/json",
+		bytes.NewBufferString(`{"source_path":"../x","target_path":"dir/y.txt"}`),
+	)
+	if err != nil {
+		t.Fatalf("POST bad copy failed: %v", err)
+	}
+	if badCopyResp.StatusCode != http.StatusBadRequest {
+		t.Fatalf("POST bad copy expected 400, got %d", badCopyResp.StatusCode)
+	}
+	var badCopyErr struct {
+		Error struct {
+			Code string `json:"code"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(badCopyResp.Body).Decode(&badCopyErr); err != nil {
+		t.Fatalf("decode bad copy response failed: %v", err)
+	}
+	if strings.TrimSpace(badCopyErr.Error.Code) != "INVALID_PATH" {
+		t.Fatalf("expected INVALID_PATH, got %q", badCopyErr.Error.Code)
+	}
+
 	copyResp, err := http.Post(
 		ts.URL+"/api/v1/tasks/"+createRes.Data.TaskID+"/files/copy",
 		"application/json",

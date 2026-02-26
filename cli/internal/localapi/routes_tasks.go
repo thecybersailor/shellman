@@ -298,10 +298,18 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handleGetTaskDiff(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files":
 		s.handleGetTaskFiles(w, r, taskID)
+	case r.Method == http.MethodDelete && action == "files":
+		s.handleDeleteTaskFile(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files/tree":
 		s.handleGetTaskFileTree(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files/search":
 		s.handleGetTaskFileSearch(w, r, taskID)
+	case r.Method == http.MethodPost && action == "files/copy":
+		s.handlePostTaskFileCopy(w, r, taskID)
+	case r.Method == http.MethodPost && action == "files/move":
+		s.handlePostTaskFileMove(w, r, taskID)
+	case r.Method == http.MethodPost && action == "files/rename":
+		s.handlePostTaskFileRename(w, r, taskID)
 	case r.Method == http.MethodGet && action == "files/content":
 		s.handleGetTaskFileContent(w, r, taskID)
 	case r.Method == http.MethodPatch && action == "files/content":
