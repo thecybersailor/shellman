@@ -359,6 +359,9 @@ func (c *ResponsesClient) CreateResponseStream(ctx context.Context, req CreateRe
 }
 
 func (c *ResponsesClient) toSDKRequest(req CreateResponseRequest) (responses.ResponseNewParams, error) {
+	if err := ValidateResponseInputInvariants(req.Input); err != nil {
+		return responses.ResponseNewParams{}, fmt.Errorf("invalid responses input invariants: %w", err)
+	}
 	var out responses.ResponseNewParams
 	model := strings.TrimSpace(req.Model)
 	if model == "" {
