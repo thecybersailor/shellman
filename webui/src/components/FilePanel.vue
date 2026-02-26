@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
@@ -55,6 +56,7 @@ const searchEntries = ref<FileTreeEntry[]>([]);
 const previewLoading = ref(false);
 const selectedFilePath = ref("");
 const selectedFileContent = ref("");
+const contextMenuPath = ref("");
 const storageKey = computed(() => `shellman.project-panel.file.project:${String(props.projectId ?? "").trim()}`);
 
 type FilePanelDraftSnapshot = {
@@ -339,6 +341,16 @@ function indentStyle(depth: number) {
   return { paddingLeft: `${depth * 14 + 8}px` };
 }
 
+function onOpenContextMenu(entry: FileTreeEntry) {
+  contextMenuPath.value = entry.path;
+}
+
+function onContextMenuOpenChange(entry: FileTreeEntry, open: boolean) {
+  if (open) {
+    contextMenuPath.value = entry.path;
+  }
+}
+
 async function copyPath() {
   if (!selectedFilePath.value) {
     return;
@@ -397,39 +409,73 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
               <div v-if="loading" class="text-xs text-muted-foreground p-3" data-test-id="shellman-file-tree-loading">loading...</div>
               <div v-else class="p-1.5 space-y-1" data-test-id="shellman-file-tree-list">
                 <div v-if="searching" class="text-xs text-muted-foreground px-2 py-1">searching...</div>
-                <Button
+                <DropdownMenu
                   v-for="node in displayNodes"
                   :key="node.key"
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  class="w-full justify-start h-7 px-1 text-xs font-normal"
-                  :class="{ 'opacity-45': node.entry.ignored }"
-                  :style="indentStyle(node.depth)"
-                  :data-test-id="`shellman-file-item-${node.entry.path}`"
-                  :data-ignored="node.entry.ignored ? 'true' : 'false'"
-                  @click="onClickEntry(node.entry)"
+                  :open="contextMenuPath === node.entry.path"
+                  @update:open="(open) => onContextMenuOpenChange(node.entry, Boolean(open))"
                 >
-                  <Loader2
-                    v-if="node.entry.is_dir && loadingDirs[node.entry.path]"
-                    class="mr-1.5 h-3.5 w-3.5 animate-spin opacity-70"
-                    :data-test-id="`shellman-file-dir-loading-${node.entry.path}`"
-                  />
-                  <FolderOpen v-else-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
-                  <Folder v-else-if="node.entry.is_dir" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
-                  <template v-else>
-                    <img
-                      v-if="node.fileIconURL"
-                      :src="node.fileIconURL"
-                      :alt="`${node.entry.name} icon`"
-                      class="mr-1.5 h-3.5 w-3.5 opacity-80 shrink-0"
-                      data-test-id="shellman-file-icon-kind"
-                      data-icon-kind="mapped"
-                    />
-                    <File v-else class="mr-1.5 h-3.5 w-3.5 opacity-70" data-test-id="shellman-file-icon-kind" data-icon-kind="default" />
-                  </template>
-                  <span class="truncate">{{ node.entry.name }}</span>
-                </Button>
+                  <DropdownMenuTrigger as-child>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      class="w-full justify-start h-7 px-1 text-xs font-normal"
+                      :class="{ 'opacity-45': node.entry.ignored }"
+                      :style="indentStyle(node.depth)"
+                      :data-test-id="`shellman-file-item-${node.entry.path}`"
+                      :data-ignored="node.entry.ignored ? 'true' : 'false'"
+                      @click="onClickEntry(node.entry)"
+                      @contextmenu.prevent.stop="onOpenContextMenu(node.entry)"
+                    >
+                      <Loader2
+                        v-if="node.entry.is_dir && loadingDirs[node.entry.path]"
+                        class="mr-1.5 h-3.5 w-3.5 animate-spin opacity-70"
+                        :data-test-id="`shellman-file-dir-loading-${node.entry.path}`"
+                      />
+                      <FolderOpen v-else-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                      <Folder v-else-if="node.entry.is_dir" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                      <template v-else>
+                        <img
+                          v-if="node.fileIconURL"
+                          :src="node.fileIconURL"
+                          :alt="`${node.entry.name} icon`"
+                          class="mr-1.5 h-3.5 w-3.5 opacity-80 shrink-0"
+                          data-test-id="shellman-file-icon-kind"
+                          data-icon-kind="mapped"
+                        />
+                        <File v-else class="mr-1.5 h-3.5 w-3.5 opacity-70" data-test-id="shellman-file-icon-kind" data-icon-kind="default" />
+                      </template>
+                      <span class="truncate">{{ node.entry.name }}</span>
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" class="w-48">
+                    <DropdownMenuItem data-test-id="shellman-file-context-cut" @select.prevent>
+                      {{ t("filePanel.contextMenu.cut") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem data-test-id="shellman-file-context-copy" @select.prevent>
+                      {{ t("filePanel.contextMenu.copy") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem data-test-id="shellman-file-context-copy-path" @select.prevent>
+                      {{ t("filePanel.contextMenu.copyPath") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem data-test-id="shellman-file-context-copy-relative-path" @select.prevent>
+                      {{ t("filePanel.contextMenu.copyRelativePath") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem data-test-id="shellman-file-context-rename" @select.prevent>
+                      {{ t("filePanel.contextMenu.rename") }}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      data-test-id="shellman-file-context-delete"
+                      variant="destructive"
+                      @select.prevent
+                    >
+                      {{ t("filePanel.contextMenu.delete") }}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
                 <div v-if="displayNodes.length === 0" class="text-xs text-muted-foreground px-2 py-1">
                   {{ t("filePanel.noFiles") }}
                 </div>

@@ -32,6 +32,7 @@ describe("FilePanel", () => {
   afterEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
+    document.body.innerHTML = "";
   });
 
   it("restores and persists draft search text by project scope", async () => {
@@ -146,5 +147,42 @@ describe("FilePanel", () => {
 
     resolveSrcLoad?.();
     await flushPromises();
+  });
+
+  it("renders file tree context menu items in english", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "main.ts", path: "main.ts", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      },
+      attachTo: document.body
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-main.ts']").trigger("contextmenu");
+    await flushPromises();
+
+    const menuText = document.body.textContent || "";
+    expect(menuText.includes("Cut")).toBe(true);
+    expect(menuText.includes("Copy")).toBe(true);
+    expect(menuText.includes("Copy Path")).toBe(true);
+    expect(menuText.includes("Copy Relative Path")).toBe(true);
+    expect(menuText.includes("Rename...")).toBe(true);
+    expect(menuText.includes("Delete")).toBe(true);
   });
 });
