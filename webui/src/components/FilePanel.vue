@@ -8,6 +8,16 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { Copy, FilePenLine, Folder, FolderOpen, File } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
+import tsIconURL from "file-icon-vectors/dist/icons/vivid/ts.svg?url";
+import jsIconURL from "file-icon-vectors/dist/icons/vivid/js.svg?url";
+import jsonIconURL from "file-icon-vectors/dist/icons/vivid/json.svg?url";
+import mdIconURL from "file-icon-vectors/dist/icons/vivid/md.svg?url";
+import ymlIconURL from "file-icon-vectors/dist/icons/vivid/yml.svg?url";
+import yamlIconURL from "file-icon-vectors/dist/icons/vivid/yaml.svg?url";
+import htmlIconURL from "file-icon-vectors/dist/icons/vivid/html.svg?url";
+import cssIconURL from "file-icon-vectors/dist/icons/vivid/css.svg?url";
+import shIconURL from "file-icon-vectors/dist/icons/vivid/sh.svg?url";
+import goIconURL from "file-icon-vectors/dist/icons/vivid/go.svg?url";
 const { t } = useI18n();
 
 type FileTreeEntry = {
@@ -97,7 +107,31 @@ type FlatNode = {
   key: string;
   entry: FileTreeEntry;
   depth: number;
+  fileIconURL: string | null;
 };
+
+const FILE_ICON_BY_EXT: Record<string, string> = {
+  ts: tsIconURL,
+  js: jsIconURL,
+  json: jsonIconURL,
+  md: mdIconURL,
+  yml: ymlIconURL,
+  yaml: yamlIconURL,
+  html: htmlIconURL,
+  css: cssIconURL,
+  sh: shIconURL,
+  go: goIconURL
+};
+
+function resolveFileIcon(path: string): string | null {
+  const normalized = String(path).trim().toLowerCase();
+  const dotIndex = normalized.lastIndexOf(".");
+  if (dotIndex <= 0 || dotIndex === normalized.length - 1) {
+    return null;
+  }
+  const ext = normalized.slice(dotIndex + 1);
+  return FILE_ICON_BY_EXT[ext] ?? null;
+}
 
 function isExpanded(path: string) {
   return Boolean(expandedDirs.value[path]);
@@ -274,7 +308,8 @@ function collectVisible(path: string, depth: number, out: FlatNode[]) {
     out.push({
       key: `${entry.path}-${depth}`,
       entry,
-      depth
+      depth,
+      fileIconURL: entry.is_dir ? null : resolveFileIcon(entry.path)
     });
     if (entry.is_dir && isExpanded(entry.path)) {
       collectVisible(entry.path, depth + 1, out);
@@ -295,7 +330,8 @@ const displayNodes = computed<FlatNode[]>(() => {
   return searchEntries.value.map((entry, idx) => ({
     key: `search-${entry.path}-${idx}`,
     entry,
-    depth: 0
+    depth: 0,
+    fileIconURL: entry.is_dir ? null : resolveFileIcon(entry.path)
   }));
 });
 
@@ -376,7 +412,17 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                 >
                   <FolderOpen v-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
                   <Folder v-else-if="node.entry.is_dir" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
-                  <File v-else class="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  <template v-else>
+                    <img
+                      v-if="node.fileIconURL"
+                      :src="node.fileIconURL"
+                      :alt="`${node.entry.name} icon`"
+                      class="mr-1.5 h-3.5 w-3.5 opacity-80 shrink-0"
+                      data-test-id="shellman-file-icon-kind"
+                      data-icon-kind="mapped"
+                    />
+                    <File v-else class="mr-1.5 h-3.5 w-3.5 opacity-70" data-test-id="shellman-file-icon-kind" data-icon-kind="default" />
+                  </template>
                   <span class="truncate">{{ node.entry.name }}</span>
                 </Button>
                 <div v-if="displayNodes.length === 0" class="text-xs text-muted-foreground px-2 py-1">
