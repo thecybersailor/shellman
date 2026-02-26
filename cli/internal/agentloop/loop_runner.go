@@ -140,6 +140,10 @@ func (r *LoopRunner) run(
 		injectRoundModeHint := forceRoundModeHintNextIteration || modeChanged
 		callReq.Input = withRoundModeHintInputWhen(req.Input, allowedTools, allowlistConfigured, injectRoundModeHint)
 		forceRoundModeHintNextIteration = false
+		if err := ValidateResponseInputInvariants(callReq.Input); err != nil {
+			base := fmt.Sprintf("responses input invariant failed iteration=%d %s", i+1, summarizeCreateResponseRequest(callReq))
+			return "", fmt.Errorf("%s: %w", base, err)
+		}
 		reqSummary := summarizeCreateResponseRequest(callReq)
 		if onToolEvent != nil {
 			onToolEvent(map[string]any{
