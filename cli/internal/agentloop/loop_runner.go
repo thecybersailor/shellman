@@ -140,6 +140,10 @@ func (r *LoopRunner) run(
 		injectRoundModeHint := forceRoundModeHintNextIteration || modeChanged
 		callReq.Input = withRoundModeHintInputWhen(req.Input, allowedTools, allowlistConfigured, injectRoundModeHint)
 		forceRoundModeHintNextIteration = false
+		if err := ValidateResponseInputInvariants(callReq.Input); err != nil {
+			base := fmt.Sprintf("responses input invariant failed iteration=%d %s", i+1, summarizeCreateResponseRequest(callReq))
+			return "", fmt.Errorf("%s: %w", base, err)
+		}
 		reqSummary := summarizeCreateResponseRequest(callReq)
 		if onToolEvent != nil {
 			onToolEvent(map[string]any{
@@ -449,6 +453,15 @@ func withRoundModeHintInputWhen(
 		return input
 	}
 	out := make([]map[string]any, 0, len(items)+1)
+	if len(items) > 0 {
+		first := items[0]
+		if strings.TrimSpace(fmt.Sprint(first["type"])) == "message" && strings.TrimSpace(fmt.Sprint(first["role"])) == "system" {
+			out = append(out, first)
+			out = append(out, hint)
+			out = append(out, items[1:]...)
+			return out
+		}
+	}
 	out = append(out, hint)
 	out = append(out, items...)
 	return out

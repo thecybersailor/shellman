@@ -117,6 +117,45 @@ func TestLoopRunner_UsesResponsesAPIAndToolRoundtrip(t *testing.T) {
 	}
 }
 
+func TestLoopRunner_ReturnsInvariantErrorBeforeHTTPCall(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		t.Fatalf("request should not be sent when input invariants fail")
+	}))
+	defer srv.Close()
+
+	client := NewResponsesClient(OpenAIConfig{
+		BaseURL: srv.URL,
+		Model:   "gpt-5-mini",
+		APIKey:  "test-key",
+	}, http.DefaultClient)
+	runner := NewLoopRunner(client, nil, LoopRunnerOptions{MaxIterations: 1})
+
+	err := validateLoopRunnerInputForTest([]map[string]any{
+		{
+			"type":    "message",
+			"role":    "user",
+			"content": []map[string]any{{"type": "input_text", "text": "u"}},
+		},
+		{
+			"type":    "message",
+			"role":    "system",
+			"content": []map[string]any{{"type": "input_text", "text": "s"}},
+		},
+	})
+	if err == nil {
+		t.Fatalf("expected invariant error")
+	}
+	if !strings.Contains(err.Error(), "system message must be first") {
+		t.Fatalf("expected system-order invariant error, got %v", err)
+	}
+	if callCount != 0 {
+		t.Fatalf("expected no HTTP call when invariants fail, got %d", callCount)
+	}
+	_ = runner
+}
+
 func TestLoopRunner_FullContextReplay_InterleavesCallAndOutputWithCallIDAndID(t *testing.T) {
 	callCount := 0
 	requestBodies := make([]map[string]any, 0, 2)
@@ -378,9 +417,41 @@ func TestLoopRunner_DoesNotPromoteInjectedSystemMarkerFromUserInput(t *testing.T
 	}
 }
 
+func TestWithRoundModeHintInputWhen_KeepsSystemMessageFirst(t *testing.T) {
+	input := []map[string]any{
+		buildSystemMessageInputItem("system"),
+		buildUserMessageInputItem("user"),
+	}
+	got := withRoundModeHintInputWhen(input, map[string]struct{}{"exec_command": {}}, true, true)
+	items, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 input items, got %d", len(items))
+	}
+	if gotRole := strings.TrimSpace(anyToString(items[0]["role"])); gotRole != "system" {
+		t.Fatalf("expected first role=system, got %q", gotRole)
+	}
+	if gotRole := strings.TrimSpace(anyToString(items[1]["role"])); gotRole != "user" {
+		t.Fatalf("expected second role=user(hint), got %q", gotRole)
+	}
+	secondContent, ok := items[1]["content"].([]map[string]any)
+	if !ok || len(secondContent) == 0 {
+		t.Fatalf("expected hint content in second item, got %#v", items[1]["content"])
+	}
+	if !strings.Contains(strings.TrimSpace(anyToString(secondContent[0]["text"])), "ROUND_MODE_HINT") {
+		t.Fatalf("expected second item is round mode hint, got %q", anyToString(secondContent[0]["text"]))
+	}
+}
+
 func anyToString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+func validateLoopRunnerInputForTest(input []map[string]any) error {
+	return ValidateResponseInputInvariants(input)
 }
 
 func TestLoopRunner_RunStream_EmitsTextDeltas(t *testing.T) {
