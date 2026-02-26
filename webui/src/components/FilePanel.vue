@@ -5,7 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
-import { Copy, FilePenLine, Folder, FolderOpen, File } from "lucide-vue-next";
+import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
 import tsIconURL from "file-icon-vectors/dist/icons/vivid/ts.svg?url";
@@ -410,7 +410,12 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                   :data-ignored="node.entry.ignored ? 'true' : 'false'"
                   @click="onClickEntry(node.entry)"
                 >
-                  <FolderOpen v-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
+                  <Loader2
+                    v-if="node.entry.is_dir && loadingDirs[node.entry.path]"
+                    class="mr-1.5 h-3.5 w-3.5 animate-spin opacity-70"
+                    :data-test-id="`shellman-file-dir-loading-${node.entry.path}`"
+                  />
+                  <FolderOpen v-else-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
                   <Folder v-else-if="node.entry.is_dir" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
                   <template v-else>
                     <img

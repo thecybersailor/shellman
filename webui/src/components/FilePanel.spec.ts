@@ -105,4 +105,46 @@ describe("FilePanel", () => {
     expect(wrapper.get("[data-test-id='shellman-file-item-README.unknownext'] [data-test-id='shellman-file-icon-kind']").attributes("data-icon-kind")).toBe("default");
     expect(wrapper.get("[data-test-id='shellman-file-item-src'] .lucide-folder").exists()).toBe(true);
   });
+
+  it("shows loading state when expanding a directory", async () => {
+    let resolveSrcLoad: (() => void) | null = null;
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "src", path: "src", is_dir: true }]
+            }
+          })
+        } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=src")) {
+        return {
+          json: () =>
+            new Promise((resolve) => {
+              resolveSrcLoad = () => resolve({ ok: true, data: { entries: [] } });
+            })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-src']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.get("[data-test-id='shellman-file-dir-loading-src']").exists()).toBe(true);
+
+    resolveSrcLoad?.();
+    await flushPromises();
+  });
 });
