@@ -44,7 +44,8 @@ describe("VirtualKeyboardPanel", () => {
     const classes = row.classes();
     expect(classes).toContain("overflow-x-auto");
     expect(classes).toContain("whitespace-nowrap");
-    expect(wrapper.findAll("button").length).toBe(9);
+    expect(wrapper.get("[data-test-id='tt-vkey-history-more']").text()).toBe("PgUp");
+    expect(wrapper.findAll("button").length).toBe(10);
   });
 
   it("hides scrollbar while keeping horizontal scroll", () => {
