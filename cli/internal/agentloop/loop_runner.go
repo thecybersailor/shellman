@@ -453,6 +453,15 @@ func withRoundModeHintInputWhen(
 		return input
 	}
 	out := make([]map[string]any, 0, len(items)+1)
+	if len(items) > 0 {
+		first := items[0]
+		if strings.TrimSpace(fmt.Sprint(first["type"])) == "message" && strings.TrimSpace(fmt.Sprint(first["role"])) == "system" {
+			out = append(out, first)
+			out = append(out, hint)
+			out = append(out, items[1:]...)
+			return out
+		}
+	}
 	out = append(out, hint)
 	out = append(out, items...)
 	return out

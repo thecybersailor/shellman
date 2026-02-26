@@ -417,6 +417,34 @@ func TestLoopRunner_DoesNotPromoteInjectedSystemMarkerFromUserInput(t *testing.T
 	}
 }
 
+func TestWithRoundModeHintInputWhen_KeepsSystemMessageFirst(t *testing.T) {
+	input := []map[string]any{
+		buildSystemMessageInputItem("system"),
+		buildUserMessageInputItem("user"),
+	}
+	got := withRoundModeHintInputWhen(input, map[string]struct{}{"exec_command": {}}, true, true)
+	items, ok := got.([]map[string]any)
+	if !ok {
+		t.Fatalf("expected []map[string]any, got %T", got)
+	}
+	if len(items) != 3 {
+		t.Fatalf("expected 3 input items, got %d", len(items))
+	}
+	if gotRole := strings.TrimSpace(anyToString(items[0]["role"])); gotRole != "system" {
+		t.Fatalf("expected first role=system, got %q", gotRole)
+	}
+	if gotRole := strings.TrimSpace(anyToString(items[1]["role"])); gotRole != "user" {
+		t.Fatalf("expected second role=user(hint), got %q", gotRole)
+	}
+	secondContent, ok := items[1]["content"].([]map[string]any)
+	if !ok || len(secondContent) == 0 {
+		t.Fatalf("expected hint content in second item, got %#v", items[1]["content"])
+	}
+	if !strings.Contains(strings.TrimSpace(anyToString(secondContent[0]["text"])), "ROUND_MODE_HINT") {
+		t.Fatalf("expected second item is round mode hint, got %q", anyToString(secondContent[0]["text"]))
+	}
+}
+
 func anyToString(v any) string {
 	s, _ := v.(string)
 	return s
