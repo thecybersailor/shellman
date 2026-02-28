@@ -388,20 +388,34 @@ function bindPasteHandler(input: HTMLTextAreaElement | null) {
   input.addEventListener("blur", blurHandler);
 }
 
-function readBufferLine(y: number) {
+type BufferLineLike = {
+  translateToString?: (trimRight?: boolean, startColumn?: number, endColumn?: number) => string;
+  isWrapped?: boolean;
+} | null;
+
+type BufferGetLine = (line: number) => BufferLineLike;
+
+type LogicalLineContext = {
+  text: string;
+  lineStart: number;
+  lineEnd: number;
+};
+
+function readLogicalLineContext(y: number): LogicalLineContext | null {
   const terminal = term as unknown as {
     buffer?: {
       active?: {
-        getLine?: (line: number) => {
-          translateToString?: (trimRight?: boolean, startColumn?: number, endColumn?: number) => string;
-        } | null;
+        getLine?: BufferGetLine;
       };
     };
   };
-  const getLine = terminal.buffer?.active?.getLine;
+  const active = terminal.buffer?.active;
+  const getLine = typeof active?.getLine === "function" ? (active.getLine.bind(active) as BufferGetLine) : null;
   if (!getLine) {
-    return "";
+    return null;
   }
+
+  let anchorLineIndex: number | null = null;
   for (const lineIndex of [y - 1, y]) {
     if (lineIndex < 0) {
       continue;
@@ -409,33 +423,78 @@ function readBufferLine(y: number) {
     const line = getLine(lineIndex);
     const text = line?.translateToString?.(true) ?? "";
     if (text) {
-      return text;
+      anchorLineIndex = lineIndex;
+      break;
     }
   }
-  return "";
+  if (anchorLineIndex === null) {
+    return null;
+  }
+
+  let firstLineIndex = anchorLineIndex;
+  while (firstLineIndex > 0) {
+    const line = getLine(firstLineIndex);
+    if (!line?.isWrapped) {
+      break;
+    }
+    firstLineIndex -= 1;
+  }
+
+  const segments: Array<{ lineIndex: number; text: string; start: number; end: number }> = [];
+  let cursor = 0;
+  for (let lineIndex = firstLineIndex; ; lineIndex += 1) {
+    const line = getLine(lineIndex);
+    if (!line) {
+      break;
+    }
+    const segmentText = line.translateToString?.(true) ?? "";
+    const start = cursor;
+    const end = start + segmentText.length;
+    segments.push({ lineIndex, text: segmentText, start, end });
+    cursor = end;
+    const next = getLine(lineIndex + 1);
+    if (!next?.isWrapped) {
+      break;
+    }
+  }
+
+  const anchorSegment = segments.find((item) => item.lineIndex === anchorLineIndex);
+  if (!anchorSegment) {
+    return null;
+  }
+
+  return {
+    text: segments.map((item) => item.text).join(""),
+    lineStart: anchorSegment.start,
+    lineEnd: anchorSegment.end
+  };
 }
 
 function bindTerminalLinkProvider() {
   const provider = {
     provideLinks(y: number, callback: (links: Array<{ range: { start: { x: number; y: number }; end: { x: number; y: number } }; text: string; activate: () => void }>) => void) {
-      const text = readBufferLine(y);
-      if (!text) {
+      const context = readLogicalLineContext(y);
+      if (!context?.text) {
         callback([]);
         return;
       }
-      const links = parseTerminalLinks(text).map((item) => {
-        const startX = item.start + 1;
-        const endX = Math.max(startX, item.end);
-        const payload = item.type === "url" ? { type: "url" as const, raw: item.text } : { type: "path" as const, raw: item.text };
-        return {
-          text: item.text,
-          range: {
-            start: { x: startX, y },
-            end: { x: endX, y }
-          },
-          activate: () => emit("terminal-link-open", payload)
-        };
-      });
+      const links = parseTerminalLinks(context.text)
+        .filter((item) => item.start < context.lineEnd && item.end > context.lineStart)
+        .map((item) => {
+          const localStart = Math.max(item.start, context.lineStart) - context.lineStart;
+          const localEnd = Math.min(item.end, context.lineEnd) - context.lineStart;
+          const startX = localStart + 1;
+          const endX = Math.max(startX, localEnd);
+          const payload = item.type === "url" ? { type: "url" as const, raw: item.text } : { type: "path" as const, raw: item.text };
+          return {
+            text: item.text,
+            range: {
+              start: { x: startX, y },
+              end: { x: endX, y }
+            },
+            activate: () => emit("terminal-link-open", payload)
+          };
+        });
       callback(links);
     }
   };
@@ -494,12 +553,13 @@ function resolveTouchLinkPayload(event: PointerEvent): { type: "url"; raw: strin
   }
   const colIndex = Math.max(0, Math.min(cols - 1, Math.floor(x0 / cellWidth)));
   const row = Math.max(1, Math.min(rows, Math.floor(y0 / cellHeight) + 1));
-  const text = readBufferLine(row);
-  if (!text) {
+  const context = readLogicalLineContext(row);
+  if (!context?.text) {
     return null;
   }
-  const links = parseTerminalLinks(text);
-  const matched = links.find((item) => colIndex >= item.start && colIndex < item.end);
+  const globalColumn = context.lineStart + colIndex;
+  const links = parseTerminalLinks(context.text);
+  const matched = links.find((item) => globalColumn >= item.start && globalColumn < item.end);
   if (!matched) {
     return null;
   }

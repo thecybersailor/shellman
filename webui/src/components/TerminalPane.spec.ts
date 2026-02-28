@@ -15,6 +15,7 @@ let linkProvider: {
 } | null = null;
 let deferWriteCallback = false;
 let renderedLines: string[] = [];
+let wrappedLineIndexes = new Set<number>();
 const SCROLL_MARKER = "__SCROLL__";
 
 vi.mock("@xterm/xterm", () => ({
@@ -24,7 +25,8 @@ vi.mock("@xterm/xterm", () => ({
     buffer = {
       active: {
         getLine: (line: number) => ({
-          translateToString: () => renderedLines[line] ?? ""
+          translateToString: () => renderedLines[line] ?? "",
+          isWrapped: wrappedLineIndexes.has(line)
         })
       }
     };
@@ -83,6 +85,7 @@ afterEach(() => {
   document.body.innerHTML = "";
   deferWriteCallback = false;
   renderedLines = [];
+  wrappedLineIndexes = new Set<number>();
 });
 
 describe("TerminalPane", () => {
@@ -479,6 +482,37 @@ describe("TerminalPane", () => {
     expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
       type: "path",
       raw: "src/App.vue:12:3"
+    });
+  });
+
+  it("emits complete wrapped path when activating link from wrapped continuation row", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    linkProvider = null;
+    renderedLines = [
+      "/Users/wanglei/Projects/cybersailor/shellman-project/shellman/.worktrees/",
+      "e2e-repro-terminalpanel-switch-20260226/logs/visual-check/06-switch-back-child.png"
+    ];
+    wrappedLineIndexes = new Set<number>([1]);
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    expect(linkProvider).toBeTruthy();
+
+    let links: Array<{ activate: () => void }> = [];
+    linkProvider?.provideLinks(2, (provided) => {
+      links = provided;
+    });
+    expect(links.length).toBeGreaterThan(0);
+    links[0]?.activate();
+
+    expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
+      type: "path",
+      raw: "/Users/wanglei/Projects/cybersailor/shellman-project/shellman/.worktrees/e2e-repro-terminalpanel-switch-20260226/logs/visual-check/06-switch-back-child.png"
     });
   });
 
