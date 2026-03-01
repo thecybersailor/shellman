@@ -745,39 +745,10 @@ func (r *localAPIAgentLoopRunner) RunStreamWithTools(
 		if onToolEvent == nil {
 			return
 		}
-		if legacy := toLegacyToolEvent(event); len(legacy) > 0 {
+		if legacy, ok := agentloopadapter.ToLegacyToolEvent(event); ok {
 			onToolEvent(legacy)
 		}
 	})
-}
-
-func toLegacyToolEvent(event agentloop.LoopEvent) map[string]any {
-	switch e := event.(type) {
-	case agentloop.ToolInputEvent:
-		return map[string]any{
-			"type":          "tool_input",
-			"call_id":       strings.TrimSpace(e.CallID),
-			"response_id":   strings.TrimSpace(e.ResponseID),
-			"tool_name":     strings.TrimSpace(e.ToolName),
-			"state":         "input-available",
-			"input":         strings.TrimSpace(e.Input),
-			"input_preview": strings.TrimSpace(e.InputPreview),
-			"input_len":     e.InputRawLen,
-		}
-	case agentloop.ToolOutputEvent:
-		return map[string]any{
-			"type":        "tool_output",
-			"call_id":     strings.TrimSpace(e.CallID),
-			"response_id": strings.TrimSpace(e.ResponseID),
-			"tool_name":   strings.TrimSpace(e.ToolName),
-			"state":       strings.TrimSpace(e.State),
-			"output":      strings.TrimSpace(e.Output),
-			"output_len":  e.OutputLen,
-			"error_text":  strings.TrimSpace(e.ErrorString),
-		}
-	default:
-		return nil
-	}
 }
 
 func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigStore, httpExec gatewayHTTPExecutor) (localapi.AgentLoopRunner, string, string) {
