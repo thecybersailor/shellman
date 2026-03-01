@@ -394,43 +394,14 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 				})
 				return
 			}
-			callID := strings.TrimSpace(fmt.Sprint(event["call_id"]))
-			responseID := strings.TrimSpace(fmt.Sprint(event["response_id"]))
-			toolName := strings.TrimSpace(fmt.Sprint(event["tool_name"]))
-			toolState := strings.TrimSpace(fmt.Sprint(event["state"]))
-			next := map[string]any{
-				"type":      event["type"],
-				"tool_name": toolName,
-				"state":     toolState,
+			toolEvent, ok := agentloopadapter.ParseLegacyToolEvent(event)
+			if !ok {
+				return
 			}
-			hasInput := false
-			if input, ok := event["input"]; ok {
-				next["input"] = input
-				hasInput = true
-			}
-			hasOutput := false
-			if output, ok := event["output"]; ok {
-				next["output"] = output
-				hasOutput = true
-			}
-			hasErrorText := false
-			errorPreview := ""
-			if errText, ok := event["error_text"]; ok {
-				next["error_text"] = errText
-				hasErrorText = strings.TrimSpace(fmt.Sprint(errText)) != ""
-				errorPreview = strings.TrimSpace(fmt.Sprint(errText))
-			}
-			inputPreview := strings.TrimSpace(fmt.Sprint(event["input_preview"]))
-			outputLen := intFromAny(event["output_len"])
-			outputPreview := strings.TrimSpace(fmt.Sprint(event["output"]))
+			callID := strings.TrimSpace(toolEvent.CallID)
+			next := toolEvent.ToToolStatePatch()
 			if idx, ok := toolIndexByID[callID]; ok && idx >= 0 && idx < len(streamState.Tools) {
-				current := streamState.Tools[idx]
-				for k, v := range next {
-					if v != nil && fmt.Sprint(v) != "" {
-						current[k] = v
-					}
-				}
-				streamState.Tools[idx] = current
+				streamState.Tools[idx] = agentloopadapter.MergeToolStatePatch(streamState.Tools[idx], next)
 			} else {
 				streamState.Tools = append(streamState.Tools, next)
 				if callID != "" {
@@ -442,17 +413,17 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 				"source":          strings.TrimSpace(evt.Source),
 				"user_message_id": userMessageID,
 				"call_id":         callID,
-				"response_id":     responseID,
-				"tool_name":       toolName,
-				"state":           toolState,
-				"has_input":       hasInput,
-				"input_raw_len":   intFromAny(event["input_raw_len"]),
-				"has_output":      hasOutput,
-				"has_error_text":  hasErrorText,
-				"input_preview":   inputPreview,
-				"output_len":      outputLen,
-				"output_preview":  outputPreview,
-				"error_preview":   errorPreview,
+				"response_id":     strings.TrimSpace(toolEvent.ResponseID),
+				"tool_name":       strings.TrimSpace(toolEvent.ToolName),
+				"state":           strings.TrimSpace(toolEvent.State),
+				"has_input":       toolEvent.HasInput,
+				"input_raw_len":   toolEvent.InputLen,
+				"has_output":      toolEvent.HasOutput,
+				"has_error_text":  toolEvent.HasErrorText,
+				"input_preview":   strings.TrimSpace(toolEvent.InputPreview),
+				"output_len":      toolEvent.OutputLen,
+				"output_preview":  strings.TrimSpace(toolEvent.Output),
+				"error_preview":   strings.TrimSpace(toolEvent.ErrorText),
 			})
 			flushRunning(false)
 		})

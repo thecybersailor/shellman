@@ -65,11 +65,23 @@ func (r *pmStreamWithToolsRunner) RunStreamWithTools(
 	}
 	if onToolEvent != nil {
 		onToolEvent(map[string]any{
-			"type":      "tool-call",
-			"call_id":   "pm_call_1",
-			"tool_name": "exec_command",
-			"state":     "output-available",
-			"output":    "{\"ok\":true}",
+			"type":          "tool_input",
+			"call_id":       "pm_call_1",
+			"response_id":   "pm_resp_1",
+			"tool_name":     "exec_command",
+			"state":         "input-available",
+			"input":         "{\"cmd\":\"ls\"}",
+			"input_preview": "ls",
+			"input_raw_len": 12,
+		})
+		onToolEvent(map[string]any{
+			"type":        "tool_output",
+			"call_id":     "pm_call_1",
+			"response_id": "pm_resp_1",
+			"tool_name":   "exec_command",
+			"state":       "output-available",
+			"output":      "{\"ok\":true}",
+			"output_len":  11,
 		})
 	}
 	return "stream reply", nil
@@ -235,7 +247,14 @@ func TestProjectManagerActor_PersistsToolEventsInAssistantMessage(t *testing.T) 
 		if err := json.Unmarshal([]byte(last.Content), &payload); err != nil {
 			return false
 		}
-		return len(payload.Tools) > 0
+		if len(payload.Tools) != 1 {
+			return false
+		}
+		tool := payload.Tools[0]
+		return tool["tool_name"] == "exec_command" &&
+			tool["state"] == "output-available" &&
+			tool["input"] == "{\"cmd\":\"ls\"}" &&
+			tool["output"] == "{\"ok\":true}"
 	})
 }
 

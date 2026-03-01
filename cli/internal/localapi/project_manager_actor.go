@@ -3,7 +3,6 @@ package localapi
 import (
 	"context"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -191,31 +190,14 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 			streamState.Text += delta
 			flushRunning(false)
 		}, func(event map[string]any) {
-			callID := strings.TrimSpace(fmt.Sprint(event["call_id"]))
-			toolName := strings.TrimSpace(fmt.Sprint(event["tool_name"]))
-			toolState := strings.TrimSpace(fmt.Sprint(event["state"]))
-			next := map[string]any{
-				"type":      event["type"],
-				"tool_name": toolName,
-				"state":     toolState,
+			toolEvent, ok := agentloopadapter.ParseLegacyToolEvent(event)
+			if !ok {
+				return
 			}
-			if input, ok := event["input"]; ok {
-				next["input"] = input
-			}
-			if output, ok := event["output"]; ok {
-				next["output"] = output
-			}
-			if errText, ok := event["error_text"]; ok {
-				next["error_text"] = errText
-			}
+			callID := strings.TrimSpace(toolEvent.CallID)
+			next := toolEvent.ToToolStatePatch()
 			if idx, ok := toolIndexByID[callID]; ok && idx >= 0 && idx < len(streamState.Tools) {
-				current := streamState.Tools[idx]
-				for k, v := range next {
-					if v != nil && fmt.Sprint(v) != "" {
-						current[k] = v
-					}
-				}
-				streamState.Tools[idx] = current
+				streamState.Tools[idx] = agentloopadapter.MergeToolStatePatch(streamState.Tools[idx], next)
 			} else {
 				streamState.Tools = append(streamState.Tools, next)
 				if callID != "" {
@@ -227,13 +209,13 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 				"session_id":     sessionID,
 				"source":         source,
 				"call_id":        callID,
-				"response_id":    strings.TrimSpace(fmt.Sprint(event["response_id"])),
-				"tool_name":      toolName,
-				"state":          toolState,
-				"input_preview":  strings.TrimSpace(fmt.Sprint(event["input_preview"])),
-				"output_len":     intFromAny(event["output_len"]),
-				"output_preview": strings.TrimSpace(fmt.Sprint(event["output"])),
-				"error_preview":  strings.TrimSpace(fmt.Sprint(event["error_text"])),
+				"response_id":    strings.TrimSpace(toolEvent.ResponseID),
+				"tool_name":      strings.TrimSpace(toolEvent.ToolName),
+				"state":          strings.TrimSpace(toolEvent.State),
+				"input_preview":  strings.TrimSpace(toolEvent.InputPreview),
+				"output_len":     toolEvent.OutputLen,
+				"output_preview": strings.TrimSpace(toolEvent.Output),
+				"error_preview":  strings.TrimSpace(toolEvent.ErrorText),
 			})
 			flushRunning(false)
 		})
