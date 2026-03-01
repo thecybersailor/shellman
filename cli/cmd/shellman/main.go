@@ -1280,8 +1280,10 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		UseResponsesAPI: useResponsesAPIEnabled(cfg),
 		EnableState:     cfg.OpenAIEnableState,
 	}, http.DefaultClient)
+	inner := agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 8})
+	agentloopadapter.RegisterLoopRunnerMiddleware(inner)
 	return &localAPIAgentLoopRunner{
-		inner: agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 8}),
+		inner: inner,
 	}, endpoint, model
 }
 
