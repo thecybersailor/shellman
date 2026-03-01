@@ -10,6 +10,7 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	t.Setenv("SHELLMAN_LOG_LEVEL", "")
 	t.Setenv("SHELLMAN_TRACE_STREAM", "")
 	t.Setenv("SHELLMAN_LOCAL_HOST", "")
+	t.Setenv("SHELLMAN_WEBUI_DIST_DIR", "")
 
 	cfg := LoadConfig()
 	if cfg.WorkerBaseURL != "http://127.0.0.1:8787" {
