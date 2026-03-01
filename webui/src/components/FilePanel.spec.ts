@@ -186,6 +186,76 @@ describe("FilePanel", () => {
     expect(menuText.includes("Delete")).toBe(true);
   });
 
+  it("renders markdown preview for .md files", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "README.md", path: "README.md", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/files/content?path=README.md")) {
+        return {
+          json: async () => ({ ok: true, data: { content: "# Title\n\ncontent" } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-README.md']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(true);
+    expect(wrapper.find("pre").exists()).toBe(false);
+  });
+
+  it("emits file-open on double click file item", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "README.md", path: "README.md", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/files/content?path=README.md")) {
+        return {
+          json: async () => ({ ok: true, data: { content: "# Title" } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-README.md']").trigger("dblclick");
+
+    expect(wrapper.emitted("file-open")?.[0]).toEqual(["README.md"]);
+  });
+
   it("executes rename and refreshes tree", async () => {
     let rootFetchCount = 0;
     const fakeFetch = vi.fn(async (input: string, init?: RequestInit) => {

@@ -516,6 +516,37 @@ describe("TerminalPane", () => {
     });
   });
 
+  it("emits complete path when hard newline splits markdown-style path suffix", async () => {
+    terminalOptions = undefined;
+    writes = [];
+    resized = [];
+    resetCalls = 0;
+    linkProvider = null;
+    renderedLines = [
+      "docs/plans/2026-02-28-site-dyn-nuxt-worker-migration-implementation-",
+      "plan.md"
+    ];
+    wrappedLineIndexes = new Set<number>();
+    Object.defineProperty(window, "matchMedia", {
+      writable: true,
+      value: () => ({ matches: false, addEventListener() {}, removeEventListener() {} })
+    });
+    const wrapper = mount(TerminalPane);
+    expect(linkProvider).toBeTruthy();
+
+    let links: Array<{ activate: () => void }> = [];
+    linkProvider?.provideLinks(2, (provided) => {
+      links = provided;
+    });
+    expect(links.length).toBeGreaterThan(0);
+    links[0]?.activate();
+
+    expect(wrapper.emitted("terminal-link-open")?.[0]?.[0]).toEqual({
+      type: "path",
+      raw: "docs/plans/2026-02-28-site-dyn-nuxt-worker-migration-implementation-plan.md"
+    });
+  });
+
   it("emits terminal-link-open on touch tap fallback", async () => {
     terminalOptions = undefined;
     writes = [];

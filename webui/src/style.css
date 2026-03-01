@@ -245,3 +245,41 @@
     grid-template-columns: 1fr;
   }
 }
+
+.shellman-markdown-compact [data-stream-markdown='heading-1'] {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  margin-top: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.shellman-markdown-compact [data-stream-markdown='heading-2'] {
+  font-size: 1.25rem;
+  line-height: 1.75rem;
+  margin-top: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.shellman-markdown-compact [data-stream-markdown='heading-3'] {
+  font-size: 1.125rem;
+  line-height: 1.5rem;
+  margin-top: 0.75rem;
+  margin-bottom: 0.375rem;
+}
+
+.shellman-markdown-compact [data-stream-markdown='paragraph'],
+.shellman-markdown-compact [data-stream-markdown='list-item'] {
+  font-size: 0.875rem;
+  line-height: 1.5rem;
+}
+
+.shellman-markdown-compact [data-stream-markdown='table'] {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.shellman-markdown-compact [data-stream-markdown='table-header'] th,
+.shellman-markdown-compact [data-stream-markdown='table-body'] td {
+  border: 1px solid var(--border);
+  padding: 0.375rem 0.5rem;
+}

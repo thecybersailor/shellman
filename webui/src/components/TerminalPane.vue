@@ -401,6 +401,27 @@ type LogicalLineContext = {
   lineEnd: number;
 };
 
+function isHardWrappedPathContinuation(prevText: string, nextText: string): boolean {
+  const left = prevText.trim();
+  const right = nextText.trim();
+  if (!left || !right) {
+    return false;
+  }
+  if (!left.includes("/")) {
+    return false;
+  }
+  if (!/[A-Za-z0-9_./-]$/.test(left)) {
+    return false;
+  }
+  if (!/^[A-Za-z0-9_./-]/.test(right)) {
+    return false;
+  }
+  if (!/^[A-Za-z0-9_./:-]+[)\]]?$/.test(right)) {
+    return false;
+  }
+  return true;
+}
+
 function readLogicalLineContext(y: number): LogicalLineContext | null {
   const terminal = term as unknown as {
     buffer?: {
@@ -414,14 +435,14 @@ function readLogicalLineContext(y: number): LogicalLineContext | null {
   if (!getLine) {
     return null;
   }
+  const readLineText = (lineIndex: number) => getLine(lineIndex)?.translateToString?.(true) ?? "";
 
   let anchorLineIndex: number | null = null;
   for (const lineIndex of [y - 1, y]) {
     if (lineIndex < 0) {
       continue;
     }
-    const line = getLine(lineIndex);
-    const text = line?.translateToString?.(true) ?? "";
+    const text = readLineText(lineIndex);
     if (text) {
       anchorLineIndex = lineIndex;
       break;
@@ -439,23 +460,47 @@ function readLogicalLineContext(y: number): LogicalLineContext | null {
     }
     firstLineIndex -= 1;
   }
+  while (firstLineIndex > 0) {
+    const prevText = readLineText(firstLineIndex - 1);
+    const currText = readLineText(firstLineIndex);
+    if (!isHardWrappedPathContinuation(prevText, currText)) {
+      break;
+    }
+    firstLineIndex -= 1;
+  }
+
+  let lastLineIndex = firstLineIndex;
+  for (;;) {
+    const next = getLine(lastLineIndex + 1);
+    if (!next?.isWrapped) {
+      break;
+    }
+    lastLineIndex += 1;
+  }
+  for (;;) {
+    const currText = readLineText(lastLineIndex);
+    const nextText = readLineText(lastLineIndex + 1);
+    if (!nextText || !isHardWrappedPathContinuation(currText, nextText)) {
+      break;
+    }
+    lastLineIndex += 1;
+    for (;;) {
+      const wrappedNext = getLine(lastLineIndex + 1);
+      if (!wrappedNext?.isWrapped) {
+        break;
+      }
+      lastLineIndex += 1;
+    }
+  }
 
   const segments: Array<{ lineIndex: number; text: string; start: number; end: number }> = [];
   let cursor = 0;
-  for (let lineIndex = firstLineIndex; ; lineIndex += 1) {
-    const line = getLine(lineIndex);
-    if (!line) {
-      break;
-    }
-    const segmentText = line.translateToString?.(true) ?? "";
+  for (let lineIndex = firstLineIndex; lineIndex <= lastLineIndex; lineIndex += 1) {
+    const segmentText = readLineText(lineIndex);
     const start = cursor;
     const end = start + segmentText.length;
     segments.push({ lineIndex, text: segmentText, start, end });
     cursor = end;
-    const next = getLine(lineIndex + 1);
-    if (!next?.isWrapped) {
-      break;
-    }
   }
 
   const anchorSegment = segments.find((item) => item.lineIndex === anchorLineIndex);

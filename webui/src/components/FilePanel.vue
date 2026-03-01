@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
+import { Markdown } from "vue-stream-markdown";
+import "vue-stream-markdown/index.css";
 import tsIconURL from "file-icon-vectors/dist/icons/vivid/ts.svg?url";
 import jsIconURL from "file-icon-vectors/dist/icons/vivid/js.svg?url";
 import jsonIconURL from "file-icon-vectors/dist/icons/vivid/json.svg?url";
@@ -226,6 +228,7 @@ async function searchFiles(keyword: string) {
 }
 
 const previewMode = computed<FilePreviewMode>(() => getFilePreviewMode(selectedFilePath.value));
+const selectedFileIsMarkdown = computed(() => /\.md$/i.test(String(selectedFilePath.value ?? "").trim()));
 const previewRawURL = computed(() => {
   if (!props.taskId || !selectedFilePath.value) {
     return "";
@@ -310,6 +313,13 @@ async function onClickEntry(entry: FileTreeEntry) {
   if (!treeByPath.value[entry.path]) {
     await loadDir(entry.path, true);
   }
+}
+
+function onDoubleClickEntry(entry: FileTreeEntry) {
+  if (entry.is_dir) {
+    return;
+  }
+  emit("file-open", entry.path);
 }
 
 function collectVisible(path: string, depth: number, out: FlatNode[]) {
@@ -622,6 +632,7 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                       :data-test-id="`shellman-file-item-${node.entry.path}`"
                       :data-ignored="node.entry.ignored ? 'true' : 'false'"
                       @click="onClickEntry(node.entry)"
+                      @dblclick.stop="onDoubleClickEntry(node.entry)"
                     >
                       <Loader2
                         v-if="node.entry.is_dir && loadingDirs[node.entry.path]"
@@ -727,6 +738,13 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
             <ScrollArea class="flex-1 min-h-0 border rounded-md bg-muted/20" :horizontal="true">
               <div v-if="previewLoading" class="text-xs text-muted-foreground p-3">loading...</div>
               <div v-else-if="!selectedFilePath" class="text-xs text-muted-foreground p-3">{{ t("filePanel.clickTreeToPreview") }}</div>
+              <div
+                v-else-if="previewMode === 'txt' && selectedFileIsMarkdown"
+                class="shellman-markdown-compact p-3 text-sm leading-6"
+                data-test-id="shellman-file-preview-markdown"
+              >
+                <Markdown :content="selectedFileContent" />
+              </div>
               <pre v-else-if="previewMode === 'txt'" class="p-3 text-xs font-mono whitespace-pre">{{ selectedFileContent }}</pre>
               <div v-else-if="previewMode === 'image'" class="p-3">
                 <img :src="previewRawURL" :alt="t('filePanel.previewImage')" class="max-w-full max-h-[52vh] object-contain" />

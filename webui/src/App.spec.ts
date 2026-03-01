@@ -76,10 +76,14 @@ describe("App project entry wiring", () => {
   });
 
   it("wires file editor header actions for close and save", () => {
+    expect(appSource).toContain(":show-close=\"false\"");
     expect(appSource).toContain("data-test-id=\"shellman-file-viewer-close\"");
     expect(appSource).toContain("data-test-id=\"shellman-file-viewer-save\"");
+    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-toggle-mode\"");
+    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-markdown\"");
     expect(appSource).toContain("@click=\"onCloseFileViewer\"");
     expect(appSource).toContain("@click=\"onSaveFileViewer\"");
+    expect(appSource).toContain("onSwitchFileViewerMode");
     expect(appSource).toContain("async function onSaveFileViewer() {");
   });
 

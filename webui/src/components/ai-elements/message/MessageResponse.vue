@@ -35,7 +35,7 @@ const md = computed(() => (slotContent.value ?? props.content ?? '') as string)
     :class="
       cn(
         // Avoid forcing 100% width/height inside w-fit message containers; it can hide content.
-        'max-w-full break-words [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!',
+        'shellman-markdown-compact max-w-full break-words [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!',
         props.class,
       )
     "

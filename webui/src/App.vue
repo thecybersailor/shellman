@@ -32,6 +32,8 @@ import { Sun, Moon } from "lucide-vue-next";
 import shellmanIcon from "@/asserts/icon.svg";
 import { useColorMode } from "@vueuse/core";
 import { toast } from "vue-sonner";
+import { Markdown } from "vue-stream-markdown";
+import "vue-stream-markdown/index.css";
 const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -56,6 +58,7 @@ const fileViewerSaving = ref(false);
 const fileViewerPath = ref("");
 const fileViewerContent = ref("");
 const fileViewerBaseContent = ref("");
+const fileViewerMode = ref<"preview" | "edit">("edit");
 const fileViewerBaseRev = ref<{ mtime_ns: number; size: number; sha256: string }>({
   mtime_ns: 0,
   size: 0,
@@ -760,6 +763,7 @@ async function onFileOpen(path: string) {
   fileViewerPath.value = path;
   fileViewerContent.value = "";
   fileViewerBaseContent.value = "";
+  fileViewerMode.value = /\.md$/i.test(path) ? "preview" : "edit";
   fileViewerBaseRev.value = { mtime_ns: 0, size: 0, sha256: "" };
   try {
     const encodedPath = encodeURIComponent(path);
@@ -888,6 +892,16 @@ async function onSaveFileViewer() {
   } finally {
     fileViewerSaving.value = false;
   }
+}
+
+const fileViewerIsMarkdown = computed(() => /\.md$/i.test(String(fileViewerPath.value ?? "").trim()));
+
+function onSwitchFileViewerMode(mode: "preview" | "edit") {
+  if (!fileViewerIsMarkdown.value) {
+    fileViewerMode.value = "edit";
+    return;
+  }
+  fileViewerMode.value = mode;
 }
 
 onMounted(async () => {
@@ -1159,11 +1173,21 @@ onBeforeUnmount(() => {
   />
 
   <Sheet v-model:open="fileViewerOpen">
-    <SheetContent side="right" class="w-full sm:max-w-2xl flex flex-col gap-3">
+    <SheetContent side="right" :show-close="false" class="w-full sm:max-w-2xl flex flex-col gap-3">
       <SheetHeader class="text-left gap-2">
         <div class="flex items-center justify-between gap-2">
           <SheetTitle class="text-xs font-mono break-all">{{ fileViewerPath || "File Viewer" }}</SheetTitle>
           <div class="flex items-center gap-2">
+            <Button
+              v-if="fileViewerIsMarkdown"
+              data-test-id="shellman-file-viewer-toggle-mode"
+              variant="ghost"
+              size="sm"
+              :disabled="fileViewerSaving"
+              @click="onSwitchFileViewerMode(fileViewerMode === 'preview' ? 'edit' : 'preview')"
+            >
+              {{ fileViewerMode === "preview" ? t("common.edit") : t("common.preview") }}
+            </Button>
             <Button
               data-test-id="shellman-file-viewer-close"
               variant="ghost"
@@ -1176,7 +1200,7 @@ onBeforeUnmount(() => {
             <Button
               data-test-id="shellman-file-viewer-save"
               size="sm"
-              :disabled="fileViewerLoading || fileViewerSaving || fileViewerContent === fileViewerBaseContent"
+              :disabled="fileViewerMode !== 'edit' || fileViewerLoading || fileViewerSaving || fileViewerContent === fileViewerBaseContent"
               @click="onSaveFileViewer"
             >
               {{ fileViewerSaving ? t("common.saving") : t("common.save") }}
@@ -1184,7 +1208,17 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </SheetHeader>
+      <div
+        v-if="fileViewerIsMarkdown && fileViewerMode === 'preview'"
+        class="shellman-markdown-compact flex-1 min-h-[70vh] overflow-y-auto border rounded-md p-3 text-sm leading-6"
+        data-test-id="shellman-file-viewer-markdown"
+      >
+        <div v-if="fileViewerLoading" class="text-xs text-muted-foreground">{{ t("common.loading") }}</div>
+        <div v-else-if="!fileViewerContent" class="text-xs text-muted-foreground">{{ t("common.noContent") }}</div>
+        <Markdown v-else :content="fileViewerContent" />
+      </div>
       <Textarea
+        v-else
         v-model="fileViewerContent"
         data-test-id="shellman-file-viewer-textarea"
         class="flex-1 min-h-[70vh] resize-none font-mono text-xs"
