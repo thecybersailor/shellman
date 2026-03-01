@@ -17,43 +17,40 @@ func (t *TaskCurrentSetFlagTool) Spec() ResponseToolSpec {
 		Type:        "function",
 		Name:        t.Name(),
 		Description: "Set current task flag and status message.",
-		Parameters: map[string]any{
-			"type": "object",
-			"properties": map[string]any{
-				"flag": map[string]any{
-					"type": "string",
-					"enum": []string{"success", "notify", "error"},
-				},
-				"status_message": map[string]any{"type": "string"},
+		Parameters: ResponseToolParameters{
+			Type: "object",
+			Properties: []ResponseToolProperty{
+				{Name: "flag", Schema: ResponseToolSchema{Type: "string", Enum: []string{"success", "notify", "error"}}},
+				{Name: "status_message", Schema: ResponseToolSchema{Type: "string"}},
 			},
-			"required": []string{"flag", "status_message"},
+			Required: []string{"flag", "status_message"},
 		},
 	}
 }
 
-func (t *TaskCurrentSetFlagTool) Execute(ctx context.Context, input json.RawMessage, callID string) (string, *ToolError) {
+func (t *TaskCurrentSetFlagTool) Execute(ctx context.Context, _ struct{}, input string, callID string) (string, *ToolError) {
 	_ = callID
 	if t == nil || t.Exec == nil {
-		return "", NewToolError("TASK_CURRENT_SET_FLAG_EXEC_UNAVAILABLE", "确认 task.current.set_flag 工具已注入可执行回调")
+		return "", NewToolError("TASK_CURRENT_SET_FLAG_EXEC_UNAVAILABLE", "Ensure task.current.set_flag exec callback is injected")
 	}
 	scope, ok := TaskScopeFromContext(ctx)
 	if !ok || strings.TrimSpace(scope.TaskID) == "" {
-		return "", NewToolError("TASK_CONTEXT_MISSING", "确认当前调用已绑定 task scope")
+		return "", NewToolError("TASK_CONTEXT_MISSING", "Ensure current invocation is bound to task scope")
 	}
 	req := struct {
 		Flag          string `json:"flag"`
 		StatusMessage string `json:"status_message"`
 	}{}
-	if err := json.Unmarshal(input, &req); err != nil {
-		return "", NewToolError("INVALID_JSON_INPUT", "检查 task.current.set_flag 参数 JSON: 需要 flag 与 status_message")
+	if err := json.Unmarshal([]byte(input), &req); err != nil {
+		return "", NewToolError("INVALID_JSON_INPUT", "Check task.current.set_flag JSON: require flag and status_message")
 	}
 	flag := strings.TrimSpace(req.Flag)
 	if flag != "success" && flag != "notify" && flag != "error" {
-		return "", NewToolError("INVALID_FLAG_KEY", "flag 只能是 success、notify、error")
+		return "", NewToolError("INVALID_FLAG_KEY", "flag must be one of success, notify, error")
 	}
 	statusMessage := strings.TrimSpace(req.StatusMessage)
 	if statusMessage == "" {
-		return "", NewToolError("INVALID_STATUS_MESSAGE", "提供非空 status_message")
+		return "", NewToolError("INVALID_STATUS_MESSAGE", "Provide non-empty status_message")
 	}
 	out, err := t.Exec(ctx, strings.TrimSpace(scope.TaskID), flag, statusMessage)
 	if err != nil {
@@ -62,11 +59,16 @@ func (t *TaskCurrentSetFlagTool) Execute(ctx context.Context, input json.RawMess
 	if strings.TrimSpace(out) != "" {
 		return out, nil
 	}
-	raw, _ := json.Marshal(map[string]any{
-		"ok":             true,
-		"task_id":        strings.TrimSpace(scope.TaskID),
-		"flag":           flag,
-		"status_message": statusMessage,
+	raw, _ := json.Marshal(struct {
+		Ok            bool   `json:"ok"`
+		TaskID        string `json:"task_id"`
+		Flag          string `json:"flag"`
+		StatusMessage string `json:"status_message"`
+	}{
+		Ok:            true,
+		TaskID:        strings.TrimSpace(scope.TaskID),
+		Flag:          flag,
+		StatusMessage: statusMessage,
 	})
 	return string(raw), nil
 }

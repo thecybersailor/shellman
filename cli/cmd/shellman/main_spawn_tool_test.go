@@ -106,7 +106,7 @@ func TestExecuteTaskChildSpawnAction_InvalidTaskRole(t *testing.T) {
 		return `{"ok":true}`, nil
 	}
 	_, err := executeTaskChildSpawnAction(callTaskTool, "t_parent", "echo hi", "child", "desc", "fix this", "full")
-	if err == nil || err.Error() != "INVALID_TASK_ROLE" {
+	if err == nil || err.ErrorString != "INVALID_TASK_ROLE" {
 		t.Fatalf("expected INVALID_TASK_ROLE, got %v", err)
 	}
 }

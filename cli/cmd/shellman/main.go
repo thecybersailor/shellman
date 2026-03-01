@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/flaboy/agentloop"
+	core "github.com/flaboy/agentloop/core"
 	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/application"
 	"shellman/cli/internal/appserver"
@@ -709,13 +710,83 @@ func openBrowserURLWithSystem(rawURL string) error {
 	return nil
 }
 
+type localAPIAgentLoopRunner struct {
+	inner *agentloop.LoopRunner
+}
+
+func (r *localAPIAgentLoopRunner) Run(ctx context.Context, userPrompt string) (string, error) {
+	if r == nil || r.inner == nil {
+		return "", errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.Run(ctx, userPrompt)
+}
+
+func (r *localAPIAgentLoopRunner) RunStream(
+	ctx context.Context,
+	userPrompt string,
+	onTextDelta func(string),
+) (string, error) {
+	if r == nil || r.inner == nil {
+		return "", errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.RunStream(ctx, userPrompt, onTextDelta)
+}
+
+func (r *localAPIAgentLoopRunner) RunStreamWithTools(
+	ctx context.Context,
+	userPrompt string,
+	onTextDelta func(string),
+	onToolEvent func(map[string]any),
+) (string, error) {
+	if r == nil || r.inner == nil {
+		return "", errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.RunStreamWithTools(ctx, userPrompt, onTextDelta, func(event agentloop.LoopEvent) {
+		if onToolEvent == nil {
+			return
+		}
+		if legacy := toLegacyToolEvent(event); len(legacy) > 0 {
+			onToolEvent(legacy)
+		}
+	})
+}
+
+func toLegacyToolEvent(event agentloop.LoopEvent) map[string]any {
+	switch e := event.(type) {
+	case agentloop.ToolInputEvent:
+		return map[string]any{
+			"type":          "tool_input",
+			"call_id":       strings.TrimSpace(e.CallID),
+			"response_id":   strings.TrimSpace(e.ResponseID),
+			"tool_name":     strings.TrimSpace(e.ToolName),
+			"state":         "input-available",
+			"input":         strings.TrimSpace(e.Input),
+			"input_preview": strings.TrimSpace(e.InputPreview),
+			"input_len":     e.InputRawLen,
+		}
+	case agentloop.ToolOutputEvent:
+		return map[string]any{
+			"type":        "tool_output",
+			"call_id":     strings.TrimSpace(e.CallID),
+			"response_id": strings.TrimSpace(e.ResponseID),
+			"tool_name":   strings.TrimSpace(e.ToolName),
+			"state":       strings.TrimSpace(e.State),
+			"output":      strings.TrimSpace(e.Output),
+			"output_len":  e.OutputLen,
+			"error_text":  strings.TrimSpace(e.ErrorString),
+		}
+	default:
+		return nil
+	}
+}
+
 func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigStore, httpExec gatewayHTTPExecutor) (localapi.AgentLoopRunner, string, string) {
 	endpoint, model, apiKey := resolveAgentOpenAIConfig(cfg, helperStore)
 	if endpoint == "" || model == "" || apiKey == "" {
 		return nil, endpoint, model
 	}
 
-	registry := agentloop.NewToolRegistry()
+	registry := core.NewToolRegistry[struct{}]()
 	callTaskTool := func(method, path string, payload any) (string, *agentloop.ToolError) {
 		bodyText := ""
 		headers := map[string]string{"Content-Type": "application/json"}
@@ -1202,11 +1273,16 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return nil, endpoint, model
 	}
 	client := agentloop.NewResponsesClient(agentloop.OpenAIConfig{
-		BaseURL: endpoint,
-		Model:   model,
-		APIKey:  apiKey,
+		BaseURL:         endpoint,
+		Model:           model,
+		APIKey:          apiKey,
+		ReasoningEffort: strings.TrimSpace(cfg.OpenAIReasoningEffort),
+		UseResponsesAPI: useResponsesAPIEnabled(cfg),
+		EnableState:     cfg.OpenAIEnableState,
 	}, http.DefaultClient)
-	return agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 8}), endpoint, model
+	return &localAPIAgentLoopRunner{
+		inner: agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 8}),
+	}, endpoint, model
 }
 
 func ensureCommandEndsWithEnter(command string) string {
@@ -1368,6 +1444,13 @@ func resolveAgentOpenAIConfig(cfg config.Config, helperStore localapi.HelperConf
 		}
 	}
 	return strings.TrimSpace(cfg.OpenAIEndpoint), strings.TrimSpace(cfg.OpenAIModel), strings.TrimSpace(cfg.OpenAIAPIKey)
+}
+
+func useResponsesAPIEnabled(cfg config.Config) bool {
+	if cfg.OpenAIUseResponsesAPIConfigured {
+		return cfg.OpenAIUseResponsesAPI
+	}
+	return true
 }
 
 func clipLogText(text string, limit int) string {

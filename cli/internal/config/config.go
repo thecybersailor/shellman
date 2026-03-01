@@ -8,23 +8,27 @@ import (
 )
 
 type Config struct {
-	WorkerBaseURL    string
-	ListenLogLevel   string
-	TmuxSocket       string
-	TraceStream      bool
-	HistoryLines     int
-	Mode             string
-	TurnEnabled      bool
-	LocalHost        string
-	LocalPort        int
-	OpenBrowser      bool
-	PIDFile          string
-	WebUIMode        string
-	WebUIDevProxyURL string
-	WebUIDistDir     string
-	OpenAIEndpoint   string
-	OpenAIModel      string
-	OpenAIAPIKey     string
+	WorkerBaseURL                   string
+	ListenLogLevel                  string
+	TmuxSocket                      string
+	TraceStream                     bool
+	HistoryLines                    int
+	Mode                            string
+	TurnEnabled                     bool
+	LocalHost                       string
+	LocalPort                       int
+	OpenBrowser                     bool
+	PIDFile                         string
+	WebUIMode                       string
+	WebUIDevProxyURL                string
+	WebUIDistDir                    string
+	OpenAIEndpoint                  string
+	OpenAIModel                     string
+	OpenAIAPIKey                    string
+	OpenAIReasoningEffort           string
+	OpenAIUseResponsesAPI           bool
+	OpenAIUseResponsesAPIConfigured bool
+	OpenAIEnableState               bool
 }
 
 var (
@@ -122,23 +126,31 @@ func loadFromEnv() Config {
 	openAIEndpoint := os.Getenv("OPENAI_ENDPOINT")
 	openAIModel := os.Getenv("OPENAI_MODEL")
 	openAIAPIKey := os.Getenv("OPENAI_API_KEY")
+	openAIReasoningEffort := os.Getenv("OPENAI_REASONING_EFFORT")
+	openAIUseResponsesAPIRaw := os.Getenv("OPENAI_USE_RESPONSES_API")
+	openAIUseResponsesAPI := parseBoolEnvDefault(openAIUseResponsesAPIRaw, true)
+	openAIEnableState := parseBoolEnvDefault(os.Getenv("OPENAI_ENABLE_STATE"), false)
 
 	return Config{
-		WorkerBaseURL:    base,
-		ListenLogLevel:   level,
-		TmuxSocket:       socket,
-		TraceStream:      traceStream,
-		HistoryLines:     historyLines,
-		Mode:             mode,
-		TurnEnabled:      turnEnabled,
-		LocalHost:        localHost,
-		LocalPort:        localPort,
-		WebUIMode:        webUIMode,
-		WebUIDevProxyURL: webUIDevProxyURL,
-		WebUIDistDir:     webUIDistDir,
-		OpenAIEndpoint:   openAIEndpoint,
-		OpenAIModel:      openAIModel,
-		OpenAIAPIKey:     openAIAPIKey,
+		WorkerBaseURL:                   base,
+		ListenLogLevel:                  level,
+		TmuxSocket:                      socket,
+		TraceStream:                     traceStream,
+		HistoryLines:                    historyLines,
+		Mode:                            mode,
+		TurnEnabled:                     turnEnabled,
+		LocalHost:                       localHost,
+		LocalPort:                       localPort,
+		WebUIMode:                       webUIMode,
+		WebUIDevProxyURL:                webUIDevProxyURL,
+		WebUIDistDir:                    webUIDistDir,
+		OpenAIEndpoint:                  openAIEndpoint,
+		OpenAIModel:                     openAIModel,
+		OpenAIAPIKey:                    openAIAPIKey,
+		OpenAIReasoningEffort:           openAIReasoningEffort,
+		OpenAIUseResponsesAPI:           openAIUseResponsesAPI,
+		OpenAIUseResponsesAPIConfigured: openAIUseResponsesAPIRaw != "",
+		OpenAIEnableState:               openAIEnableState,
 	}
 }
 
@@ -162,4 +174,15 @@ func atoiOrDefault(v string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+func parseBoolEnvDefault(raw string, fallback bool) bool {
+	switch raw {
+	case "1", "true", "TRUE", "True", "yes", "YES", "on", "ON":
+		return true
+	case "0", "false", "FALSE", "False", "no", "NO", "off", "OFF":
+		return false
+	default:
+		return fallback
+	}
 }

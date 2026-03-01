@@ -45,6 +45,15 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.OpenAIEndpoint != "" || cfg.OpenAIModel != "" || cfg.OpenAIAPIKey != "" {
 		t.Fatalf("openai env should default empty, got endpoint=%q model=%q key-set=%v", cfg.OpenAIEndpoint, cfg.OpenAIModel, cfg.OpenAIAPIKey != "")
 	}
+	if cfg.OpenAIReasoningEffort != "" {
+		t.Fatalf("openai reasoning effort should default empty, got %q", cfg.OpenAIReasoningEffort)
+	}
+	if !cfg.OpenAIUseResponsesAPI {
+		t.Fatal("openai use responses api should default to true")
+	}
+	if cfg.OpenAIEnableState {
+		t.Fatal("openai enable state should default to false")
+	}
 }
 
 func TestLoadConfig_TurnEnabled(t *testing.T) {
@@ -73,6 +82,9 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 	t.Setenv("OPENAI_ENDPOINT", "https://api.example.com/v1")
 	t.Setenv("OPENAI_MODEL", "gpt-5-mini")
 	t.Setenv("OPENAI_API_KEY", "sk-test")
+	t.Setenv("OPENAI_REASONING_EFFORT", "high")
+	t.Setenv("OPENAI_USE_RESPONSES_API", "0")
+	t.Setenv("OPENAI_ENABLE_STATE", "1")
 	cfg := LoadConfig()
 	if cfg.Mode != "turn" {
 		t.Fatalf("unexpected mode: %s", cfg.Mode)
@@ -100,6 +112,15 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 	}
 	if cfg.OpenAIAPIKey != "sk-test" {
 		t.Fatalf("unexpected openai key")
+	}
+	if cfg.OpenAIReasoningEffort != "high" {
+		t.Fatalf("unexpected openai reasoning effort: %s", cfg.OpenAIReasoningEffort)
+	}
+	if cfg.OpenAIUseResponsesAPI {
+		t.Fatal("expected openai use responses api disabled")
+	}
+	if !cfg.OpenAIEnableState {
+		t.Fatal("expected openai enable state enabled")
 	}
 }
 
