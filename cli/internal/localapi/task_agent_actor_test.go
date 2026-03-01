@@ -3,10 +3,14 @@ package localapi
 import (
 	"context"
 	"errors"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"shellman/cli/internal/agentloopadapter"
+	"shellman/cli/internal/global"
 )
 
 func TestTaskAgentLoopSupervisor_SerializesEventsPerTask(t *testing.T) {
@@ -153,5 +157,64 @@ func TestTaskAgentLoopSupervisor_SetAndGetSidecarMode(t *testing.T) {
 	}
 	if got := supervisor.GetSidecarMode("task-1"); got != "autopilot" {
 		t.Fatalf("expected sidecar_mode=autopilot, got %q", got)
+	}
+}
+
+type taskScopeAwareRunner struct {
+	mu           sync.Mutex
+	allowedTools []string
+	scope        agentloopadapter.TaskScope
+	calls        int
+}
+
+func (r *taskScopeAwareRunner) Run(ctx context.Context, _ string) (string, error) {
+	names, _ := agentloopadapter.AllowedToolNamesFromContext(ctx)
+	scope, _ := agentloopadapter.TaskScopeFromContext(ctx)
+	r.mu.Lock()
+	r.allowedTools = append([]string{}, names...)
+	r.scope = scope
+	r.calls++
+	r.mu.Unlock()
+	return "ok", nil
+}
+
+func TestTaskAgentActor_InjectsAdapterScopeAndAllowedTools(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{
+		projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
+	}
+	runner := &taskScopeAwareRunner{}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, AgentLoopRunner: runner})
+	taskID, err := srv.createTask("p1", "", "root")
+	if err != nil {
+		t.Fatalf("createTask failed: %v", err)
+	}
+	if err := srv.sendTaskAgentLoop(context.Background(), TaskAgentLoopEvent{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		Source:         "user_input",
+		DisplayContent: "hello",
+		AgentPrompt:    "hello",
+	}); err != nil {
+		t.Fatalf("sendTaskAgentLoop failed: %v", err)
+	}
+	waitUntil(t, 3*time.Second, func() bool {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		return runner.calls > 0
+	})
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
+	if strings.TrimSpace(runner.scope.TaskID) != taskID {
+		t.Fatalf("unexpected task scope task_id: %q", runner.scope.TaskID)
+	}
+	if strings.TrimSpace(runner.scope.ProjectID) != "p1" {
+		t.Fatalf("unexpected task scope project_id: %q", runner.scope.ProjectID)
+	}
+	if strings.TrimSpace(runner.scope.Source) != "user_input" {
+		t.Fatalf("unexpected task scope source: %q", runner.scope.Source)
+	}
+	if len(runner.allowedTools) == 0 {
+		t.Fatal("expected allowed tools injected from adapter context")
 	}
 }

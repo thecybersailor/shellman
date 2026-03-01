@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -39,12 +40,20 @@ func (r *pmProbeRunner) Run(_ context.Context, _ string) (string, error) {
 }
 
 type pmToolAwareRunner struct {
+	mu           sync.Mutex
 	allowedTools []string
+	scope        agentloopadapter.PMScope
+	calls        int
 }
 
 func (r *pmToolAwareRunner) Run(ctx context.Context, _ string) (string, error) {
 	names, _ := agentloopadapter.AllowedToolNamesFromContext(ctx)
+	scope, _ := agentloopadapter.PMScopeFromContext(ctx)
+	r.mu.Lock()
 	r.allowedTools = append([]string{}, names...)
+	r.scope = scope
+	r.calls++
+	r.mu.Unlock()
 	return "ok", nil
 }
 
@@ -203,10 +212,23 @@ func TestProjectManagerActor_InjectsCodexParityAllowedTools(t *testing.T) {
 	}
 
 	waitUntil(t, 3*time.Second, func() bool {
-		return len(runner.allowedTools) > 0
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		return runner.calls > 0
 	})
+	runner.mu.Lock()
+	defer runner.mu.Unlock()
 	if len(runner.allowedTools) == 0 {
 		t.Fatal("expected allowed tools injected")
+	}
+	if strings.TrimSpace(runner.scope.ProjectID) != "p1" {
+		t.Fatalf("unexpected pm scope project_id: %q", runner.scope.ProjectID)
+	}
+	if strings.TrimSpace(runner.scope.SessionID) != sessionID {
+		t.Fatalf("unexpected pm scope session_id: %q", runner.scope.SessionID)
+	}
+	if strings.TrimSpace(runner.scope.Source) != "user_input" {
+		t.Fatalf("unexpected pm scope source: %q", runner.scope.Source)
 	}
 }
 
