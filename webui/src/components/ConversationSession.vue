@@ -59,9 +59,9 @@ function onPromptInput(event: Event) {
 }
 
 type ParsedToolCall = {
-  type: string;
+  type: "dynamic-tool";
   state: "input-streaming" | "input-available" | "output-available" | "output-error";
-  toolName?: string;
+  toolName: string;
   input?: unknown;
   output?: unknown;
   errorText?: string;
@@ -80,11 +80,11 @@ type ParsedMessageContent = {
   meta?: ParsedMessageMeta;
 };
 
-function mapToolState(state?: string): ParsedToolCall["state"] {
+function parseToolState(state?: string): ParsedToolCall["state"] | undefined {
   if (state === "output-available" || state === "output-error" || state === "input-available" || state === "input-streaming") {
     return state;
   }
-  return "output-available";
+  return undefined;
 }
 
 function parseStructuredContent(content: string): ParsedMessageContent {
@@ -108,14 +108,22 @@ function parseStructuredContent(content: string): ParsedMessageContent {
     const toolCalls = Array.isArray(parsed.tools)
       ? parsed.tools
           .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-          .map((item) => ({
-            type: typeof item.type === "string" ? item.type : "tool-call",
-            state: mapToolState(typeof item.state === "string" ? item.state : undefined),
-            toolName: typeof item.tool_name === "string" ? item.tool_name : undefined,
-            input: item.input,
-            output: item.output,
-            errorText: typeof item.error_text === "string" ? item.error_text : undefined
-          }))
+          .map((item) => {
+            const toolName = typeof item.tool_name === "string" ? item.tool_name.trim() : "";
+            const state = parseToolState(typeof item.state === "string" ? item.state : undefined);
+            if (!toolName || !state) {
+              return undefined;
+            }
+            return {
+              type: "dynamic-tool" as const,
+              state,
+              toolName,
+              input: item.input,
+              output: item.output,
+              errorText: typeof item.error_text === "string" ? item.error_text : undefined
+            };
+          })
+          .filter((item): item is ParsedToolCall => !!item)
       : undefined;
     return { text, reasoning, toolCalls, meta };
   } catch {
@@ -186,9 +194,9 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
               <Tool data-test-id="shellman-shellman-tool" :default-open="tool.state === 'input-streaming'">
                 <ToolHeader
                   data-test-id="shellman-shellman-tool-header"
-                  :type="tool.type as any"
+                  type="dynamic-tool"
                   :state="tool.state as any"
-                  :tool-name="tool.toolName || 'tool'"
+                  :tool-name="tool.toolName"
                 />
                 <ToolContent data-test-id="shellman-shellman-tool-content">
                   <ToolInput data-test-id="shellman-shellman-tool-input" :input="tool.input as any" />
