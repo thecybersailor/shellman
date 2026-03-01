@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/progdetector"
 	_ "shellman/cli/internal/progdetector/builtin"
@@ -297,7 +296,6 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		ResponsesStore:      evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
 		DisableStoreContext: evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
 	})
-	scopeCtx = agentloop.WithResponsesStore(scopeCtx, evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore)
 	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
 	scopeCtx = agentloopadapter.WithAllowedToolNamesResolver(scopeCtx, func() []string {
 		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)

@@ -11,6 +11,12 @@ func RegisterLoopRunnerMiddleware(runner *agentloop.LoopRunner) {
 			if names, ok := AllowedToolNamesFromContext(ctx.Ctx); ok {
 				ctx.SetAllowedToolNames(names)
 			}
+			if scope, ok := TaskScopeFromContext(ctx.Ctx); ok {
+				if !scope.DisableStoreContext && ctx.Request != nil {
+					store := scope.ResponsesStore
+					ctx.Request.Store = &store
+				}
+			}
 		}
 		return next()
 	})

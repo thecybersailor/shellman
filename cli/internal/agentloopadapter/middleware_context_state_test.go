@@ -53,6 +53,13 @@ func TestRegisterLoopRunnerMiddleware_InjectsAllowedToolNames(t *testing.T) {
 	RegisterLoopRunnerMiddleware(runner)
 
 	runCtx := WithAllowedToolNames(context.Background(), []string{"echo"})
+	runCtx = WithTaskScope(runCtx, TaskScope{
+		TaskID:              "t1",
+		ProjectID:           "p1",
+		Source:              "unit",
+		ResponsesStore:      true,
+		DisableStoreContext: false,
+	})
 	out, err := runner.Run(runCtx, "hello")
 	if err != nil {
 		t.Fatalf("run failed: %v", err)
@@ -69,5 +76,36 @@ func TestRegisterLoopRunnerMiddleware_InjectsAllowedToolNames(t *testing.T) {
 	}
 	if tools[0].Name != "echo" {
 		t.Fatalf("unexpected tool name: %q", tools[0].Name)
+	}
+	if client.requests[0].Store == nil || !*client.requests[0].Store {
+		t.Fatalf("expected request store=true, got %#v", client.requests[0].Store)
+	}
+}
+
+func TestRegisterLoopRunnerMiddleware_DisableStoreContextSkipsStoreInjection(t *testing.T) {
+	client := &middlewareTestClient{}
+	registry := core.NewToolRegistry[struct{}]()
+	if err := registry.Register(middlewareEchoTool{}); err != nil {
+		t.Fatalf("register echo failed: %v", err)
+	}
+	runner := agentloop.NewLoopRunner(client, registry, agentloop.LoopRunnerOptions{MaxIterations: 1})
+	RegisterLoopRunnerMiddleware(runner)
+
+	runCtx := WithTaskScope(context.Background(), TaskScope{
+		TaskID:              "t1",
+		ProjectID:           "p1",
+		Source:              "unit",
+		ResponsesStore:      true,
+		DisableStoreContext: true,
+	})
+	_, err := runner.Run(runCtx, "hello")
+	if err != nil {
+		t.Fatalf("run failed: %v", err)
+	}
+	if len(client.requests) == 0 {
+		t.Fatal("expected one request")
+	}
+	if client.requests[0].Store != nil {
+		t.Fatalf("expected request store to stay nil when disable_store_context=true, got %#v", client.requests[0].Store)
 	}
 }
