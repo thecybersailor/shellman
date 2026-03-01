@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"shellman/cli/internal/agentloop"
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
 )

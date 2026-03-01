@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"shellman/cli/internal/agentloop"
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/projectstate"
 )
 

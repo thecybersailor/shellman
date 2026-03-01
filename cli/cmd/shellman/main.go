@@ -23,7 +23,7 @@ import (
 	"syscall"
 	"time"
 
-	"shellman/cli/internal/agentloop"
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/application"
 	"shellman/cli/internal/appserver"
 	"shellman/cli/internal/bridge"

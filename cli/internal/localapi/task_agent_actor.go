@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"shellman/cli/internal/agentloop"
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/progdetector"
 	_ "shellman/cli/internal/progdetector/builtin"
 	"shellman/cli/internal/projectstate"

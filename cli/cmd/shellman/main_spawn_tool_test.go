@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"shellman/cli/internal/agentloop"
+	"github.com/flaboy/agentloop"
 )
 
 type spawnCall struct {
