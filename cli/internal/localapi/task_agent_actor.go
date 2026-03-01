@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/flaboy/agentloop"
+	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/progdetector"
 	_ "shellman/cli/internal/progdetector/builtin"
 	"shellman/cli/internal/projectstate"
@@ -135,7 +136,7 @@ func (s *taskAgentLoopSupervisor) getOrCreateActor(taskID string) *taskAgentLoop
 		return actor
 	}
 	actor := &taskAgentLoopActor{
-		taskID:  taskID,
+		taskID: taskID,
 		sessionConfig: TaskAgentSessionConfig{
 			ResponsesStore:      false,
 			DisableStoreContext: true,
@@ -163,7 +164,7 @@ func (s *taskAgentLoopSupervisor) SetSidecarMode(taskID, mode string) error {
 	actor, ok := s.actors[taskID]
 	if !ok {
 		actor = &taskAgentLoopActor{
-			taskID:  taskID,
+			taskID: taskID,
 			sessionConfig: TaskAgentSessionConfig{
 				ResponsesStore:      false,
 				DisableStoreContext: true,
@@ -289,15 +290,16 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		return ErrTaskAgentLoopUnavailable
 	}
 
-	scopeCtx := agentloop.WithTaskScope(ctx, agentloop.TaskScope{
+	scopeCtx := agentloopadapter.WithTaskScope(ctx, agentloopadapter.TaskScope{
 		TaskID:              taskID,
 		ProjectID:           projectID,
 		Source:              strings.TrimSpace(evt.Source),
 		ResponsesStore:      evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore,
 		DisableStoreContext: evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext,
 	})
+	scopeCtx = agentloop.WithResponsesStore(scopeCtx, evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore)
 	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
-	scopeCtx = agentloop.WithAllowedToolNamesResolver(scopeCtx, func() []string {
+	scopeCtx = agentloopadapter.WithAllowedToolNamesResolver(scopeCtx, func() []string {
 		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
 		return names
 	})

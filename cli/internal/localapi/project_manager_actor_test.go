@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flaboy/agentloop"
+	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
 )
@@ -43,7 +43,7 @@ type pmToolAwareRunner struct {
 }
 
 func (r *pmToolAwareRunner) Run(ctx context.Context, _ string) (string, error) {
-	names, _ := agentloop.AllowedToolNamesFromContext(ctx)
+	names, _ := agentloopadapter.AllowedToolNamesFromContext(ctx)
 	r.allowedTools = append([]string{}, names...)
 	return "ok", nil
 }

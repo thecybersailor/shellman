@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/flaboy/agentloop"
+	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/config"
 	"shellman/cli/internal/helperconfig"
 )
@@ -157,7 +157,7 @@ func TestBuildAgentLoopRunner_RegistersExpectedTaskTools(t *testing.T) {
 		spec, _ := item.(map[string]any)
 		got = append(got, strings.TrimSpace(anyToTestString(spec["name"])))
 	}
-	want := agentloop.TaskActionToolContractNames()
+	want := agentloopadapter.TaskActionToolContractNames()
 	slices.Sort(got)
 	slices.Sort(want)
 	if !reflect.DeepEqual(got, want) {
@@ -244,7 +244,7 @@ func TestBuildAgentLoopRunner_WriteStdinIncludesPostTerminalScreenState(t *testi
 	if runner == nil {
 		t.Fatal("expected non-nil agent loop runner")
 	}
-	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	ctx := agentloopadapter.WithTaskScope(context.Background(), agentloopadapter.TaskScope{TaskID: "t1", ProjectID: "p1"})
 	if _, err := runner.Run(ctx, "start codex"); err != nil {
 		t.Fatalf("runner run failed: %v", err)
 	}
@@ -337,7 +337,7 @@ func TestBuildAgentLoopRunner_TaskInputPromptIncludesPostTerminalScreenState(t *
 	if runner == nil {
 		t.Fatal("expected non-nil agent loop runner")
 	}
-	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	ctx := agentloopadapter.WithTaskScope(context.Background(), agentloopadapter.TaskScope{TaskID: "t1", ProjectID: "p1"})
 	if _, err := runner.Run(ctx, "start codex"); err != nil {
 		t.Fatalf("runner run failed: %v", err)
 	}
@@ -432,7 +432,7 @@ func TestBuildAgentLoopRunner_TaskInputPromptSplitsPromptAndEnterWrites(t *testi
 	if runner == nil {
 		t.Fatal("expected non-nil agent loop runner")
 	}
-	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	ctx := agentloopadapter.WithTaskScope(context.Background(), agentloopadapter.TaskScope{TaskID: "t1", ProjectID: "p1"})
 	if _, err := runner.Run(ctx, "start codex"); err != nil {
 		t.Fatalf("runner run failed: %v", err)
 	}
@@ -504,7 +504,7 @@ func TestBuildAgentLoopRunner_ExecCommandIncludesPostTerminalScreenStateWhenDelt
 	if runner == nil {
 		t.Fatal("expected non-nil agent loop runner")
 	}
-	ctx := agentloop.WithTaskScope(context.Background(), agentloop.TaskScope{TaskID: "t1", ProjectID: "p1"})
+	ctx := agentloopadapter.WithTaskScope(context.Background(), agentloopadapter.TaskScope{TaskID: "t1", ProjectID: "p1"})
 	start := time.Now()
 	if _, err := runner.Run(ctx, "sleep"); err != nil {
 		t.Fatalf("runner run failed: %v", err)

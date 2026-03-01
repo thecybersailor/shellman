@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/flaboy/agentloop"
+	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/projectstate"
 )
 
@@ -144,12 +144,12 @@ func (s *Server) runProjectManagerLoopEvent(ctx context.Context, store *projects
 	logger.Log("pm.message.send.started", startedFields)
 	s.publishEvent("project.pm.messages.updated", projectID, "", map[string]any{"session_id": sessionID, "source": source})
 
-	runCtx := agentloop.WithPMScope(ctx, agentloop.PMScope{
+	runCtx := agentloopadapter.WithPMScope(ctx, agentloopadapter.PMScope{
 		SessionID: sessionID,
 		ProjectID: projectID,
 		Source:    source,
 	})
-	runCtx = agentloop.WithAllowedToolNamesResolver(runCtx, func() []string {
+	runCtx = agentloopadapter.WithAllowedToolNamesResolver(runCtx, func() []string {
 		return s.resolveProjectManagerAllowedToolNames(projectID, sessionID, source)
 	})
 

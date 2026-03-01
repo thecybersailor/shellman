@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/flaboy/agentloop"
+	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/application"
 	"shellman/cli/internal/appserver"
 	"shellman/cli/internal/bridge"
@@ -873,7 +874,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 		return projectID, treeRes.Data.Nodes, nil
 	}
 
-	if err := registry.Register(&agentloop.TaskCurrentSetFlagTool{
+	if err := registry.Register(&agentloopadapter.TaskCurrentSetFlagTool{
 		Exec: func(ctx context.Context, taskID, flag, statusMessage string) (string, *agentloop.ToolError) {
 			_ = ctx
 			path := "/api/v1/tasks/" + url.PathEscape(strings.TrimSpace(taskID)) + "/messages"
@@ -887,7 +888,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.WriteStdinTool{
+	if err := registry.Register(&agentloopadapter.WriteStdinTool{
 		Exec: func(ctx context.Context, taskID, input string, timeoutMs int) (string, *agentloop.ToolError) {
 			_ = ctx
 			beforeScreen, _ := getTaskPaneScreen(taskID)
@@ -926,7 +927,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.ExecCommandTool{
+	if err := registry.Register(&agentloopadapter.ExecCommandTool{
 		Exec: func(_ context.Context, taskID, command string, maxOutputTokens int) (string, *agentloop.ToolError) {
 			beforeScreen, err := getTaskPaneScreen(taskID)
 			if err != nil {
@@ -979,7 +980,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.ReadFileTool{
+	if err := registry.Register(&agentloopadapter.ReadFileTool{
 		Exec: func(_ context.Context, taskID, path string, maxChars int) (string, *agentloop.ToolError) {
 			query := url.Values{}
 			query.Set("path", strings.TrimSpace(path))
@@ -1017,7 +1018,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskInputPromptTool{
+	if err := registry.Register(&agentloopadapter.TaskInputPromptTool{
 		Exec: func(_ context.Context, taskID, prompt string) (string, *agentloop.ToolError) {
 			promptText := strings.TrimRight(strings.Trim(prompt, " \t"), "\r\n")
 			if strings.TrimSpace(promptText) == "" {
@@ -1070,7 +1071,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskChildGetContextTool{
+	if err := registry.Register(&agentloopadapter.TaskChildGetContextTool{
 		Exec: func(_ context.Context, taskID, childTaskID string) (string, *agentloop.ToolError) {
 			_, nodes, err := getTaskTree(taskID)
 			if err != nil {
@@ -1093,7 +1094,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskChildGetTTYOutputTool{
+	if err := registry.Register(&agentloopadapter.TaskChildGetTTYOutputTool{
 		Exec: func(_ context.Context, taskID, childTaskID string, offset int) (string, *agentloop.ToolError) {
 			_, nodes, err := getTaskTree(taskID)
 			if err != nil {
@@ -1141,14 +1142,14 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskChildSpawnTool{
+	if err := registry.Register(&agentloopadapter.TaskChildSpawnTool{
 		Exec: func(_ context.Context, taskID, command, title, description, prompt, taskRole string) (string, *agentloop.ToolError) {
 			return executeTaskChildSpawnAction(callTaskTool, taskID, command, title, description, prompt, taskRole)
 		},
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskChildSendMessageTool{
+	if err := registry.Register(&agentloopadapter.TaskChildSendMessageTool{
 		Exec: func(_ context.Context, taskID, childTaskID, message string) (string, *agentloop.ToolError) {
 			body, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(strings.TrimSpace(childTaskID))+"/messages", map[string]any{
 				"content":      strings.TrimSpace(message),
@@ -1177,7 +1178,7 @@ func buildAgentLoopRunner(cfg config.Config, helperStore localapi.HelperConfigSt
 	}); err != nil {
 		return nil, endpoint, model
 	}
-	if err := registry.Register(&agentloop.TaskParentReportTool{
+	if err := registry.Register(&agentloopadapter.TaskParentReportTool{
 		Exec: func(_ context.Context, taskID, summary string) (string, *agentloop.ToolError) {
 			_, err := callTaskTool(http.MethodPost, "/api/v1/tasks/"+url.PathEscape(strings.TrimSpace(taskID))+"/messages", map[string]any{
 				"content": strings.TrimSpace(summary),
