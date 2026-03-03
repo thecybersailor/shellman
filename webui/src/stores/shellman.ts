@@ -1139,7 +1139,7 @@ export function createShellmanStore(
         findPaneUUIDByTarget(target);
       const isSelectedPane = Boolean(
         (selectedPaneUuid && incomingPaneUuid && selectedPaneUuid === incomingPaneUuid) ||
-          (!selectedPaneUuid && selectedTarget && target && selectedTarget === target)
+        (!selectedPaneUuid && selectedTarget && target && selectedTarget === target)
       );
       const mode = payload.mode === "append" ? "append" : "reset";
       const text = String(payload.data ?? "");
@@ -1711,9 +1711,9 @@ export function createShellmanStore(
         cached.source === "ended"
           ? cached.frame
           : {
-              mode: "reset",
-              data: cached.output
-            };
+            mode: "reset",
+            data: cached.output
+          };
       state.terminalCursor = cached.cursor;
       state.terminalEnded = cached.source === "ended";
     } else if (cached) {
@@ -2053,6 +2053,7 @@ export function createShellmanStore(
     });
     state.treesByProject[projectId] = nodes;
     paneLookupStatus[res.data.task_id] = "missing";
+    state.taskPaneLoadingByTaskId[res.data.task_id] = false;
     recomputePaneLookupComplete();
     logInfo("shellman.task.create_child.done", { taskId: res.data.task_id });
     await selectTask(res.data.task_id);
@@ -2074,6 +2075,7 @@ export function createShellmanStore(
     nodes.push({ taskId: res.data.task_id, title, description: "", checked: false, archived: false, status: "pending", updatedAt: nowSec });
     state.treesByProject[projectId] = nodes;
     paneLookupStatus[res.data.task_id] = "missing";
+    state.taskPaneLoadingByTaskId[res.data.task_id] = false;
     recomputePaneLookupComplete();
     logInfo("shellman.task.create_root.done", { taskId: res.data.task_id });
     await selectTask(res.data.task_id);
@@ -2190,13 +2192,13 @@ export function createShellmanStore(
         parent_task_id?: string;
         title: string;
         description?: string;
-      flag?: "success" | "notify" | "error";
-      flag_desc?: string;
-      checked?: boolean;
-      archived?: boolean;
-      status: string;
-      updated_at?: number | string;
-    }>;
+        flag?: "success" | "notify" | "error";
+        flag_desc?: string;
+        checked?: boolean;
+        archived?: boolean;
+        status: string;
+        updated_at?: number | string;
+      }>;
     }>;
     const nodes = toTaskNodes(treeRes.data.nodes);
     state.treesByProject[id] = nodes;
@@ -2907,8 +2909,8 @@ export function createShellmanStore(
     }
     pmMessagesRefreshTimerBySessionID[nextSessionID] = setTimeout(() => {
       pmMessagesRefreshTimerBySessionID[nextSessionID] = undefined;
-      void loadPMMessages(nextProjectID, nextSessionID, true).catch(() => {});
-      void loadPMSessions(nextProjectID, true).catch(() => {});
+      void loadPMMessages(nextProjectID, nextSessionID, true).catch(() => { });
+      void loadPMSessions(nextProjectID, true).catch(() => { });
     }, 50);
   }
 

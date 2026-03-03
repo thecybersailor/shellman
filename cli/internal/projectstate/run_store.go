@@ -622,10 +622,14 @@ func (s *Store) ListTaskMessages(taskID string, limit int) ([]TaskMessageRecord,
 	}
 	rows, err := db.Query(`
 SELECT id, task_id, role, content, status, error_text, created_at, updated_at
-FROM task_messages
-WHERE task_id = ?
+FROM (
+	SELECT id, task_id, role, content, status, error_text, created_at, updated_at
+	FROM task_messages
+	WHERE task_id = ?
+	ORDER BY created_at DESC, id DESC
+	LIMIT ?
+)
 ORDER BY created_at ASC, id ASC
-LIMIT ?
 `, taskID, limit)
 	if err != nil {
 		return nil, err

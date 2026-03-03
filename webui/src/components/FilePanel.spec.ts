@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import FilePanel from "./FilePanel.vue";
+import { toast } from "vue-sonner";
 
 function flushPromises() {
   return new Promise((resolve) => setTimeout(resolve, 0));
@@ -254,6 +255,50 @@ describe("FilePanel", () => {
     await wrapper.get("[data-test-id='shellman-file-item-README.md']").trigger("dblclick");
 
     expect(wrapper.emitted("file-open")?.[0]).toEqual(["README.md"]);
+  });
+
+  it("does not toast FILE_NOT_FOUND when restoring missing selected file from snapshot", async () => {
+    localStorage.setItem(
+      "shellman.project-panel.file.project:p1",
+      JSON.stringify({
+        searchQuery: "",
+        expandedPaths: [],
+        selectedFilePath: "ghost.txt"
+      })
+    );
+    const toastErrorSpy = vi.spyOn(toast, "error").mockImplementation(() => "toast-id");
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: { entries: [{ name: "README.md", path: "README.md", is_dir: false }] }
+          })
+        } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/files/content?path=ghost.txt")) {
+        return {
+          json: async () => ({
+            ok: false,
+            error: { code: "FILE_NOT_FOUND", message: "file not found" }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+
+    expect(toastErrorSpy).not.toHaveBeenCalled();
+    expect(wrapper.text()).toContain("未选择文件");
   });
 
   it("executes rename and refreshes tree", async () => {

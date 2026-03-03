@@ -122,22 +122,44 @@ async function loadFiles(taskId: string) {
   }
 
   const existing = files.value.find((item) => item.path === selectedFilePath.value);
-  const targetPath = existing?.path ?? files.value[0]?.path ?? "";
-  if (targetPath) {
-    await loadFileContent(taskId, targetPath);
+  const target = existing ?? files.value[0];
+  if (!target?.path) {
+    selectedFilePath.value = "";
+    selectedFileContent.value = "";
+    return;
   }
+  await selectChangedFile(taskId, target.path);
 }
 
 async function loadFileContent(taskId: string, path: string) {
   selectedFilePath.value = path;
+  selectedFileContent.value = "";
   const encodedPath = encodeURIComponent(path);
   const res = (await fetch(`/api/v1/tasks/${taskId}/files/content?path=${encodedPath}`).then((r) => r.json())) as APIResponse<{
     content?: string;
   }>;
   if (!res.ok) {
-    throw new Error(String(res.error?.code ?? "TASK_FILE_CONTENT_LOAD_FAILED"));
+    const code = String(res.error?.code ?? "TASK_FILE_CONTENT_LOAD_FAILED");
+    if (code === "FILE_NOT_FOUND" || code === "FILE_READ_FAILED") {
+      return;
+    }
+    throw new Error(code);
   }
   selectedFileContent.value = String(res.data?.content ?? "");
+}
+
+function isDeletedFileStatus(status: string): boolean {
+  return String(status ?? "").toUpperCase().includes("D");
+}
+
+async function selectChangedFile(taskId: string, path: string) {
+  const file = files.value.find((item) => item.path === path);
+  selectedFilePath.value = path;
+  if (file && isDeletedFileStatus(file.status)) {
+    selectedFileContent.value = "";
+    return;
+  }
+  await loadFileContent(taskId, path);
 }
 
 async function refreshTaskData(taskId: string) {
@@ -459,7 +481,7 @@ watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
             class="w-full justify-start text-xs h-7 px-2"
             :class="{ 'bg-accent text-accent-foreground': selectedFilePath === file.path }"
             :data-selected="selectedFilePath === file.path"
-            @click="loadFileContent(props.taskId, file.path)"
+            @click="selectChangedFile(props.taskId, file.path)"
           >
             <span class="mr-2 opacity-70 font-mono text-[10px]">{{ file.status }}</span>
             <span class="truncate">{{ file.path }}</span>

@@ -160,3 +160,49 @@ func TestInsertAndListTaskMessages(t *testing.T) {
 		t.Fatalf("unexpected messages: %#v", items)
 	}
 }
+
+func TestListTaskMessages_ReturnsLatestWindowAscending(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
+	if err := InitGlobalDB(dbPath); err != nil {
+		t.Fatalf("InitGlobalDB failed: %v", err)
+	}
+	repo := t.TempDir()
+	store := NewStore(repo)
+
+	if err := store.InsertTask(TaskRecord{
+		TaskID:    "t1",
+		ProjectID: "p1",
+		Title:     "root",
+		Status:    StatusRunning,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+
+	insertedIDs := make([]int64, 0, 250)
+	for i := 0; i < 250; i++ {
+		id, err := store.InsertTaskMessage("t1", "user", "msg", StatusCompleted, "")
+		if err != nil {
+			t.Fatalf("InsertTaskMessage failed at %d: %v", i, err)
+		}
+		insertedIDs = append(insertedIDs, id)
+	}
+
+	items, err := store.ListTaskMessages("t1", 200)
+	if err != nil {
+		t.Fatalf("ListTaskMessages failed: %v", err)
+	}
+	if len(items) != 200 {
+		t.Fatalf("expected 200 messages, got %d", len(items))
+	}
+	if items[0].ID != insertedIDs[50] {
+		t.Fatalf("expected first returned id=%d, got %d", insertedIDs[50], items[0].ID)
+	}
+	if items[len(items)-1].ID != insertedIDs[len(insertedIDs)-1] {
+		t.Fatalf("expected last returned id=%d, got %d", insertedIDs[len(insertedIDs)-1], items[len(items)-1].ID)
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i].ID <= items[i-1].ID {
+			t.Fatalf("expected ascending ids, got prev=%d curr=%d at index=%d", items[i-1].ID, items[i].ID, i)
+		}
+	}
+}

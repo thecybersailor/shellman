@@ -225,10 +225,13 @@ const selectedTaskPaneLookupResolved = computed(() => {
   if (selectedTaskHasPaneBinding.value || selectedTaskPaneLoading.value) {
     return true;
   }
-  if (Object.prototype.hasOwnProperty.call(store.state.taskPaneLoadingByTaskId, taskId)) {
+  const hasOwnProp = Object.prototype.hasOwnProperty.call(store.state.taskPaneLoadingByTaskId, taskId);
+  if (hasOwnProp) {
     return true;
   }
-  return Boolean(store.state.paneLookupComplete);
+  const result = Boolean(store.state.paneLookupComplete);
+  console.log('[DESYNC_DEBUG] paneLookupResolved', { taskId, hasOwnProp, paneLookupComplete: store.state.paneLookupComplete, result });
+  return result;
 });
 const selectedTaskUiLoading = computed(
   () =>
@@ -259,10 +262,23 @@ const selectedTaskIsNoPane = computed(() => {
   if (!store.state.selectedTaskId) {
     return false;
   }
-  if (!selectedTaskReady.value || selectedTaskPaneLoading.value || !selectedTaskPaneLookupResolved.value) {
+  const ready = selectedTaskReady.value;
+  const paneLoading = selectedTaskPaneLoading.value;
+  const lookupResolved = selectedTaskPaneLookupResolved.value;
+  const hasPaneBinding = selectedTaskHasPaneBinding.value;
+  if (!ready || paneLoading || !lookupResolved) {
+    console.log('[DESYNC_DEBUG] selectedTaskIsNoPane BLOCKED', {
+      taskId: store.state.selectedTaskId,
+      ready, paneLoading, lookupResolved, hasPaneBinding
+    });
     return false;
   }
-  return !selectedTaskHasPaneBinding.value;
+  const result = !hasPaneBinding;
+  console.log('[DESYNC_DEBUG] selectedTaskIsNoPane RESOLVED', {
+    taskId: store.state.selectedTaskId,
+    ready, paneLoading, lookupResolved, hasPaneBinding, result
+  });
+  return result;
 });
 const orphanPanes = computed(() => store.getOrphanPaneItems());
 const appBootstrapped = ref(false);
@@ -322,7 +338,19 @@ async function onCreateChild(taskId: string) {
 }
 
 async function onCreateRoot(projectId: string) {
+  console.log('[DESYNC_DEBUG] onCreateRoot START', { projectId, currentTaskId: store.state.selectedTaskId, routeSessionId: route.params.sessionId });
   await store.createRootTask(projectId, "");
+  console.log('[DESYNC_DEBUG] onCreateRoot END', {
+    selectedTaskId: store.state.selectedTaskId,
+    selectedPaneTarget: store.state.selectedPaneTarget,
+    selectedPaneUuid: store.state.selectedPaneUuid,
+    terminalOutput: store.state.terminalOutput.slice(0, 80),
+    terminalFrameMode: store.state.terminalFrame.mode,
+    terminalFrameDataLen: store.state.terminalFrame.data.length,
+    paneLookupComplete: store.state.paneLookupComplete,
+    taskPaneLoadingKeys: Object.keys(store.state.taskPaneLoadingByTaskId),
+    routeSessionId: route.params.sessionId
+  });
 }
 
 async function onToggleTaskCheck(payload: { taskId: string; checked: boolean }) {

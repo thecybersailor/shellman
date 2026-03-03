@@ -236,7 +236,7 @@ const previewRawURL = computed(() => {
   return `/api/v1/tasks/${props.taskId}/files/raw?path=${encodeURIComponent(selectedFilePath.value)}`;
 });
 
-async function selectFile(path: string) {
+async function selectFile(path: string, options?: { silentOnNotFound?: boolean }) {
   if (!props.taskId || !path) {
     return;
   }
@@ -254,7 +254,13 @@ async function selectFile(path: string) {
       content?: string;
     }>;
     if (!res.ok) {
-      throw new Error(String(res.error?.code ?? "TASK_FILE_CONTENT_LOAD_FAILED"));
+      const code = String(res.error?.code ?? "TASK_FILE_CONTENT_LOAD_FAILED");
+      if (options?.silentOnNotFound && code === "FILE_NOT_FOUND") {
+        selectedFilePath.value = "";
+        selectedFileContent.value = "";
+        return;
+      }
+      throw new Error(code);
     }
     selectedFileContent.value = String(res.data?.content ?? "");
   } catch (e: any) {
@@ -293,7 +299,7 @@ async function refreshRoot() {
       await loadDir(path, true);
     }
     if (selectedFilePath.value) {
-      await selectFile(selectedFilePath.value);
+      await selectFile(selectedFilePath.value, { silentOnNotFound: true });
     }
   } finally {
     loading.value = false;
