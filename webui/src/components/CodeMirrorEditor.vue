@@ -229,5 +229,5 @@ defineExpose({
 </script>
 
 <template>
-  <div ref="rootEl" class="h-full min-h-[70vh] w-full" />
+  <div ref="rootEl" class="h-full w-full" />
 </template>

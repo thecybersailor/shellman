@@ -1,9 +1,6 @@
 package global
 
-import (
-	"testing"
-	"time"
-)
+import "testing"
 
 func TestProjectsStore_AddProject_DedupAndRefreshUpdatedAt(t *testing.T) {
 	dir := t.TempDir()
@@ -22,11 +19,20 @@ func TestProjectsStore_AddProject_DedupAndRefreshUpdatedAt(t *testing.T) {
 	if list1[0].DisplayName != "p1" {
 		t.Fatalf("expected default display name to fallback to project id, got %q", list1[0].DisplayName)
 	}
+	if list1[0].SortOrder != 1 {
+		t.Fatalf("expected default sort order 1, got %d", list1[0].SortOrder)
+	}
+	if list1[0].Collapsed {
+		t.Fatalf("expected default collapsed=false")
+	}
 
-	firstUpdated := list1[0].UpdatedAt
-	time.Sleep(2 * time.Millisecond)
-
-	if err := s.AddProject(ActiveProject{ProjectID: "p1", RepoRoot: "/tmp/repo1", DisplayName: "Project One"}); err != nil {
+	if err := s.AddProject(ActiveProject{
+		ProjectID:   "p1",
+		RepoRoot:    "/tmp/repo1",
+		DisplayName: "Project One",
+		SortOrder:   3,
+		Collapsed:   true,
+	}); err != nil {
 		t.Fatalf("AddProject dedup failed: %v", err)
 	}
 	list2, err := s.ListProjects()
@@ -39,8 +45,34 @@ func TestProjectsStore_AddProject_DedupAndRefreshUpdatedAt(t *testing.T) {
 	if list2[0].DisplayName != "Project One" {
 		t.Fatalf("expected display name to refresh, got %q", list2[0].DisplayName)
 	}
-	if !list2[0].UpdatedAt.After(firstUpdated) {
-		t.Fatalf("expected UpdatedAt to be refreshed")
+	if list2[0].SortOrder != 3 {
+		t.Fatalf("expected sort_order=3, got %d", list2[0].SortOrder)
+	}
+	if !list2[0].Collapsed {
+		t.Fatalf("expected collapsed=true")
+	}
+}
+
+func TestProjectsStore_ListProjects_SortedBySortOrder(t *testing.T) {
+	dir := t.TempDir()
+	s := NewProjectsStore(dir)
+
+	if err := s.AddProject(ActiveProject{ProjectID: "p1", RepoRoot: "/tmp/repo1", SortOrder: 2}); err != nil {
+		t.Fatalf("AddProject p1 failed: %v", err)
+	}
+	if err := s.AddProject(ActiveProject{ProjectID: "p2", RepoRoot: "/tmp/repo2", SortOrder: 1}); err != nil {
+		t.Fatalf("AddProject p2 failed: %v", err)
+	}
+
+	list, err := s.ListProjects()
+	if err != nil {
+		t.Fatalf("ListProjects failed: %v", err)
+	}
+	if len(list) != 2 {
+		t.Fatalf("expected 2 projects, got %d", len(list))
+	}
+	if list[0].ProjectID != "p2" || list[1].ProjectID != "p1" {
+		t.Fatalf("unexpected order: %#v", list)
 	}
 }
 

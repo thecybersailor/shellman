@@ -6,6 +6,8 @@ export interface ActiveProject {
   displayName?: string;
   repoRoot: string;
   isGitRepo: boolean;
+  sortOrder: number;
+  collapsed: boolean;
 }
 
 export interface TaskNode {
@@ -467,6 +469,51 @@ export function createShellmanStore(
     return 0;
   }
 
+  function normalizeProjectSortOrder(value: unknown, fallback: number): number {
+    const parsed = Number(value);
+    if (Number.isFinite(parsed) && parsed > 0) {
+      return Math.max(1, Math.floor(parsed));
+    }
+    return Math.max(1, Math.floor(fallback));
+  }
+
+  function toActiveProjectRecord(
+    raw: {
+      project_id?: string;
+      display_name?: string;
+      repo_root?: string;
+      is_git_repo?: boolean;
+      sort_order?: number | string;
+      collapsed?: boolean;
+    },
+    fallbackSortOrder: number,
+    prev?: ActiveProject
+  ): ActiveProject {
+    const projectId = String(raw.project_id ?? prev?.projectId ?? "").trim();
+    const displayName = String(raw.display_name ?? prev?.displayName ?? "").trim() || projectId;
+    const repoRoot = String(raw.repo_root ?? prev?.repoRoot ?? "").trim();
+    const isGitRepo = typeof raw.is_git_repo === "boolean" ? raw.is_git_repo : (prev?.isGitRepo ?? true);
+    const sortOrder = normalizeProjectSortOrder(raw.sort_order, prev?.sortOrder ?? fallbackSortOrder);
+    const collapsed = typeof raw.collapsed === "boolean" ? raw.collapsed : (prev?.collapsed ?? false);
+    return {
+      projectId,
+      displayName,
+      repoRoot,
+      isGitRepo,
+      sortOrder,
+      collapsed
+    };
+  }
+
+  function sortProjects(projects: ActiveProject[]) {
+    return [...projects].sort((a, b) => {
+      if (a.sortOrder === b.sortOrder) {
+        return a.projectId.localeCompare(b.projectId);
+      }
+      return a.sortOrder - b.sortOrder;
+    });
+  }
+
   const state = reactive({
     projects: [] as ActiveProject[],
     treesByProject: {} as Record<string, TaskNode[]>,
@@ -794,18 +841,34 @@ export function createShellmanStore(
     const projectsRes = (await fetchImpl(apiURL("/api/v1/projects/active"), {
       headers: apiHeaders()
     }).then((r) => r.json())) as APIResponse<
-      Array<{ project_id: string; display_name?: string; repo_root: string; is_git_repo?: boolean }>
+      Array<{
+        project_id: string;
+        display_name?: string;
+        repo_root: string;
+        is_git_repo?: boolean;
+        sort_order?: number | string;
+        collapsed?: boolean;
+      }>
     >;
     logInfo("shellman.load.projects", {
       ok: projectsRes.ok,
       count: projectsRes.data?.length ?? 0
     });
-    state.projects = projectsRes.data.map((p) => ({
-      projectId: p.project_id,
-      displayName: String(p.display_name ?? "").trim() || p.project_id,
-      repoRoot: p.repo_root,
-      isGitRepo: p.is_git_repo !== false
-    }));
+    state.projects = sortProjects(
+      projectsRes.data.map((p, index) =>
+        toActiveProjectRecord(
+          {
+            project_id: p.project_id,
+            display_name: p.display_name,
+            repo_root: p.repo_root,
+            is_git_repo: p.is_git_repo,
+            sort_order: p.sort_order,
+            collapsed: p.collapsed
+          },
+          index + 1
+        )
+      )
+    );
 
     for (const project of state.projects) {
       logInfo("shellman.load.project_tree.start", { projectId: project.projectId });
@@ -2178,7 +2241,13 @@ export function createShellmanStore(
       method: "POST",
       headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ project_id: id, repo_root: root })
-    }).then((r) => r.json())) as APIResponse<{ project_id: string; display_name?: string; is_git_repo?: boolean }>;
+    }).then((r) => r.json())) as APIResponse<{
+      project_id: string;
+      display_name?: string;
+      is_git_repo?: boolean;
+      sort_order?: number | string;
+      collapsed?: boolean;
+    }>;
 
     if (!res.ok) {
       logInfo("shellman.project.add.fail", {
@@ -2189,18 +2258,28 @@ export function createShellmanStore(
     }
 
     const existing = state.projects.find((p) => p.projectId === id);
+    const nextProject = toActiveProjectRecord(
+      {
+        project_id: id,
+        display_name: res.data?.display_name,
+        repo_root: root,
+        is_git_repo: res.data?.is_git_repo,
+        sort_order: res.data?.sort_order,
+        collapsed: res.data?.collapsed
+      },
+      existing?.sortOrder ?? state.projects.length + 1,
+      existing
+    );
     if (existing) {
-      existing.repoRoot = root;
-      existing.displayName = String(res.data?.display_name ?? "").trim() || id;
-      existing.isGitRepo = res.data?.is_git_repo !== false;
+      existing.repoRoot = nextProject.repoRoot;
+      existing.displayName = nextProject.displayName;
+      existing.isGitRepo = nextProject.isGitRepo;
+      existing.sortOrder = nextProject.sortOrder;
+      existing.collapsed = nextProject.collapsed;
     } else {
-      state.projects.push({
-        projectId: id,
-        displayName: String(res.data?.display_name ?? "").trim() || id,
-        repoRoot: root,
-        isGitRepo: res.data?.is_git_repo !== false
-      });
+      state.projects.push(nextProject);
     }
+    state.projects = sortProjects(state.projects);
 
     const treeRes = (await fetchImpl(apiURL(`/api/v1/projects/${id}/tree`), {
       headers: apiHeaders()
@@ -2292,7 +2371,12 @@ export function createShellmanStore(
       method: "PATCH",
       headers: apiHeaders({ "Content-Type": "application/json" }),
       body: JSON.stringify({ display_name: nextDisplayName })
-    }).then((r) => r.json())) as APIResponse<{ project_id: string; display_name: string }>;
+    }).then((r) => r.json())) as APIResponse<{
+      project_id: string;
+      display_name?: string;
+      sort_order?: number | string;
+      collapsed?: boolean;
+    }>;
     if (!res.ok) {
       logInfo("shellman.project.rename.fail", {
         projectId: id,
@@ -2302,12 +2386,121 @@ export function createShellmanStore(
     }
     const idx = state.projects.findIndex((project) => project.projectId === id);
     if (idx >= 0) {
-      state.projects[idx].displayName = String(res.data?.display_name ?? "").trim() || id;
+      const next = toActiveProjectRecord(
+        {
+          project_id: id,
+          display_name: res.data?.display_name,
+          repo_root: state.projects[idx].repoRoot,
+          is_git_repo: state.projects[idx].isGitRepo,
+          sort_order: res.data?.sort_order,
+          collapsed: res.data?.collapsed
+        },
+        state.projects[idx].sortOrder,
+        state.projects[idx]
+      );
+      state.projects[idx] = next;
+      state.projects = sortProjects(state.projects);
     }
     logInfo("shellman.project.rename.done", {
       projectId: id,
       displayName: state.projects[idx]?.displayName ?? ""
     });
+  }
+
+  async function setProjectCollapsed(projectId: string, collapsed: boolean) {
+    const id = String(projectId ?? "").trim();
+    const idx = state.projects.findIndex((project) => project.projectId === id);
+    if (idx < 0) {
+      throw new Error("PROJECT_NOT_FOUND");
+    }
+    const previous = { ...state.projects[idx] };
+    state.projects[idx].collapsed = collapsed;
+    const res = (await fetchImpl(apiURL(`/api/v1/projects/active/${encodeURIComponent(id)}`), {
+      method: "PATCH",
+      headers: apiHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify({ collapsed })
+    }).then((r) => r.json())) as APIResponse<{
+      project_id: string;
+      display_name?: string;
+      sort_order?: number | string;
+      collapsed?: boolean;
+    }>;
+    if (!res.ok) {
+      state.projects[idx] = previous;
+      throw new Error(res.error?.code || "PROJECT_COLLAPSE_UPDATE_FAILED");
+    }
+    state.projects[idx] = toActiveProjectRecord(
+      {
+        project_id: id,
+        display_name: res.data?.display_name,
+        repo_root: previous.repoRoot,
+        is_git_repo: previous.isGitRepo,
+        sort_order: res.data?.sort_order,
+        collapsed: res.data?.collapsed
+      },
+      previous.sortOrder,
+      previous
+    );
+    state.projects = sortProjects(state.projects);
+  }
+
+  async function reorderActiveProjects(projectIds: string[]) {
+    const nextOrder = projectIds.map((id) => String(id ?? "").trim()).filter(Boolean);
+    if (nextOrder.length !== state.projects.length) {
+      throw new Error("INVALID_PROJECT_ORDER");
+    }
+    const byId = new Map(state.projects.map((project) => [project.projectId, project] as const));
+    for (const id of nextOrder) {
+      if (!byId.has(id)) {
+        throw new Error("INVALID_PROJECT_ORDER");
+      }
+    }
+
+    const previous = state.projects.map((project) => ({ ...project }));
+    const reordered = nextOrder.map((id, index) => {
+      const item = byId.get(id)!;
+      return {
+        ...item,
+        sortOrder: index + 1
+      };
+    });
+    state.projects = reordered;
+
+    try {
+      for (let index = 0; index < reordered.length; index += 1) {
+        const item = reordered[index];
+        const sortOrder = index + 1;
+        const res = (await fetchImpl(apiURL(`/api/v1/projects/active/${encodeURIComponent(item.projectId)}`), {
+          method: "PATCH",
+          headers: apiHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ sort_order: sortOrder })
+        }).then((r) => r.json())) as APIResponse<{
+          project_id: string;
+          display_name?: string;
+          sort_order?: number | string;
+          collapsed?: boolean;
+        }>;
+        if (!res.ok) {
+          throw new Error(res.error?.code || "PROJECT_REORDER_FAILED");
+        }
+        state.projects[index] = toActiveProjectRecord(
+          {
+            project_id: item.projectId,
+            display_name: res.data?.display_name,
+            repo_root: item.repoRoot,
+            is_git_repo: item.isGitRepo,
+            sort_order: res.data?.sort_order,
+            collapsed: res.data?.collapsed
+          },
+          sortOrder,
+          item
+        );
+      }
+      state.projects = sortProjects(state.projects);
+    } catch (err) {
+      state.projects = previous;
+      throw err;
+    }
   }
 
   async function archiveDoneTasksByProject(projectId: string) {
@@ -3100,6 +3293,8 @@ export function createShellmanStore(
     archiveDoneTasksByProject,
     removeActiveProject,
     renameProjectDisplayName,
+    setProjectCollapsed,
+    reorderActiveProjects,
     selectDirectory,
     getFSRoots,
     listDirectories,

@@ -999,6 +999,16 @@ onBeforeUnmount(() => {
   display: none !important;
 }
 
+:deep(.xterm-viewport) {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+:deep(.xterm-viewport::-webkit-scrollbar) {
+  display: none;
+  width: 0;
+  height: 0;
+}
 
 .terminal-ended :deep(.xterm-cursor) {
   display: none !important;

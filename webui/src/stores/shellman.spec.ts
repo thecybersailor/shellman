@@ -1157,6 +1157,37 @@ describe("shellman store", () => {
     expect(calls.some((c) => c.url.endsWith("/api/v1/projects/p2/tree"))).toBe(true);
   });
 
+  it("loads project sort_order/collapsed and keeps sorted order", async () => {
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      if (url.endsWith("/api/v1/projects/active") && method === "GET") {
+        return {
+          json: async () => ({
+            ok: true,
+            data: [
+              { project_id: "p1", repo_root: "/tmp/p1", display_name: "P1", sort_order: 2, collapsed: true },
+              { project_id: "p2", repo_root: "/tmp/p2", display_name: "P2", sort_order: 1, collapsed: false }
+            ]
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree") || url.endsWith("/api/v1/projects/p2/tree")) {
+        return { json: async () => ({ ok: true, data: { project_id: "x", nodes: [] } }) } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+
+    expect(store.state.projects.map((p) => p.projectId)).toEqual(["p2", "p1"]);
+    expect(store.state.projects[0]?.sortOrder).toBe(1);
+    expect(store.state.projects[0]?.collapsed).toBe(false);
+    expect(store.state.projects[1]?.sortOrder).toBe(2);
+    expect(store.state.projects[1]?.collapsed).toBe(true);
+  });
+
   it("removes active project via DELETE and updates local state", async () => {
     const calls: Array<{ url: string; method: string }> = [];
     const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -1245,6 +1276,81 @@ describe("shellman store", () => {
     expect(calls.some((c) => c.url.endsWith("/api/v1/projects/active/p1") && c.method === "PATCH")).toBe(true);
     expect(store.state.projects[0]?.projectId).toBe("p1");
     expect(store.state.projects[0]?.displayName).toBe("New Name");
+  });
+
+  it("persists project collapsed via PATCH and updates local state", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method, body: String(init?.body ?? "") });
+      if (url.endsWith("/api/v1/projects/active") && method === "GET") {
+        return {
+          json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1", sort_order: 1, collapsed: false }] })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree") && method === "GET") {
+        return { json: async () => ({ ok: true, data: { project_id: "p1", nodes: [] } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/active/p1") && method === "PATCH") {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", display_name: "p1", sort_order: 1, collapsed: true } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.setProjectCollapsed("p1", true);
+
+    expect(calls.some((c) => c.url.endsWith("/api/v1/projects/active/p1") && c.method === "PATCH")).toBe(true);
+    expect(store.state.projects[0]?.collapsed).toBe(true);
+  });
+
+  it("reorders active projects and persists sort_order via PATCH", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      calls.push({ url, method, body: String(init?.body ?? "") });
+      if (url.endsWith("/api/v1/projects/active") && method === "GET") {
+        return {
+          json: async () => ({
+            ok: true,
+            data: [
+              { project_id: "p1", repo_root: "/tmp/p1", sort_order: 1, collapsed: false },
+              { project_id: "p2", repo_root: "/tmp/p2", sort_order: 2, collapsed: false }
+            ]
+          })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree") || url.endsWith("/api/v1/projects/p2/tree")) {
+        return { json: async () => ({ ok: true, data: { project_id: "x", nodes: [] } }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/active/p1") && method === "PATCH") {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", display_name: "p1", sort_order: 2, collapsed: false } })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/active/p2") && method === "PATCH") {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p2", display_name: "p2", sort_order: 1, collapsed: false } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    await store.load();
+    await store.reorderActiveProjects(["p2", "p1"]);
+
+    expect(store.state.projects.map((p) => p.projectId)).toEqual(["p2", "p1"]);
+    const patchBodies = calls
+      .filter((c) => c.url.includes("/api/v1/projects/active/") && c.method === "PATCH")
+      .map((c) => JSON.parse(c.body || "{}") as Record<string, unknown>);
+    expect(patchBodies.some((b) => b.sort_order === 1)).toBe(true);
+    expect(patchBodies.some((b) => b.sort_order === 2)).toBe(true);
   });
 
   it("archives done tasks by project and refreshes tree", async () => {

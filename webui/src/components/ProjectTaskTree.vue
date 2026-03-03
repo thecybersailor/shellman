@@ -61,6 +61,7 @@ export interface Task {
 export interface ProjectSection {
   projectId: string;
   title: string;
+  collapsed?: boolean;
   tasks: Task[];
 }
 
@@ -92,20 +93,50 @@ const emit = defineEmits<{
   (event: "archive-project-done", projectId: string): void;
   (event: "remove-project", projectId: string): void;
   (event: "adopt-pane", payload: { parentTaskId: string; paneTarget: string; title?: string }): void;
+  (event: "project-collapse-change", payload: { projectId: string; collapsed: boolean }): void;
+  (event: "reorder-projects", payload: { projectIds: string[] }): void;
 }>();
 
 const expandedItems = ref<string[]>([]);
-const seenProjectIds = new Set<string>();
+const syncExpandedFromProps = ref(false);
+const draggingProjectId = ref("");
+const dragOverProjectId = ref("");
 
-// Sync expanded items when NEW projects load
-watch(() => props.projects, (newProjects) => {
-  newProjects.forEach(project => {
-    if (!seenProjectIds.has(project.projectId)) {
-      seenProjectIds.add(project.projectId);
-      expandedItems.value.push(project.projectId);
+function resolveExpandedProjectIds(projects: ProjectSection[]) {
+  return projects.filter((project) => project.collapsed !== true).map((project) => project.projectId);
+}
+
+watch(
+  () =>
+    props.projects
+      .map((project) => `${project.projectId}:${project.collapsed === true ? "1" : "0"}`)
+      .join("|"),
+  () => {
+    syncExpandedFromProps.value = true;
+    expandedItems.value = resolveExpandedProjectIds(props.projects);
+    syncExpandedFromProps.value = false;
+  },
+  { immediate: true }
+);
+
+watch(expandedItems, (nextExpanded, prevExpanded) => {
+  if (syncExpandedFromProps.value) {
+    return;
+  }
+  const nextSet = new Set(nextExpanded);
+  const prevSet = new Set(prevExpanded);
+  for (const project of props.projects) {
+    const wasExpanded = prevSet.has(project.projectId);
+    const isExpanded = nextSet.has(project.projectId);
+    if (wasExpanded === isExpanded) {
+      continue;
     }
-  });
-}, { immediate: true });
+    emit("project-collapse-change", {
+      projectId: project.projectId,
+      collapsed: !isExpanded
+    });
+  }
+});
 
 type TaskFilterKey = "done" | "error" | "notice" | "success";
 
@@ -147,7 +178,7 @@ function statusLabel(status: TaskStatus) {
 
 function formatRelativeTime(unixSecond: number | undefined) {
   if (!Number.isFinite(unixSecond) || !unixSecond || unixSecond <= 0) {
-    return "--";
+    return "";
   }
   const diffMs = Math.max(0, Date.now() - Number(unixSecond) * 1000);
   const minutes = Math.floor(diffMs / 60000);
@@ -175,7 +206,7 @@ function displayTime(task: Task) {
   if (task.updatedAt) {
     return formatRelativeTime(task.updatedAt);
   }
-  return task.metadata || "--";
+  return task.metadata || "";
 }
 
 function isTaskChecked(task: Task) {
@@ -323,6 +354,58 @@ function onTaskDrop(taskId: string) {
   draggingPane.value = null;
   dragOverTaskId.value = "";
 }
+
+function onProjectDragStart(event: DragEvent, projectId: string) {
+  draggingProjectId.value = projectId;
+  dragOverProjectId.value = "";
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", projectId);
+  }
+}
+
+function onProjectDragOver(projectId: string) {
+  if (!draggingProjectId.value || draggingProjectId.value === projectId) {
+    return;
+  }
+  dragOverProjectId.value = projectId;
+}
+
+function buildReorderedProjectIds(sourceProjectId: string, targetProjectId: string) {
+  const currentIds = props.projects.map((project) => project.projectId);
+  const sourceIndex = currentIds.indexOf(sourceProjectId);
+  const targetIndex = currentIds.indexOf(targetProjectId);
+  if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+    return null;
+  }
+
+  const nextIds = currentIds.filter((id) => id !== sourceProjectId);
+  const nextTargetIndex = nextIds.indexOf(targetProjectId);
+  const insertIndex = sourceIndex < targetIndex ? nextTargetIndex + 1 : nextTargetIndex;
+  nextIds.splice(insertIndex, 0, sourceProjectId);
+  return nextIds;
+}
+
+function onProjectDrop(targetProjectId: string) {
+  const sourceProjectId = draggingProjectId.value;
+  if (!sourceProjectId) {
+    return;
+  }
+  const nextProjectIds = buildReorderedProjectIds(sourceProjectId, targetProjectId);
+  draggingProjectId.value = "";
+  dragOverProjectId.value = "";
+  if (!nextProjectIds) {
+    return;
+  }
+  emit("reorder-projects", {
+    projectIds: nextProjectIds
+  });
+}
+
+function onProjectDragEnd() {
+  draggingProjectId.value = "";
+  dragOverProjectId.value = "";
+}
 </script>
 
 <template>
@@ -388,7 +471,19 @@ function onTaskDrop(taskId: string) {
               <AccordionTrigger 
                 class="w-full py-1 hover:no-underline rounded-md px-2 hover:bg-accent/40 group/header transition-all [&[data-state=open]>svg]:rotate-0 [&>svg]:hidden"
               >
-                <div class="flex flex-1 items-center justify-between gap-2.5 min-w-0">
+                <div
+                  :data-test-id="`shellman-project-trigger-${project.projectId}`"
+                  draggable="true"
+                  class="flex flex-1 items-center justify-between gap-2.5 min-w-0 md:cursor-grab md:active:cursor-grabbing"
+                  :class="{
+                    'ring-1 ring-border/80 bg-accent/35': dragOverProjectId === project.projectId,
+                    'md:cursor-grabbing': draggingProjectId === project.projectId
+                  }"
+                  @dragstart="onProjectDragStart($event, project.projectId)"
+                  @dragover.prevent="onProjectDragOver(project.projectId)"
+                  @drop.stop.prevent="onProjectDrop(project.projectId)"
+                  @dragend="onProjectDragEnd"
+                >
                   <div class="flex items-center gap-2.5 min-w-0">
                     <!-- Icon Switch Logic: Folder normally, Chevron on hover -->
                     <div class="relative w-4 h-4 flex items-center justify-center shrink-0">
@@ -405,7 +500,7 @@ function onTaskDrop(taskId: string) {
 
                   <div
                     :data-test-id="`shellman-project-actions-${project.projectId}`"
-                    class="flex items-center gap-1 pr-1"
+                    class="flex items-center gap-1 pr-1 opacity-100 md:opacity-0 md:group-hover/header:opacity-100 transition-opacity md:pointer-events-none md:group-hover/header:pointer-events-auto"
                     @click.stop
                   >
                     <!-- More Actions Menu -->

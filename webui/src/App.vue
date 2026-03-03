@@ -115,6 +115,7 @@ const projects = computed<ProjectSection[]>(() => {
   return store.state.projects.map((project) => ({
     projectId: project.projectId,
     title: String(project.displayName ?? "").trim() || project.projectId,
+    collapsed: project.collapsed === true,
     tasks: (store.state.treesByProject[project.projectId] ?? []).map((node) => {
       const paneCommand = String(
         store.state.paneMetaByTarget[String(store.state.paneByTaskId[node.taskId]?.paneTarget ?? "")]?.currentCommand ?? ""
@@ -536,6 +537,34 @@ async function onArchiveProjectDone(projectId: string) {
   } catch (err) {
     taskActionError.value = err instanceof Error ? err.message : "TASK_ARCHIVE_FAILED";
     notifyError(taskActionError.value);
+  }
+}
+
+async function onProjectCollapseChange(payload: { projectId: string; collapsed: boolean }) {
+  const projectId = String(payload?.projectId ?? "").trim();
+  if (!projectId) {
+    return;
+  }
+  try {
+    projectEntryError.value = "";
+    await store.setProjectCollapsed(projectId, payload.collapsed === true);
+  } catch (err) {
+    projectEntryError.value = err instanceof Error ? err.message : "PROJECT_COLLAPSE_UPDATE_FAILED";
+    notifyError(projectEntryError.value);
+  }
+}
+
+async function onReorderProjects(payload: { projectIds: string[] }) {
+  const projectIds = Array.isArray(payload?.projectIds) ? payload.projectIds : [];
+  if (projectIds.length === 0) {
+    return;
+  }
+  try {
+    projectEntryError.value = "";
+    await store.reorderActiveProjects(projectIds);
+  } catch (err) {
+    projectEntryError.value = err instanceof Error ? err.message : "PROJECT_REORDER_FAILED";
+    notifyError(projectEntryError.value);
   }
 }
 
@@ -1015,6 +1044,8 @@ onBeforeUnmount(() => {
               @edit-project="onRequestEditProjectName"
               @archive-project-done="onArchiveProjectDone"
               @remove-project="onRequestRemoveProject"
+              @project-collapse-change="onProjectCollapseChange"
+              @reorder-projects="onReorderProjects"
               @open-overview="onOpenOverview('desktop')"
               @open-settings="onOpenSettings('desktop')"
             />
@@ -1159,6 +1190,8 @@ onBeforeUnmount(() => {
       @create-child-pane="onCreateChild"
       @archive-project-done="onArchiveProjectDone"
       @remove-project="onRequestRemoveProject"
+      @project-collapse-change="onProjectCollapseChange"
+      @reorder-projects="onReorderProjects"
       @toggle-dark="mode = mode === 'dark' ? 'light' : 'dark'"
       @scm-ai="onSCMAI"
       @scm-submit="onSCMSubmit"

@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -36,7 +37,14 @@ type fakeProjectsStore struct {
 }
 
 func (f *fakeProjectsStore) ListProjects() ([]global.ActiveProject, error) {
-	return append([]global.ActiveProject{}, f.projects...), nil
+	out := append([]global.ActiveProject{}, f.projects...)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].SortOrder == out[j].SortOrder {
+			return out[i].ProjectID < out[j].ProjectID
+		}
+		return out[i].SortOrder < out[j].SortOrder
+	})
+	return out, nil
 }
 func (f *fakeProjectsStore) AddProject(p global.ActiveProject) error {
 	for i := range f.projects {
@@ -45,11 +53,24 @@ func (f *fakeProjectsStore) AddProject(p global.ActiveProject) error {
 			if strings.TrimSpace(p.DisplayName) != "" {
 				f.projects[i].DisplayName = strings.TrimSpace(p.DisplayName)
 			}
+			if p.SortOrder > 0 {
+				f.projects[i].SortOrder = p.SortOrder
+			}
+			f.projects[i].Collapsed = p.Collapsed
 			return nil
 		}
 	}
 	if strings.TrimSpace(p.DisplayName) == "" {
 		p.DisplayName = p.ProjectID
+	}
+	if p.SortOrder <= 0 {
+		maxSort := int64(0)
+		for _, item := range f.projects {
+			if item.SortOrder > maxSort {
+				maxSort = item.SortOrder
+			}
+		}
+		p.SortOrder = maxSort + 1
 	}
 	f.projects = append(f.projects, p)
 	return nil
@@ -427,6 +448,8 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 			ProjectID   string `json:"project_id"`
 			DisplayName string `json:"display_name"`
 			IsGitRepo   bool   `json:"is_git_repo"`
+			SortOrder   int64  `json:"sort_order"`
+			Collapsed   bool   `json:"collapsed"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&createBody); err != nil {
@@ -444,6 +467,12 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	if createBody.Data.IsGitRepo {
 		t.Fatalf("expected non-git directory to return is_git_repo=false")
 	}
+	if createBody.Data.SortOrder != 1 {
+		t.Fatalf("expected sort_order=1, got %d", createBody.Data.SortOrder)
+	}
+	if createBody.Data.Collapsed {
+		t.Fatalf("expected collapsed=false on create response")
+	}
 
 	listResp, err := http.Get(ts.URL + "/api/v1/projects/active")
 	if err != nil {
@@ -460,6 +489,8 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 			DisplayName string `json:"display_name"`
 			RepoRoot    string `json:"repo_root"`
 			IsGitRepo   bool   `json:"is_git_repo"`
+			SortOrder   int64  `json:"sort_order"`
+			Collapsed   bool   `json:"collapsed"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
@@ -476,6 +507,12 @@ func TestServer_AddActiveProject_AcceptsNonGitDirectory(t *testing.T) {
 	}
 	if listBody.Data[0].IsGitRepo {
 		t.Fatalf("expected listed project is_git_repo=false")
+	}
+	if listBody.Data[0].SortOrder != 1 {
+		t.Fatalf("expected listed project sort_order=1, got %d", listBody.Data[0].SortOrder)
+	}
+	if listBody.Data[0].Collapsed {
+		t.Fatalf("expected listed project collapsed=false")
 	}
 }
 
@@ -533,6 +570,82 @@ func TestServer_RenameProjectDisplayName(t *testing.T) {
 	}
 	if listBody.Data[0].ProjectID != "p1" || listBody.Data[0].DisplayName != "New Name" {
 		t.Fatalf("unexpected renamed project payload: %#v", listBody.Data[0])
+	}
+}
+
+func TestServer_UpdateProjectCollapsedAndSortOrder(t *testing.T) {
+	repo := initGitRepo(t)
+
+	cfgStore := &fakeConfigStore{cfg: global.GlobalConfig{LocalPort: 4621}}
+	projStore := &fakeProjectsStore{}
+	srv := NewServer(Deps{ConfigStore: cfgStore, ProjectsStore: projStore})
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	createBody := bytes.NewBufferString(fmt.Sprintf(`{"project_id":"p1","repo_root":"%s","display_name":"P1"}`, repo))
+	createResp, err := http.Post(ts.URL+"/api/v1/projects/active", "application/json", createBody)
+	if err != nil {
+		t.Fatalf("POST projects failed: %v", err)
+	}
+	_ = createResp.Body.Close()
+	if createResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", createResp.StatusCode)
+	}
+
+	patchCollapsedBody := bytes.NewBufferString(`{"collapsed":true}`)
+	req, _ := http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/projects/active/p1", patchCollapsedBody)
+	req.Header.Set("Content-Type", "application/json")
+	patchCollapsedResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH project collapsed failed: %v", err)
+	}
+	defer func() { _ = patchCollapsedResp.Body.Close() }()
+	if patchCollapsedResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", patchCollapsedResp.StatusCode)
+	}
+
+	patchSortBody := bytes.NewBufferString(`{"sort_order":5}`)
+	req, _ = http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/projects/active/p1", patchSortBody)
+	req.Header.Set("Content-Type", "application/json")
+	patchSortResp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH project sort_order failed: %v", err)
+	}
+	defer func() { _ = patchSortResp.Body.Close() }()
+	if patchSortResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", patchSortResp.StatusCode)
+	}
+
+	listResp, err := http.Get(ts.URL + "/api/v1/projects/active")
+	if err != nil {
+		t.Fatalf("GET projects failed: %v", err)
+	}
+	defer func() { _ = listResp.Body.Close() }()
+	if listResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", listResp.StatusCode)
+	}
+	var listBody struct {
+		OK   bool `json:"ok"`
+		Data []struct {
+			ProjectID string `json:"project_id"`
+			SortOrder int64  `json:"sort_order"`
+			Collapsed bool   `json:"collapsed"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(listResp.Body).Decode(&listBody); err != nil {
+		t.Fatalf("decode list projects response failed: %v", err)
+	}
+	if !listBody.OK || len(listBody.Data) != 1 {
+		t.Fatalf("unexpected list payload: ok=%v len=%d", listBody.OK, len(listBody.Data))
+	}
+	if listBody.Data[0].ProjectID != "p1" {
+		t.Fatalf("unexpected project_id: %q", listBody.Data[0].ProjectID)
+	}
+	if listBody.Data[0].SortOrder != 5 {
+		t.Fatalf("expected sort_order=5, got %d", listBody.Data[0].SortOrder)
+	}
+	if !listBody.Data[0].Collapsed {
+		t.Fatalf("expected collapsed=true")
 	}
 }
 

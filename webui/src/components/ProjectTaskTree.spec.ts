@@ -68,6 +68,25 @@ describe("ProjectTaskTree", () => {
     nowSpy.mockRestore();
   });
 
+  it("leaves time text empty when no runtimeUpdatedAt and updatedAt", () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          {
+            projectId: "p1",
+            title: "Project One",
+            tasks: [{ taskId: "t1", title: "Root", status: "pending" }]
+          }
+        ],
+        selectedTaskId: "t1"
+      }
+    });
+
+    const statusEl = wrapper.get("[data-test-id='shellman-task-status-t1']").element as HTMLElement;
+    const timeText = statusEl.nextElementSibling?.textContent ?? "";
+    expect(timeText.trim()).toBe("");
+  });
+
   it("renders status message on second line when flagDesc exists", () => {
     const wrapper = mount(ProjectTaskTree, {
       props: {
@@ -147,7 +166,7 @@ describe("ProjectTaskTree", () => {
     expect(wrapper.emitted("create-root-pane")?.[0]).toEqual(["p1"]);
   });
 
-  it("keeps project actions visible without hover", () => {
+  it("shows project actions always on mobile and only on hover for desktop", () => {
     const wrapper = mount(ProjectTaskTree, {
       props: {
         projects: [{ projectId: "p1", title: "Project One", tasks: [] }],
@@ -156,9 +175,54 @@ describe("ProjectTaskTree", () => {
     });
 
     const actions = wrapper.get("[data-test-id='shellman-project-actions-p1']");
-    expect(actions.classes()).not.toContain("opacity-0");
-    expect(actions.classes().some((c) => c.includes("group-hover"))).toBe(false);
+    expect(actions.classes()).toContain("opacity-100");
+    expect(actions.classes()).toContain("md:opacity-0");
+    expect(actions.classes()).toContain("md:group-hover/header:opacity-100");
     expect(wrapper.find("[data-test-id='shellman-project-root-pane-p1']").exists()).toBe(true);
+  });
+
+  it("applies collapsed project state and emits collapse change on toggle", async () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          { projectId: "p1", title: "Project One", collapsed: true, tasks: [{ taskId: "t1", title: "Root", status: "running" }] }
+        ],
+        selectedTaskId: ""
+      }
+    });
+
+    expect(wrapper.find("[data-test-id='shellman-task-row-t1']").exists()).toBe(false);
+
+    await wrapper.get("[data-test-id='shellman-project-trigger-p1']").trigger("click");
+    expect(wrapper.find("[data-test-id='shellman-task-row-t1']").exists()).toBe(true);
+    expect(wrapper.emitted("project-collapse-change")?.[0]).toEqual([{ projectId: "p1", collapsed: false }]);
+  });
+
+  it("shows desktop grab cursor and emits reorder-projects on drag drop", async () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          { projectId: "p1", title: "Project One", tasks: [] },
+          { projectId: "p2", title: "Project Two", tasks: [] }
+        ],
+        selectedTaskId: ""
+      }
+    });
+
+    const p1Trigger = wrapper.get("[data-test-id='shellman-project-trigger-p1']");
+    const p2Trigger = wrapper.get("[data-test-id='shellman-project-trigger-p2']");
+    expect(p1Trigger.classes()).toContain("md:cursor-grab");
+
+    await p1Trigger.trigger("dragstart", {
+      dataTransfer: {
+        effectAllowed: "",
+        setData: vi.fn()
+      }
+    });
+    await p2Trigger.trigger("dragover");
+    await p2Trigger.trigger("drop");
+
+    expect(wrapper.emitted("reorder-projects")?.[0]).toEqual([{ projectIds: ["p2", "p1"] }]);
   });
 
   it("emits open-overview from footer button", async () => {

@@ -72,6 +72,8 @@ const emit = defineEmits<{
   (event: "create-child-pane", taskId: string): void;
   (event: "archive-project-done", projectId: string): void;
   (event: "remove-project", projectId: string): void;
+  (event: "project-collapse-change", payload: { projectId: string; collapsed: boolean }): void;
+  (event: "reorder-projects", payload: { projectIds: string[] }): void;
   (event: "toggle-dark"): void;
   (event: "scm-ai", payload: { taskId: string; diff: string; files: string[]; selectedFilePath: string }): void;
   (event: "scm-submit", payload: { taskId: string; message: string }): void;
@@ -235,6 +237,8 @@ onBeforeUnmount(() => {
           @create-child-pane="(id) => emit('create-child-pane', id)"
           @archive-project-done="(id) => emit('archive-project-done', id)"
           @remove-project="(id) => emit('remove-project', id)"
+          @project-collapse-change="(payload) => emit('project-collapse-change', payload)"
+          @reorder-projects="(payload) => emit('reorder-projects', payload)"
           class="bg-transparent"
         />
       </main>

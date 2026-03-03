@@ -182,6 +182,56 @@ describe("MobileStackView", () => {
     expect(wrapper.emitted("archive-project-done")?.[0]).toEqual(["p1"]);
   });
 
+  it("forwards project-collapse-change event from mobile tree", async () => {
+    const ProjectTaskTreeStub = defineComponent({
+      name: "ProjectTaskTree",
+      emits: ["project-collapse-change"],
+      template:
+        "<button data-test-id='project-collapse-change-btn' @click=\"$emit('project-collapse-change', { projectId: 'p1', collapsed: true })\">collapse</button>"
+    });
+
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [] }],
+        selectedTaskId: "",
+        darkMode: "dark"
+      },
+      global: {
+        stubs: {
+          ProjectTaskTree: ProjectTaskTreeStub
+        }
+      }
+    });
+
+    await wrapper.get("[data-test-id='project-collapse-change-btn']").trigger("click");
+    expect(wrapper.emitted("project-collapse-change")?.[0]).toEqual([{ projectId: "p1", collapsed: true }]);
+  });
+
+  it("forwards reorder-projects event from mobile tree", async () => {
+    const ProjectTaskTreeStub = defineComponent({
+      name: "ProjectTaskTree",
+      emits: ["reorder-projects"],
+      template:
+        "<button data-test-id='reorder-projects-btn' @click=\"$emit('reorder-projects', { projectIds: ['p2', 'p1'] })\">reorder</button>"
+    });
+
+    const wrapper = mount(MobileStackView, {
+      props: {
+        projects: [{ projectId: "p1", title: "P1", tasks: [] }],
+        selectedTaskId: "",
+        darkMode: "dark"
+      },
+      global: {
+        stubs: {
+          ProjectTaskTree: ProjectTaskTreeStub
+        }
+      }
+    });
+
+    await wrapper.get("[data-test-id='reorder-projects-btn']").trigger("click");
+    expect(wrapper.emitted("reorder-projects")?.[0]).toEqual([{ projectIds: ["p2", "p1"] }]);
+  });
+
   it("forwards open-overview event from mobile header", async () => {
     const wrapper = mount(MobileStackView, {
       props: {

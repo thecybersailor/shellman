@@ -30,6 +30,7 @@ func SyncSchema(db *gorm.DB) error {
 		&PaneRuntime{},
 		&TaskRuntime{},
 		&Config{},
+		&Project{},
 	); err != nil {
 		return err
 	}
@@ -40,6 +41,7 @@ func SyncSchema(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_task_messages_task_created_at ON task_messages(task_id, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_pm_sessions_repo_project_updated ON pm_sessions(repo_root, project_id, updated_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_pm_messages_session_created_at ON pm_messages(session_id, created_at DESC);`,
+		`CREATE INDEX IF NOT EXISTS idx_projects_sort_order ON projects(sort_order ASC, updated_at DESC);`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return err

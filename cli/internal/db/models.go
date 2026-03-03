@@ -191,3 +191,14 @@ type Config struct {
 }
 
 func (Config) TableName() string { return "config" }
+
+type Project struct {
+	ProjectID   string `gorm:"column:project_id;primaryKey"`
+	RepoRoot    string `gorm:"column:repo_root;not null;default:''"`
+	DisplayName string `gorm:"column:display_name;not null;default:''"`
+	SortOrder   int64  `gorm:"column:sort_order;not null;default:0"`
+	Collapsed   bool   `gorm:"column:collapsed;not null;default:false"`
+	UpdatedAt   int64  `gorm:"column:updated_at;not null;default:0"`
+}
+
+func (Project) TableName() string { return "projects" }

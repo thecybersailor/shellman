@@ -187,7 +187,7 @@ describe("FilePanel", () => {
     expect(menuText.includes("Delete")).toBe(true);
   });
 
-  it("renders markdown preview for .md files", async () => {
+  it("renders codemirror preview for .md files", async () => {
     const fakeFetch = vi.fn(async (url: string) => {
       if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
         return {
@@ -219,7 +219,8 @@ describe("FilePanel", () => {
     await wrapper.get("[data-test-id='shellman-file-item-README.md']").trigger("click");
     await flushPromises();
 
-    expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(false);
     expect(wrapper.find("pre").exists()).toBe(false);
   });
 

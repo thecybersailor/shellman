@@ -29,6 +29,8 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			DisplayName string `json:"display_name"`
 			RepoRoot    string `json:"repo_root"`
 			IsGitRepo   bool   `json:"is_git_repo"`
+			SortOrder   int64  `json:"sort_order"`
+			Collapsed   bool   `json:"collapsed"`
 		}
 		payload := make([]projectPayload, 0, len(projects))
 		for _, p := range projects {
@@ -41,6 +43,8 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 				DisplayName: displayName,
 				RepoRoot:    p.RepoRoot,
 				IsGitRepo:   isGitWorkTree(p.RepoRoot),
+				SortOrder:   p.SortOrder,
+				Collapsed:   p.Collapsed,
 			})
 		}
 		respondOK(w, payload)
@@ -62,14 +66,32 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", err.Error())
 			return
 		}
-		displayName := strings.TrimSpace(req.DisplayName)
+		projects, err := s.deps.ProjectsStore.ListProjects()
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "PROJECTS_LIST_FAILED", err.Error())
+			return
+		}
+		var saved *global.ActiveProject
+		for i := range projects {
+			if projects[i].ProjectID == req.ProjectID {
+				saved = &projects[i]
+				break
+			}
+		}
+		if saved == nil {
+			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", "project not found after save")
+			return
+		}
+		displayName := strings.TrimSpace(saved.DisplayName)
 		if displayName == "" {
-			displayName = req.ProjectID
+			displayName = saved.ProjectID
 		}
 		respondOK(w, map[string]any{
 			"project_id":   req.ProjectID,
 			"display_name": displayName,
 			"is_git_repo":  isGitWorkTree(req.RepoRoot),
+			"sort_order":   saved.SortOrder,
+			"collapsed":    saved.Collapsed,
 		})
 	default:
 		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
@@ -110,15 +132,16 @@ func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request
 		respondOK(w, map[string]any{"project_id": projectID})
 	case http.MethodPatch:
 		var req struct {
-			DisplayName string `json:"display_name"`
+			DisplayName *string `json:"display_name"`
+			SortOrder   *int64  `json:"sort_order"`
+			Collapsed   *bool   `json:"collapsed"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
 			return
 		}
-		displayName := strings.TrimSpace(req.DisplayName)
-		if displayName == "" {
-			respondError(w, http.StatusBadRequest, "INVALID_DISPLAY_NAME", "display_name is required")
+		if req.DisplayName == nil && req.SortOrder == nil && req.Collapsed == nil {
+			respondError(w, http.StatusBadRequest, "INVALID_PROJECT_PATCH", "at least one field is required")
 			return
 		}
 		projects, err := s.deps.ProjectsStore.ListProjects()
@@ -137,15 +160,41 @@ func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request
 			respondError(w, http.StatusNotFound, "PROJECT_NOT_FOUND", "project not found")
 			return
 		}
+		next := *target
+		if req.DisplayName != nil {
+			displayName := strings.TrimSpace(*req.DisplayName)
+			if displayName == "" {
+				respondError(w, http.StatusBadRequest, "INVALID_DISPLAY_NAME", "display_name is required")
+				return
+			}
+			next.DisplayName = displayName
+		}
+		if req.SortOrder != nil {
+			if *req.SortOrder <= 0 {
+				respondError(w, http.StatusBadRequest, "INVALID_SORT_ORDER", "sort_order must be positive")
+				return
+			}
+			next.SortOrder = *req.SortOrder
+		}
+		if req.Collapsed != nil {
+			next.Collapsed = *req.Collapsed
+		}
 		if err := s.deps.ProjectsStore.AddProject(global.ActiveProject{
-			ProjectID:   projectID,
-			RepoRoot:    target.RepoRoot,
-			DisplayName: displayName,
+			ProjectID:   next.ProjectID,
+			RepoRoot:    next.RepoRoot,
+			DisplayName: next.DisplayName,
+			SortOrder:   next.SortOrder,
+			Collapsed:   next.Collapsed,
 		}); err != nil {
 			respondError(w, http.StatusInternalServerError, "PROJECT_RENAME_FAILED", err.Error())
 			return
 		}
-		respondOK(w, map[string]any{"project_id": projectID, "display_name": displayName})
+		respondOK(w, map[string]any{
+			"project_id":   next.ProjectID,
+			"display_name": next.DisplayName,
+			"sort_order":   next.SortOrder,
+			"collapsed":    next.Collapsed,
+		})
 	default:
 		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
 	}

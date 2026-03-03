@@ -58,6 +58,13 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("await store.archiveDoneTasksByProject(id)");
   });
 
+  it("wires project collapse and reorder actions", () => {
+    expect(appSource).toContain("@project-collapse-change=\"onProjectCollapseChange\"");
+    expect(appSource).toContain("@reorder-projects=\"onReorderProjects\"");
+    expect(appSource).toContain("await store.setProjectCollapsed(projectId, payload.collapsed === true)");
+    expect(appSource).toContain("await store.reorderActiveProjects(projectIds)");
+  });
+
   it("wires helper openai settings fields", () => {
     expect(appSource).toContain(":helper-openai-endpoint=\"store.state.helperOpenAIEndpoint\"");
     expect(appSource).toContain(":helper-openai-model=\"store.state.helperOpenAIModel\"");

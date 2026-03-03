@@ -29,6 +29,7 @@ func TestOpenSQLiteWithMigrations_CreatesCoreTables(t *testing.T) {
 		"pane_runtime",
 		"task_runtime",
 		"config",
+		"projects",
 	}
 	for _, name := range mustHave {
 		var got string
