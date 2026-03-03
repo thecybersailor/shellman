@@ -20,14 +20,6 @@ const rootSessionName = "shellman"
 
 var rootSessionCreateMu sync.Mutex
 
-type processInfo struct {
-	pid  int
-	ppid int
-	comm string
-	args string
-	name string
-}
-
 func NewAdapter(e Exec) *Adapter {
 	return &Adapter{exec: e}
 }
@@ -220,72 +212,7 @@ func (a *Adapter) PaneTitleAndCurrentCommand(target string) (string, string, err
 	}
 	title := strings.TrimSpace(parts[0])
 	current := strings.TrimSpace(parts[1])
-	if len(parts) < 3 {
-		return title, current, nil
-	}
-	pid, err := strconv.Atoi(strings.TrimSpace(parts[2]))
-	if err != nil || pid <= 0 {
-		return title, current, nil
-	}
-	derived, derr := a.deriveProcessLabel(pid, current)
-	if derr != nil || derived == "" {
-		return title, current, nil
-	}
-	return title, derived, nil
-}
-
-func (a *Adapter) deriveProcessLabel(panePID int, fallback string) (string, error) {
-	out, err := a.exec.Output("ps", "-axo", "pid=,ppid=,comm=,args=")
-	if err != nil {
-		return "", err
-	}
-	byPID := map[int]processInfo{}
-	children := map[int][]int{}
-	for _, line := range strings.Split(string(out), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 3 {
-			continue
-		}
-		pid, err1 := strconv.Atoi(fields[0])
-		ppid, err2 := strconv.Atoi(fields[1])
-		if err1 != nil || err2 != nil {
-			continue
-		}
-		comm := normalizeProcName(fields[2])
-		if comm == "" {
-			continue
-		}
-		args := ""
-		if len(fields) > 3 {
-			args = strings.TrimSpace(strings.Join(fields[3:], " "))
-		}
-		name := deriveDisplayProcessName(comm, args)
-		if name == "" {
-			name = comm
-		}
-		byPID[pid] = processInfo{pid: pid, ppid: ppid, comm: comm, args: args, name: name}
-		children[ppid] = append(children[ppid], pid)
-	}
-	if _, ok := byPID[panePID]; !ok {
-		return strings.TrimSpace(fallback), nil
-	}
-	chain := collectActiveProcessChain(panePID, byPID, children)
-	if len(chain) == 0 {
-		return strings.TrimSpace(fallback), nil
-	}
-	primary := chain[0]
-	secondary := chain[len(chain)-1]
-	if primary == "" {
-		return strings.TrimSpace(fallback), nil
-	}
-	if secondary == "" || secondary == primary {
-		return primary, nil
-	}
-	return fmt.Sprintf("%s (%s)", primary, secondary), nil
+	return title, current, nil
 }
 
 func deriveDisplayProcessName(comm, args string) string {
