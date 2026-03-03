@@ -20,6 +20,14 @@ const rootSessionName = "shellman"
 
 var rootSessionCreateMu sync.Mutex
 
+type processInfo struct {
+	pid  int
+	ppid int
+	comm string
+	args string
+	name string
+}
+
 func NewAdapter(e Exec) *Adapter {
 	return &Adapter{exec: e}
 }
