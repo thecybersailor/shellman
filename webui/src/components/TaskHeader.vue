@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Terminal } from "lucide-vue-next";
+import { Terminal, History, Loader2 } from "lucide-vue-next";
 import { useI18n } from "vue-i18n";
 import { CardHeader, CardTitle } from "@/components/ui/card";
 import TaskTitleResolver from "@/components/TaskTitleResolver.vue";
@@ -30,46 +30,47 @@ function onHistoryMore(event: MouseEvent) {
 </script>
 
 <template>
-  <CardHeader class="p-3 py-2 border-b border-border/10 bg-muted/5 select-none min-h-[52px] flex flex-col justify-center">
-    <CardTitle class="text-xs p-2 w-full font-mono text-muted-foreground flex items-center overflow-hidden">
-      <div
-        data-test-id="shellman-task-meta-display"
-        class="group dark:bg-gray-800 bg-gray-200 w-full cursor-pointer space-y-0.5 rounded-md border border-transparent p-4 transition-all hover:bg-white/5 active:bg-white/10"
-        @click="onOpenSessionDetail"
-      >
-        <span data-test-id="shellman-console-pane-uuid" class="sr-only">{{ props.paneUuid || "" }}</span>
-        <span data-test-id="shellman-console-pane-current-command" class="sr-only">{{ props.currentCommand || "" }}</span>
-        <div class="hidden md:flex items-center gap-1.5 overflow-hidden">
-          <Terminal class="hidden sm:block size-3 shrink-0 text-primary/60" />
-          <TaskTitleResolver
-            :task-title="props.taskTitle"
-            :current-command="props.currentCommand"
-            data-test-id="shellman-task-title-display"
-            class="truncate text-xs font-semibold text-foreground tracking-tight"
-          />
-        </div>
-        <div
-          v-if="props.taskDescription"
-          data-test-id="shellman-task-description-display"
-          class="max-h-8 overflow-hidden text-[11px] text-foreground/50 line-clamp-1 transition-colors group-hover:text-foreground/70"
-        >
-          {{ props.taskDescription }}
-        </div>
-        <div v-else class="text-[10px] text-muted-foreground/30 italic">{{ t("task.noDescription") }}</div>
+  <CardHeader class="p-2 border-b border-border/10 bg-muted/5 select-none min-h-[44px] flex flex-row items-center justify-between gap-2 space-y-0">
+    <div
+      data-test-id="shellman-task-meta-display"
+      class="group flex flex-1 items-center gap-3 overflow-hidden cursor-pointer rounded-md border border-transparent px-2 py-1.5 transition-all hover:bg-foreground/5 active:bg-foreground/10"
+      @click="onOpenSessionDetail"
+    >
+      <span data-test-id="shellman-console-pane-uuid" class="sr-only">{{ props.paneUuid || "" }}</span>
+      <span data-test-id="shellman-console-pane-current-command" class="sr-only">{{ props.currentCommand || "" }}</span>
+      <div class="flex items-center gap-1.5 overflow-hidden shrink-0">
+        <Terminal class="size-3.5 shrink-0 text-primary/70" />
+        <TaskTitleResolver
+          :task-title="props.taskTitle"
+          :current-command="props.currentCommand"
+          data-test-id="shellman-task-title-display"
+          class="truncate text-[13px] font-medium text-foreground tracking-tight"
+        />
       </div>
-      <button
-        data-test-id="shellman-task-history-more"
-        type="button"
-        :disabled="Boolean(props.historyMoreLoading)"
-        :aria-busy="props.historyMoreLoading ? 'true' : 'false'"
-        :class="[
-          'ml-2 shrink-0 rounded border border-border/60 bg-background/90 px-2 py-1 text-[10px] font-medium text-foreground/80 transition-colors hover:bg-background',
-          props.historyMoreLoading ? 'cursor-not-allowed opacity-60' : ''
-        ]"
-        @click="onHistoryMore"
+      <div class="w-px h-3.5 bg-border/50 shrink-0"></div>
+      <div
+        v-if="props.taskDescription"
+        data-test-id="shellman-task-description-display"
+        class="truncate text-[12px] text-muted-foreground transition-colors group-hover:text-foreground/80 flex-1"
       >
-        {{ props.historyMoreLoading ? t("common.loading") : t("terminal.loadPreviousPage") }}
-      </button>
-    </CardTitle>
+        {{ props.taskDescription }}
+      </div>
+      <div v-else class="text-[12px] text-muted-foreground/50 italic truncate flex-1">{{ t("task.noDescription") }}</div>
+    </div>
+    <button
+      data-test-id="shellman-task-history-more"
+      type="button"
+      :disabled="Boolean(props.historyMoreLoading)"
+      :aria-busy="props.historyMoreLoading ? 'true' : 'false'"
+      :class="[
+        'flex items-center gap-1.5 shrink-0 rounded-md border border-border bg-background px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground shadow-sm',
+        props.historyMoreLoading ? 'cursor-not-allowed opacity-60' : ''
+      ]"
+      @click="onHistoryMore"
+    >
+      <Loader2 v-if="props.historyMoreLoading" class="size-3 animate-spin shrink-0" />
+      <History v-else class="size-3 shrink-0" />
+      <span>{{ props.historyMoreLoading ? t("common.loading") : t("terminal.loadPreviousPage") }}</span>
+    </button>
   </CardHeader>
 </template>

@@ -46,6 +46,9 @@ func TestConfigStore_LoadOrInit_CreatesDefaultFiles(t *testing.T) {
 	if !strings.Contains(text, "sidecar_mode = 'observer'") && !strings.Contains(text, "sidecar_mode = \"observer\"") {
 		t.Fatalf("expected defaults.sidecar_mode in toml, got: %s", text)
 	}
+	if !strings.Contains(text, "terminal_font_size = 13") {
+		t.Fatalf("expected defaults.terminal_font_size=13 in toml, got: %s", text)
+	}
 	if !strings.Contains(text, "notify_enabled = false") {
 		t.Fatalf("expected task_completion.notify_enabled=false in toml, got: %s", text)
 	}
@@ -60,5 +63,8 @@ func TestConfigStore_LoadOrInit_CreatesDefaultFiles(t *testing.T) {
 	}
 	if cfg.Defaults.SidecarMode != "observer" {
 		t.Fatalf("expected sidecar_mode=observer, got %q", cfg.Defaults.SidecarMode)
+	}
+	if cfg.Defaults.TerminalFontSize != 13 {
+		t.Fatalf("expected terminal_font_size=13, got %d", cfg.Defaults.TerminalFontSize)
 	}
 }

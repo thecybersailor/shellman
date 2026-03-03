@@ -14,9 +14,10 @@ const (
 )
 
 type GlobalDefaults struct {
-	SessionProgram string `json:"session_program" toml:"session_program"`
-	HelperProgram  string `json:"helper_program" toml:"helper_program"`
-	SidecarMode    string `json:"sidecar_mode" toml:"sidecar_mode"`
+	SessionProgram   string `json:"session_program" toml:"session_program"`
+	HelperProgram    string `json:"helper_program" toml:"helper_program"`
+	SidecarMode      string `json:"sidecar_mode" toml:"sidecar_mode"`
+	TerminalFontSize int    `json:"terminal_font_size" toml:"terminal_font_size"`
 }
 
 type GlobalConfig struct {
@@ -88,6 +89,7 @@ func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 	sessionProgram := strings.ToLower(strings.TrimSpace(defaults.SessionProgram))
 	helperProgram := strings.ToLower(strings.TrimSpace(defaults.HelperProgram))
 	sidecarMode := strings.ToLower(strings.TrimSpace(defaults.SidecarMode))
+	terminalFontSize := defaults.TerminalFontSize
 
 	switch sessionProgram {
 	case "shell", "codex", "claude", "cursor":
@@ -106,11 +108,15 @@ func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 	default:
 		sidecarMode = "observer"
 	}
+	if terminalFontSize < 10 || terminalFontSize > 32 {
+		terminalFontSize = 13
+	}
 
 	return GlobalDefaults{
-		SessionProgram: sessionProgram,
-		HelperProgram:  helperProgram,
-		SidecarMode:    sidecarMode,
+		SessionProgram:   sessionProgram,
+		HelperProgram:    helperProgram,
+		SidecarMode:      sidecarMode,
+		TerminalFontSize: terminalFontSize,
 	}
 }
 

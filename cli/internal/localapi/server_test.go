@@ -187,6 +187,30 @@ func TestServer_ConfigAndProjectsEndpoints(t *testing.T) {
 	if cfgStore.cfg.Defaults.SidecarMode != "autopilot" {
 		t.Fatalf("expected defaults.sidecar_mode=autopilot, got %q", cfgStore.cfg.Defaults.SidecarMode)
 	}
+	patchBody = bytes.NewBufferString(`{"defaults":{"terminal_font_size":18}}`)
+	req, _ = http.NewRequest(http.MethodPatch, ts.URL+"/api/v1/config", patchBody)
+	req.Header.Set("Content-Type", "application/json")
+	resp, err = http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatalf("PATCH config failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	var patchCfgOut struct {
+		OK   bool `json:"ok"`
+		Data struct {
+			Defaults struct {
+				TerminalFontSize int `json:"terminal_font_size"`
+			} `json:"defaults"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&patchCfgOut); err != nil {
+		t.Fatalf("decode patch response failed: %v", err)
+	}
+	if patchCfgOut.Data.Defaults.TerminalFontSize != 18 {
+		t.Fatalf("expected defaults.terminal_font_size=18 in response, got %d", patchCfgOut.Data.Defaults.TerminalFontSize)
+	}
 
 	resp, err = http.Get(ts.URL + "/api/v1/projects/active")
 	if err != nil {

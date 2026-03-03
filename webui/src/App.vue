@@ -15,8 +15,8 @@ import { resolvePathLinkInProject } from "@/lib/terminal_path_resolver";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import CodeMirrorEditor from "./components/CodeMirrorEditor.vue";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,8 +32,6 @@ import { Sun, Moon } from "lucide-vue-next";
 import shellmanIcon from "@/asserts/icon.svg";
 import { useColorMode } from "@vueuse/core";
 import { toast } from "vue-sonner";
-import { Markdown } from "vue-stream-markdown";
-import "vue-stream-markdown/index.css";
 const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -59,6 +57,7 @@ const fileViewerPath = ref("");
 const fileViewerContent = ref("");
 const fileViewerBaseContent = ref("");
 const fileViewerMode = ref<"preview" | "edit">("edit");
+const fileViewerEditor = ref<InstanceType<typeof CodeMirrorEditor> | null>(null);
 const fileViewerBaseRev = ref<{ mtime_ns: number; size: number; sha256: string }>({
   mtime_ns: 0,
   size: 0,
@@ -603,6 +602,7 @@ async function onSaveSettings(payload: {
   defaultLaunchProgram: "shell" | "codex" | "claude" | "cursor";
   defaultHelperProgram: "codex" | "claude" | "cursor";
   defaultSidecarMode: "advisor" | "observer" | "autopilot";
+  defaultTerminalFontSize: number;
   taskCompletionMode: "none" | "command";
   taskCompletionCommand: string;
   taskCompletionIdleDuration: number;
@@ -614,6 +614,7 @@ async function onSaveSettings(payload: {
     settingsSaving.value = true;
     await store.saveTaskCompletionSettings(payload.defaultLaunchProgram, payload.defaultHelperProgram, {
       defaultSidecarMode: payload.defaultSidecarMode,
+      defaultTerminalFontSize: payload.defaultTerminalFontSize,
       taskCompletionMode: payload.taskCompletionMode,
       taskCompletionCommand: payload.taskCompletionCommand,
       taskCompletionIdleDuration: payload.taskCompletionIdleDuration,
@@ -825,23 +826,7 @@ function moveFileViewerCursor(line: number | null, col: number | null) {
   if (!line || line < 1) {
     return;
   }
-  const input = document.querySelector("[data-test-id='shellman-file-viewer-textarea']") as HTMLTextAreaElement | null;
-  if (!input) {
-    return;
-  }
-  const lines = String(input.value ?? "").split("\n");
-  if (lines.length === 0) {
-    return;
-  }
-  const lineIndex = Math.max(0, Math.min(lines.length - 1, line - 1));
-  const lineText = lines[lineIndex] ?? "";
-  const colIndex = Math.max(0, Math.min(lineText.length, (col ?? 1) - 1));
-  let offset = colIndex;
-  for (let i = 0; i < lineIndex; i += 1) {
-    offset += lines[i].length + 1;
-  }
-  input.focus();
-  input.setSelectionRange(offset, offset);
+  fileViewerEditor.value?.setCursor(line, Math.max(1, col ?? 1));
 }
 
 async function onTerminalLinkOpen(payload: { type: "url"; raw: string } | { type: "path"; raw: string }) {
@@ -1048,7 +1033,7 @@ onBeforeUnmount(() => {
 
       <!-- Center Panel (Terminal) -->
       <ResizablePanel :default-size="48" :min-size="30">
-        <section class="h-full p-2 bg-background">
+        <section class="h-full bg-background">
           <slot name="terminal" v-bind="{ 
             selectedTaskId, 
             selectedTaskTitle, 
@@ -1078,6 +1063,8 @@ onBeforeUnmount(() => {
               :show-manual-launch-button="showManualLaunchPaneButton"
               :is-no-pane-task="selectedTaskIsNoPane"
               :default-launch-program="store.state.defaultLaunchProgram"
+              :default-terminal-font-size="store.state.defaultTerminalFontSize"
+              :sidecar-mode="store.state.taskSidecarModeByTaskId[selectedTaskId] || 'advisor'"
               :app-programs="store.state.appPrograms"
               @terminal-input="onTerminalInput"
               @terminal-image-paste="onTerminalImagePaste"
@@ -1147,6 +1134,7 @@ onBeforeUnmount(() => {
       :show-manual-launch-pane-button="showManualLaunchPaneButton"
       :is-no-pane-task="selectedTaskIsNoPane"
       :default-launch-program="store.state.defaultLaunchProgram"
+      :default-terminal-font-size="store.state.defaultTerminalFontSize"
       :app-programs="store.state.appPrograms"
       :scm-ai-loading="scmAiLoading"
       :scm-submit-loading="scmSubmitLoading"
@@ -1236,21 +1224,14 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </SheetHeader>
-      <div
-        v-if="fileViewerIsMarkdown && fileViewerMode === 'preview'"
-        class="shellman-markdown-compact flex-1 min-h-[70vh] overflow-y-auto border rounded-md p-3 text-sm leading-6"
-        data-test-id="shellman-file-viewer-markdown"
-      >
-        <div v-if="fileViewerLoading" class="text-xs text-muted-foreground">{{ t("common.loading") }}</div>
-        <div v-else-if="!fileViewerContent" class="text-xs text-muted-foreground">{{ t("common.noContent") }}</div>
-        <Markdown v-else :content="fileViewerContent" />
-      </div>
-      <Textarea
-        v-else
+      <CodeMirrorEditor
+        ref="fileViewerEditor"
         v-model="fileViewerContent"
-        data-test-id="shellman-file-viewer-textarea"
-        class="flex-1 min-h-[70vh] resize-none font-mono text-xs"
+        :file-path="fileViewerPath"
+        data-test-id="shellman-file-viewer-codemirror"
+        class="flex-1 min-h-[70vh] border rounded-md"
         :placeholder="fileViewerLoading ? t('common.loading') : t('common.noContent')"
+        :readonly="fileViewerLoading || fileViewerMode === 'preview'"
       />
     </SheetContent>
   </Sheet>
@@ -1270,6 +1251,7 @@ onBeforeUnmount(() => {
     :default-launch-program="store.state.defaultLaunchProgram"
     :default-helper-program="store.state.defaultHelperProgram"
     :default-sidecar-mode="store.state.defaultSidecarMode"
+    :default-terminal-font-size="store.state.defaultTerminalFontSize"
     :providers="store.state.appPrograms"
     :task-completion-command="store.state.taskCompletionCommand"
     :task-completion-mode="store.state.taskCompletionMode"

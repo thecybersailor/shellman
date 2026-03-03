@@ -96,9 +96,10 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 		var req struct {
 			LocalPort *int `json:"local_port"`
 			Defaults  *struct {
-				SessionProgram *string `json:"session_program"`
-				HelperProgram  *string `json:"helper_program"`
-				SidecarMode    *string `json:"sidecar_mode"`
+				SessionProgram   *string `json:"session_program"`
+				HelperProgram    *string `json:"helper_program"`
+				SidecarMode      *string `json:"sidecar_mode"`
+				TerminalFontSize *int    `json:"terminal_font_size"`
 			} `json:"defaults"`
 			HelperOpenAI *struct {
 				Endpoint *string `json:"endpoint"`
@@ -135,6 +136,9 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 			}
 			if req.Defaults.SidecarMode != nil {
 				cfg.Defaults.SidecarMode = strings.TrimSpace(*req.Defaults.SidecarMode)
+			}
+			if req.Defaults.TerminalFontSize != nil {
+				cfg.Defaults.TerminalFontSize = *req.Defaults.TerminalFontSize
 			}
 		}
 		if req.TaskCompletionMode != nil {

@@ -161,6 +161,7 @@ interface GlobalConfig {
     session_program?: string;
     helper_program?: string;
     sidecar_mode?: string;
+    terminal_font_size?: number;
   };
   helper_openai?: {
     endpoint?: string;
@@ -493,6 +494,7 @@ export function createShellmanStore(
     defaultLaunchProgram: "shell" as LaunchProgram,
     defaultHelperProgram: "codex" as HelperProgram,
     defaultSidecarMode: "observer" as SidecarMode,
+    defaultTerminalFontSize: 13,
     helperOpenAIEndpoint: "",
     helperOpenAIModel: "",
     helperOpenAIApiKey: "",
@@ -576,20 +578,28 @@ export function createShellmanStore(
       updated_at?: number | string;
     }> | undefined
   ): TaskNode[] {
-    return (nodes ?? []).map((n) => ({
-      taskId: n.task_id,
-      parentTaskId: n.parent_task_id,
-      title: n.title,
-      currentCommand: String(n.current_command ?? ""),
-      description: String(n.description ?? ""),
-      flag: n.flag,
-      flagDesc: String(n.flag_desc ?? ""),
-      flagReaded: Boolean(n.flag_readed),
-      checked: Boolean(n.checked),
-      archived: Boolean(n.archived),
-      status: n.status,
-      updatedAt: parseUnixSecond(n.updated_at)
-    }));
+    return (nodes ?? []).map((n) => {
+      const base: TaskNode = {
+        taskId: n.task_id,
+        parentTaskId: n.parent_task_id,
+        title: n.title,
+        currentCommand: String(n.current_command ?? ""),
+        description: String(n.description ?? ""),
+        flag: n.flag,
+        flagDesc: String(n.flag_desc ?? ""),
+        checked: Boolean(n.checked),
+        archived: Boolean(n.archived),
+        status: n.status,
+        updatedAt: parseUnixSecond(n.updated_at)
+      };
+      // Only include flagReaded when the server explicitly provides flag_readed.
+      // This prevents WebSocket delta updates (which may omit the field) from
+      // overwriting a local flagReaded=true set by markTaskFlagReaded via spread merge.
+      if ("flag_readed" in n) {
+        base.flagReaded = Boolean(n.flag_readed);
+      }
+      return base;
+    });
   }
 
   function applyRuntimeDelta(runtimePayload: Record<string, any>) {
@@ -1902,12 +1912,21 @@ export function createShellmanStore(
       if (!paneUuid || !snapshotCache) {
         return;
       }
-      state.terminalByPaneUuid[paneUuid] = snapshotCache;
-      persistedSnapshotByPaneUuid[paneUuid] = snapshotCache;
+      const previousCache = state.terminalByPaneUuid[paneUuid] ?? persistedSnapshotByPaneUuid[paneUuid] ?? null;
+      const fallbackCursor =
+        snapshotCache.cursor ??
+        previousCache?.cursor ??
+        (state.selectedTaskId === nextTaskID && state.selectedPaneUuid === paneUuid ? state.terminalCursor : null);
+      const nextSnapshotCache = {
+        ...snapshotCache,
+        cursor: fallbackCursor
+      };
+      state.terminalByPaneUuid[paneUuid] = nextSnapshotCache;
+      persistedSnapshotByPaneUuid[paneUuid] = nextSnapshotCache;
       if (state.selectedTaskId === nextTaskID && state.selectedPaneUuid === paneUuid) {
-        state.terminalOutput = snapshotCache.output;
-        state.terminalFrame = snapshotCache.frame;
-        state.terminalCursor = snapshotCache.cursor;
+        state.terminalOutput = nextSnapshotCache.output;
+        state.terminalFrame = nextSnapshotCache.frame;
+        state.terminalCursor = nextSnapshotCache.cursor;
         state.terminalEnded = false;
       }
     })();
@@ -2460,6 +2479,7 @@ export function createShellmanStore(
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
+    state.defaultTerminalFontSize = typeof res.data.defaults?.terminal_font_size === "number" ? res.data.defaults.terminal_font_size : 13;
     if (state.appPrograms.length > 0 && !state.appPrograms.some((item) => item.id === state.defaultHelperProgram)) {
       state.defaultHelperProgram = state.appPrograms[0].id;
     }
@@ -2481,7 +2501,8 @@ export function createShellmanStore(
       defaults: {
         session_program: nextProgram,
         helper_program: state.defaultHelperProgram,
-        sidecar_mode: state.defaultSidecarMode
+        sidecar_mode: state.defaultSidecarMode,
+        terminal_font_size: state.defaultTerminalFontSize
       },
       task_completion_mode: state.taskCompletionMode,
       task_completion_command: state.taskCompletionCommand,
@@ -2498,10 +2519,12 @@ export function createShellmanStore(
     helperOpenAIEndpoint: string;
     helperOpenAIModel: string;
     helperOpenAIApiKey: string;
+    defaultTerminalFontSize?: number;
   }) {
     const nextProgram = normalizeLaunchProgram(program);
     const nextHelperProgram = normalizeHelperProgram(helperProgram);
     const nextSidecarMode = normalizeSidecarMode(payload.defaultSidecarMode);
+    const nextTerminalFontSize = typeof payload.defaultTerminalFontSize === "number" ? payload.defaultTerminalFontSize : state.defaultTerminalFontSize;
     const nextDuration = Number(payload.taskCompletionIdleDuration) >= 0 ? Math.floor(Number(payload.taskCompletionIdleDuration)) : 0;
     const helperOpenAIEndpoint = String(payload.helperOpenAIEndpoint ?? "").trim();
     const helperOpenAIModel = String(payload.helperOpenAIModel ?? "").trim();
@@ -2521,7 +2544,8 @@ export function createShellmanStore(
         defaults: {
           session_program: nextProgram,
           helper_program: nextHelperProgram,
-          sidecar_mode: nextSidecarMode
+          sidecar_mode: nextSidecarMode,
+          terminal_font_size: nextTerminalFontSize
         },
         task_completion_mode: String(payload.taskCompletionMode ?? "none").trim(),
         task_completion_command: String(payload.taskCompletionCommand ?? "").trim(),
@@ -2536,6 +2560,7 @@ export function createShellmanStore(
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
+    state.defaultTerminalFontSize = typeof res.data.defaults?.terminal_font_size === "number" ? res.data.defaults.terminal_font_size : 13;
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
@@ -2560,6 +2585,7 @@ export function createShellmanStore(
     state.defaultLaunchProgram = normalizeLaunchProgram(res.data.defaults?.session_program);
     state.defaultHelperProgram = normalizeHelperProgram(res.data.defaults?.helper_program);
     state.defaultSidecarMode = normalizeSidecarMode(res.data.defaults?.sidecar_mode);
+    state.defaultTerminalFontSize = typeof res.data.defaults?.terminal_font_size === "number" ? res.data.defaults.terminal_font_size : 13;
     state.helperOpenAIEndpoint = String(res.data.helper_openai?.endpoint ?? "").trim();
     state.helperOpenAIModel = String(res.data.helper_openai?.model ?? "").trim();
     state.helperOpenAIApiKey = "";
@@ -2681,6 +2707,24 @@ export function createShellmanStore(
     if (!taskId) {
       return;
     }
+    // Optimistic local update — hide/show the dot immediately so the UI
+    // reacts without waiting for the API round-trip, and so that any
+    // WebSocket delta arriving in the meantime doesn't revert the state.
+    const applyLocal = () => {
+      for (const [projectId, nodes] of Object.entries(state.treesByProject)) {
+        const idx = nodes.findIndex((n) => n.taskId === taskId);
+        if (idx >= 0) {
+          const next = [...nodes];
+          next[idx] = {
+            ...next[idx],
+            flagReaded: Boolean(flagReaded)
+          };
+          state.treesByProject[projectId] = next;
+          break;
+        }
+      }
+    };
+    applyLocal();
     const res = (await fetchImpl(apiURL(`/api/v1/tasks/${taskId}/flag-readed`), {
       method: "PATCH",
       headers: apiHeaders({ "Content-Type": "application/json" }),
@@ -2689,18 +2733,8 @@ export function createShellmanStore(
     if (!res.ok) {
       throw new Error(res.error?.code || "TASK_FLAG_READED_UPDATE_FAILED");
     }
-    for (const [projectId, nodes] of Object.entries(state.treesByProject)) {
-      const idx = nodes.findIndex((n) => n.taskId === taskId);
-      if (idx >= 0) {
-        const next = [...nodes];
-        next[idx] = {
-          ...next[idx],
-          flagReaded: Boolean(flagReaded)
-        };
-        state.treesByProject[projectId] = next;
-        break;
-      }
-    }
+    // Re-apply after API confirms to ensure consistency
+    applyLocal();
   }
 
   async function sendTaskMessage(taskId: string, content: string) {

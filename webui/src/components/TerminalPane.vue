@@ -24,6 +24,8 @@ const props = defineProps<{
   showManualLaunchButton?: boolean;
   isNoPaneTask?: boolean;
   defaultLaunchProgram?: LaunchProgram;
+  defaultTerminalFontSize?: number;
+  sidecarMode?: "advisor" | "observer" | "autopilot";
   appPrograms?: Array<{ id: "codex" | "claude" | "cursor"; display_name: string; command: string }>;
 }>();
 const emit = defineEmits<{
@@ -40,7 +42,7 @@ const slots = useSlots();
 const hasTerminalSlot = computed(() => Boolean(slots.terminal));
 
 const root = ref<HTMLElement | null>(null);
-const term = new Terminal({ convertEol: true, scrollback: 10000 });
+const term = new Terminal({ convertEol: true, scrollback: 10000, fontSize: props.defaultTerminalFontSize ?? 13 });
 const fitAddon = new FitAddon();
 const opened = ref(false);
 const lastSize = ref<{ cols: number; rows: number } | null>(null);
@@ -775,6 +777,26 @@ watch(
   }
 );
 
+watch(
+  () => props.defaultTerminalFontSize,
+  (next) => {
+    if (hasTerminalSlot.value) {
+      return;
+    }
+    const newSize = next ?? 13;
+    if (term.options.fontSize !== newSize) {
+      term.options.fontSize = newSize;
+      if (opened.value) {
+        // Must call fit directly when font size changes to trigger recalculation of cell dimensions
+        try {
+          fitAddon.fit();
+        } catch { }
+        scheduleTerminalSizeSync(true);
+      }
+    }
+  }
+);
+
 onMounted(async () => {
   logInfo("shellman.term.view.mounted.start");
   if (hasTerminalSlot.value) {
@@ -922,7 +944,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <Card :class="['h-full border-none shadow-none bg-black/95 flex flex-col', { 'terminal-ended': Boolean(props.isEnded) }]">
+  <Card :class="['h-full border-none shadow-none rounded-none bg-black/95 flex flex-col', { 'terminal-ended': Boolean(props.isEnded), 'terminal-autopilot-glow': props.sidecarMode === 'autopilot' }]">
     <TaskHeader
       :task-id="taskId"
       :task-title="taskTitle"
@@ -933,7 +955,7 @@ onBeforeUnmount(() => {
       @open-session-detail="() => emit('open-session-detail')"
       @history-more="onHistoryMoreClick"
     />
-    <CardContent v-show="!props.isNoPaneTask" class="p-1 flex-1 min-h-0 relative">
+    <CardContent v-show="!props.isNoPaneTask" class="px-5 py-1 flex-1 min-h-0 relative">
       <slot name="terminal">
         <div data-test-id="tt-terminal-root" ref="root" class="w-full h-full" />
       </slot>
@@ -980,5 +1002,31 @@ onBeforeUnmount(() => {
 
 .terminal-ended :deep(.xterm-cursor) {
   display: none !important;
+}
+
+@keyframes terminal-autopilot-glow {
+  0%, 100% {
+    box-shadow: inset 0 0 15px rgba(59, 130, 246, 0.3);
+  }
+  50% {
+    box-shadow: inset 0 0 45px rgba(59, 130, 246, 0.8);
+  }
+}
+
+.terminal-autopilot-glow {
+  position: relative;
+}
+
+.terminal-autopilot-glow::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  animation: terminal-autopilot-glow 3s ease-in-out infinite;
+  transition: box-shadow 0.3s ease;
+  z-index: 50;
 }
 </style>

@@ -134,7 +134,7 @@
   "terminal": {
     "start": "Start",
     "manual": "Manual",
-    "loadPreviousPage": "Load Previous Page"
+    "loadPreviousPage": "Older"
   },
   "app": {
     "sessionEndedPaneUnavailable": "Session ended. Pane is no longer available.",

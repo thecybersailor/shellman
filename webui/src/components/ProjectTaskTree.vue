@@ -455,8 +455,8 @@ function onTaskDrop(taskId: string) {
                       :key="row.task.taskId"
                       class="flex items-center justify-between group rounded-md px-2 py-1.5 text-[13px] cursor-pointer hover:bg-accent/30 transition-all"
                       :class="{
-                        'bg-accent/50 text-foreground font-medium': selectedTaskId === row.task.taskId,
-                        'text-muted-foreground/80': selectedTaskId !== row.task.taskId,
+                        'bg-accent/50 text-foreground': selectedTaskId === row.task.taskId,
+                        'text-foreground/80': selectedTaskId !== row.task.taskId,
                         'ring-1 ring-border/80 bg-accent/40': dragOverTaskId === row.task.taskId
                       }"
                       :data-test-id="`shellman-task-row-${row.task.taskId}`"
@@ -482,18 +482,18 @@ function onTaskDrop(taskId: string) {
                         </span>
                         <div
                           :data-test-id="`shellman-task-title-line-${row.task.taskId}`"
-                          class="min-w-0 flex-1 leading-tight"
+                          class="min-w-0 flex-1 leading-tight flex flex-col justify-center gap-[2px]"
                         >
                           <TaskTitleResolver
                             :task-title="row.task.title"
                             :current-command="row.task.currentCommand"
                             data-test-id="shellman-task-row-title"
-                            class="block truncate"
+                            class="block truncate font-medium"
                           />
                           <p
                             v-if="row.task.flagDesc"
                             :data-test-id="`shellman-task-status-message-${row.task.taskId}`"
-                            class="mt-0.5 truncate text-[11px] font-normal text-muted-foreground/70"
+                            class="truncate text-[11px] font-normal text-muted-foreground/60 leading-tight"
                           >
                             {{ row.task.flagDesc }}
                           </p>

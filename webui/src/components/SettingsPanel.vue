@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { InputGroup, InputGroupAddon, InputGroupTextarea } from "@/components/ui/input-group";
+import { Slider } from "@/components/ui/slider";
 const { t } = useI18n();
 
 type LaunchProgram = "shell" | "codex" | "claude" | "cursor";
@@ -20,6 +21,7 @@ const props = withDefaults(defineProps<{
   defaultLaunchProgram?: LaunchProgram;
   defaultHelperProgram?: HelperProgram;
   defaultSidecarMode?: SidecarMode;
+  defaultTerminalFontSize?: number;
   providers?: Array<{ id: HelperProgram; display_name: string; command: string }>;
   taskCompletionMode?: TaskCompletionMode;
   taskCompletionCommand?: string;
@@ -32,6 +34,7 @@ const props = withDefaults(defineProps<{
   defaultLaunchProgram: "shell",
   defaultHelperProgram: "codex",
   defaultSidecarMode: "observer",
+  defaultTerminalFontSize: 13,
   providers: () => [],
   taskCompletionMode: "none",
   taskCompletionCommand: "",
@@ -48,6 +51,7 @@ const emit = defineEmits<{
     defaultLaunchProgram: LaunchProgram;
     defaultHelperProgram: HelperProgram;
     defaultSidecarMode: SidecarMode;
+    defaultTerminalFontSize: number;
     taskCompletionMode: TaskCompletionMode;
     taskCompletionCommand: string;
     taskCompletionIdleDuration: number;
@@ -60,6 +64,7 @@ const emit = defineEmits<{
 const localDefaultProgram = ref<LaunchProgram>(props.defaultLaunchProgram);
 const localDefaultHelperProgram = ref<HelperProgram>(props.defaultHelperProgram);
 const localDefaultSidecarMode = ref<SidecarMode>(props.defaultSidecarMode);
+const localDefaultTerminalFontSize = ref<number[]>([props.defaultTerminalFontSize ?? 13]);
 
 const enableTaskCompletionCommand = ref(props.taskCompletionMode === "command");
 const localTaskCompletionCommand = ref(props.taskCompletionCommand);
@@ -73,6 +78,7 @@ function syncLocalFieldsFromProps() {
   localDefaultProgram.value = props.defaultLaunchProgram;
   localDefaultHelperProgram.value = props.defaultHelperProgram;
   localDefaultSidecarMode.value = props.defaultSidecarMode;
+  localDefaultTerminalFontSize.value = [props.defaultTerminalFontSize ?? 13];
   enableTaskCompletionCommand.value = props.taskCompletionMode === "command";
   localTaskCompletionCommand.value = props.taskCompletionCommand;
   const duration = Math.max(0, props.taskCompletionIdleDuration ?? 0);
@@ -125,6 +131,12 @@ watch(
   () => props.defaultSidecarMode,
   (value) => {
     localDefaultSidecarMode.value = value;
+  }
+);
+watch(
+  () => props.defaultTerminalFontSize,
+  (value) => {
+    localDefaultTerminalFontSize.value = [value ?? 13];
   }
 );
 watch(
@@ -211,6 +223,7 @@ function saveSettings() {
     defaultLaunchProgram: localDefaultProgram.value,
     defaultHelperProgram: localDefaultHelperProgram.value,
     defaultSidecarMode: localDefaultSidecarMode.value,
+    defaultTerminalFontSize: localDefaultTerminalFontSize.value[0],
     taskCompletionMode: mode,
     taskCompletionCommand: commandValue,
     taskCompletionIdleDuration: Number(localTaskCompletionIdleDuration.value),
@@ -261,6 +274,19 @@ function saveSettings() {
             <SelectItem value="autopilot">{{ t("thread.sidecarModeAutopilot") }}</SelectItem>
           </SelectContent>
         </Select>
+      </div>
+      <div class="space-y-3">
+        <label class="flex justify-between text-xs font-medium text-muted-foreground">
+          <span>{{ t("settings.defaultTerminalFontSize", "Terminal Font Size") }}</span>
+          <span>{{ localDefaultTerminalFontSize[0] }}px</span>
+        </label>
+        <Slider
+          v-model="localDefaultTerminalFontSize"
+          :min="10"
+          :max="32"
+          :step="1"
+          class="w-full"
+        />
       </div>
       <div class="space-y-2">
         <label class="text-xs font-medium text-muted-foreground">{{ t("settings.helperOpenaiApi") }}</label>

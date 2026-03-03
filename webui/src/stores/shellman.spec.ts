@@ -680,6 +680,65 @@ describe("shellman store", () => {
     expect(store.state.terminalOutput).toBe("older-1\nolder-2\n");
   });
 
+  it("loadMorePaneHistory keeps existing cursor when snapshot cursor is missing", async () => {
+    const sock = new FakeSocket();
+    const fakeFetch = async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.endsWith("/api/v1/projects/active")) {
+        return { json: async () => ({ ok: true, data: [{ project_id: "p1", repo_root: "/tmp/p1" }] }) } as Response;
+      }
+      if (url.endsWith("/api/v1/projects/p1/tree")) {
+        return {
+          json: async () => ({ ok: true, data: { project_id: "p1", nodes: [{ task_id: "t1", title: "root", status: "running" }] } })
+        } as Response;
+      }
+      if (url.endsWith("/api/v1/tasks/t1/pane")) {
+        return { json: async () => ({ ok: true, data: { task_id: "t1", pane_uuid: "uuid-t1", pane_id: "e2e:0.0", pane_target: "e2e:0.0" } }) } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/pane-history?lines=4000")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              task_id: "t1",
+              pane_uuid: "uuid-t1",
+              pane_id: "e2e:0.0",
+              pane_target: "e2e:0.0",
+              snapshot: {
+                output: "older-1\nolder-2\nroot# ",
+                frame: { mode: "reset", data: "older-1\nolder-2\nroot# " },
+                cursor: null
+              }
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: false, error: { code: "NOT_FOUND" } }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => sock as unknown as WebSocket);
+    await store.load();
+    store.connectWS("ws://127.0.0.1:4621/ws/client/local");
+    sock.emitOpen();
+    await store.selectTask("t1");
+
+    sock.emitMessage(
+      JSON.stringify({
+        id: "evt_t1_base",
+        type: "event",
+        op: "term.output",
+        payload: { target: "e2e:0.0", mode: "reset", data: "new-1\nnew-2\nroot# ", cursor: { x: 6, y: 2 } }
+      })
+    );
+    expect(store.state.terminalCursor).toEqual({ x: 6, y: 2 });
+
+    await store.loadMorePaneHistory("t1", 4000);
+
+    expect(store.state.terminalOutput).toBe("older-1\nolder-2\nroot# ");
+    expect(store.state.terminalFrame).toEqual({ mode: "reset", data: "older-1\nolder-2\nroot# " });
+    expect(store.state.terminalCursor).toEqual({ x: 6, y: 2 });
+  });
+
   it("loadMorePaneHistory grows history lines on repeated pull when lines are not specified", async () => {
     const historyLinesRequests: number[] = [];
     const fakeFetch = async (input: RequestInfo | URL) => {

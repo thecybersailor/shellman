@@ -314,6 +314,7 @@ onBeforeUnmount(() => {
                 :show-manual-launch-button="Boolean(props.showManualLaunchPaneButton)"
                 :is-no-pane-task="Boolean(props.isNoPaneTask)"
                 :default-launch-program="props.defaultLaunchProgram ?? 'shell'"
+                :sidecar-mode="props.selectedTaskSidecarMode ?? 'advisor'"
                 :app-programs="props.appPrograms ?? []"
                 @terminal-input="onTerminalInput"
                 @terminal-image-paste="(file) => emit('terminal-image-paste', file)"

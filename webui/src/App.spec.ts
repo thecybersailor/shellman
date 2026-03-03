@@ -80,11 +80,13 @@ describe("App project entry wiring", () => {
     expect(appSource).toContain("data-test-id=\"shellman-file-viewer-close\"");
     expect(appSource).toContain("data-test-id=\"shellman-file-viewer-save\"");
     expect(appSource).toContain("data-test-id=\"shellman-file-viewer-toggle-mode\"");
-    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-markdown\"");
     expect(appSource).toContain("@click=\"onCloseFileViewer\"");
     expect(appSource).toContain("@click=\"onSaveFileViewer\"");
     expect(appSource).toContain("onSwitchFileViewerMode");
     expect(appSource).toContain("async function onSaveFileViewer() {");
+    expect(appSource).toContain("data-test-id=\"shellman-file-viewer-codemirror\"");
+    expect(appSource).toContain(":file-path=\"fileViewerPath\"");
+    expect(appSource).toContain(":readonly=\"fileViewerLoading || fileViewerMode === 'preview'\"");
   });
 
   it("wires mobile back-to-task-list routing", () => {
