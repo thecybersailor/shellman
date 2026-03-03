@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { nextTick } from "vue";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { SIDECAR_USER_INPUT_HISTORY_KEY } from "@/lib/sidecar_user_input_history";
 import ThreadPanel from "./ThreadPanel.vue";
 
 describe("ThreadPanel", () => {
@@ -223,5 +224,19 @@ describe("ThreadPanel", () => {
     });
     await nextTick();
     expect(wrapper.text()).toContain("Advisor");
+  });
+
+  it("writes sidecar user submit into global history from thread panel", async () => {
+    if (typeof localStorage !== "undefined" && typeof localStorage.clear === "function") {
+      localStorage.clear();
+    }
+    const wrapper = mount(ThreadPanel, {
+      props: { taskId: "t1", taskTitle: "Task", taskDescription: "", taskMessages: [] }
+    });
+
+    await wrapper.get("[data-test-id='shellman-shellman-input']").setValue("thread send");
+    await wrapper.get("form").trigger("submit");
+    const stored = JSON.parse(localStorage.getItem(SIDECAR_USER_INPUT_HISTORY_KEY) || "[]") as string[];
+    expect(stored.at(-1)).toBe("thread send");
   });
 });

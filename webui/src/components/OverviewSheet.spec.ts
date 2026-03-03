@@ -1,5 +1,6 @@
 import { mount } from "@vue/test-utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import { SIDECAR_USER_INPUT_HISTORY_KEY } from "@/lib/sidecar_user_input_history";
 import OverviewSheet from "./OverviewSheet.vue";
 
 const globalStubs = {
@@ -178,5 +179,28 @@ describe("OverviewSheet", () => {
     expect(mobile.find("[data-test-id='shellman-pm-history-mobile']").exists()).toBe(true);
     expect(mobile.find("[data-test-id='shellman-pm-new-session-mobile']").exists()).toBe(true);
     expect(mobile.find("[data-test-id='shellman-pm-session-title-mobile']").exists()).toBe(true);
+  });
+
+  it("does not write PM chat submit into sidecar user history", async () => {
+    localStorage.clear();
+    const wrapper = mount(OverviewSheet, {
+      props: {
+        open: true,
+        isMobile: false,
+        projects: [{ projectId: "p1", title: "P1", tasks: [{ taskId: "t1", title: "Task", status: "running" }] }],
+        overviewProjectId: "p1",
+        selectedTaskId: "t1",
+        selectedTaskMessages: [],
+        selectedPmSessionId: "s1",
+        pmMessages: []
+      },
+      global: {
+        stubs: globalStubs
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-shellman-input']").setValue("pm message");
+    await wrapper.get("form").trigger("submit");
+    expect(localStorage.getItem(SIDECAR_USER_INPUT_HISTORY_KEY)).toBeNull();
   });
 });

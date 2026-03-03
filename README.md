@@ -37,6 +37,14 @@ It turns the left sidebar from a passive list into an execution surface, so your
 - `Observer`: use it when many threads run in parallel and you need Task Tree to stay trustworthy without constantly checking each terminal.
 - `Autopilot`: use it for execution-heavy delivery windows where routine steps should run continuously until done, with automatic progress reporting back to the team.
 
+### Sidecar Prompt Input History
+
+- History records only sidecar chat `user` submissions.
+- PM chat messages are excluded from this history.
+- `ArrowUp` enters history browsing when the caret is at the first line (selection collapsed), then keeps navigating older entries.
+- `ArrowDown` navigates newer entries; from newest, one more `ArrowDown` restores the pre-browse draft.
+- History is persisted in browser local storage and keeps the latest 200 entries (duplicates are preserved).
+
 ### Browser Access
 
 Access your workspace from any browser, not just a fixed local setup.

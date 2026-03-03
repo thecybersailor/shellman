@@ -182,6 +182,7 @@ function onSidecarModeUpdate(value: string | number) {
           :task-id="props.taskId"
           :task-messages="props.taskMessages"
           :model-value="promptDraft"
+          :input-history-enabled="true"
           @update:model-value="(value) => (promptDraft = value)"
           @submit-message="onSessionSubmit"
           @stop-running-assistant-message="emit('stop-running-assistant-message')"

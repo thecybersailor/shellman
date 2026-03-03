@@ -1,6 +1,7 @@
 import { mount } from "@vue/test-utils";
 import { beforeAll, describe, expect, it, vi } from "vitest";
 import { nextTick } from "vue";
+import { SIDECAR_USER_INPUT_HISTORY_KEY } from "@/lib/sidecar_user_input_history";
 import ConversationSession from "./ConversationSession.vue";
 
 describe("ConversationSession", () => {
@@ -60,5 +61,75 @@ describe("ConversationSession", () => {
     expect(wrapper.find("[data-test-id='shellman-shellman-send']").exists()).toBe(false);
     await wrapper.get("[data-test-id='shellman-shellman-stop']").trigger("click");
     expect(wrapper.emitted("stop-running-assistant-message")?.length).toBe(1);
+  });
+
+  it("records submitted content into sidecar user history when enabled", async () => {
+    localStorage.clear();
+    const wrapper = mount(ConversationSession, {
+      props: {
+        taskId: "t1",
+        modelValue: "",
+        taskMessages: [],
+        inputHistoryEnabled: true
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-shellman-input']").setValue("hello sidecar");
+    await wrapper.get("form").trigger("submit");
+
+    const stored = JSON.parse(localStorage.getItem(SIDECAR_USER_INPUT_HISTORY_KEY) || "[]") as string[];
+    expect(stored.at(-1)).toBe("hello sidecar");
+  });
+
+  it("does not record history when input history is disabled", async () => {
+    localStorage.clear();
+    const wrapper = mount(ConversationSession, {
+      props: {
+        taskId: "t1",
+        modelValue: "",
+        taskMessages: [],
+        inputHistoryEnabled: false
+      }
+    });
+
+    await wrapper.get("[data-test-id='shellman-shellman-input']").setValue("pm-like message");
+    await wrapper.get("form").trigger("submit");
+
+    expect(localStorage.getItem(SIDECAR_USER_INPUT_HISTORY_KEY)).toBeNull();
+  });
+
+  it("navigates sidecar history with ArrowUp/ArrowDown and restores draft", async () => {
+    localStorage.clear();
+    localStorage.setItem(SIDECAR_USER_INPUT_HISTORY_KEY, JSON.stringify(["older", "newer"]));
+    const wrapper = mount(ConversationSession, {
+      props: {
+        taskId: "t1",
+        modelValue: "",
+        taskMessages: [],
+        inputHistoryEnabled: true
+      }
+    });
+
+    const input = wrapper.get("[data-test-id='shellman-shellman-input']");
+    const el = input.element as HTMLTextAreaElement;
+
+    await input.setValue("draft-not-empty");
+    el.setSelectionRange(0, 0);
+
+    await input.trigger("keydown", { key: "ArrowUp" });
+    await nextTick();
+    expect(el.value).toBe("newer");
+
+    await input.trigger("keydown", { key: "ArrowUp" });
+    await nextTick();
+    expect(el.value).toBe("older");
+
+    await input.trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    expect(el.value).toBe("newer");
+
+    await input.trigger("keydown", { key: "ArrowDown" });
+    await nextTick();
+    expect(el.value).toBe("draft-not-empty");
   });
 });

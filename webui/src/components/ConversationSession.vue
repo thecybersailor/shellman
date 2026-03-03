@@ -17,6 +17,7 @@ import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-e
 import { Tool, ToolContent, ToolHeader, ToolInput, ToolOutput } from "@/components/ai-elements/tool";
 import { SquareIcon } from "lucide-vue-next";
 import type { TaskMessage } from "@/stores/shellman";
+import { appendSidecarUserInputHistory } from "@/lib/sidecar_user_input_history";
 
 const { t } = useI18n();
 
@@ -25,11 +26,13 @@ const props = withDefaults(
     taskId?: string;
     taskMessages?: TaskMessage[];
     modelValue?: string;
+    inputHistoryEnabled?: boolean;
   }>(),
   {
     taskId: "",
     taskMessages: () => [],
-    modelValue: ""
+    modelValue: "",
+    inputHistoryEnabled: false
   }
 );
 
@@ -49,6 +52,9 @@ function onPromptSubmit(payload: { text?: string }) {
   const content = String(payload?.text ?? "").trim();
   if (!content) {
     return;
+  }
+  if (props.inputHistoryEnabled) {
+    appendSidecarUserInputHistory(content);
   }
   emit("submit-message", { content });
   emit("update:modelValue", "");
@@ -218,7 +224,12 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
 
     <PromptInput :key="`prompt-${scopeKey}`" class="mt-2" :initial-input="props.modelValue" @submit="onPromptSubmit">
       <PromptInputBody>
-        <PromptInputTextarea data-test-id="shellman-shellman-input" :placeholder="t('thread.talkPlaceholder')" @input="onPromptInput" />
+        <PromptInputTextarea
+          data-test-id="shellman-shellman-input"
+          :placeholder="t('thread.talkPlaceholder')"
+          :history-enabled="props.inputHistoryEnabled"
+          @input="onPromptInput"
+        />
       </PromptInputBody>
       <PromptInputFooter>
         <PromptInputTools />
