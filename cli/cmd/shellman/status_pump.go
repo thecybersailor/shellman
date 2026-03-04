@@ -32,6 +32,10 @@ type paneStatusActivityProvider interface {
 	PaneLastActiveAt(target string) (time.Time, error)
 }
 
+type paneStatusItemsProvider interface {
+	StatusItemsByTargets(targets []string, now time.Time) map[string]sessionStatusItem
+}
+
 func runStatusPump(
 	ctx context.Context,
 	wsClient *turn.WSClient,
@@ -40,14 +44,24 @@ func runStatusPump(
 	interval time.Duration,
 	inputTracker *inputActivityTracker,
 	logger *slog.Logger,
-	baselineByTargetOpt ...map[string]paneRuntimeBaseline,
+	extras ...any,
 ) {
 	if logger == nil {
 		logger = newRuntimeLogger(io.Discard)
 	}
 	var baselineByTarget map[string]paneRuntimeBaseline
-	if len(baselineByTargetOpt) > 0 {
-		baselineByTarget = baselineByTargetOpt[0]
+	var statusItemsProvider paneStatusItemsProvider
+	for _, extra := range extras {
+		switch typed := extra.(type) {
+		case map[string]paneRuntimeBaseline:
+			if baselineByTarget == nil {
+				baselineByTarget = typed
+			}
+		case paneStatusItemsProvider:
+			if statusItemsProvider == nil {
+				statusItemsProvider = typed
+			}
+		}
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
@@ -73,9 +87,38 @@ func runStatusPump(
 			readyCount := 0
 			runningCount := 0
 			unknownCount := 0
+			cachedItems := map[string]sessionStatusItem{}
+			if statusItemsProvider != nil {
+				cachedItems = statusItemsProvider.StatusItemsByTargets(targets, now)
+			}
 
 			for _, target := range targets {
 				seen[target] = struct{}{}
+				if cached, ok := cachedItems[target]; ok {
+					if strings.TrimSpace(cached.Target) == "" {
+						cached.Target = target
+					}
+					if strings.TrimSpace(cached.Title) == "" {
+						cached.Title = sessionTitleFromTarget(target)
+					}
+					cached.Status = normalizeSessionStatus(cached.Status)
+					if cached.Status == "" {
+						cached.Status = SessionStatusUnknown
+					}
+					if cached.UpdatedAt <= 0 {
+						cached.UpdatedAt = now.Unix()
+					}
+					switch cached.Status {
+					case SessionStatusReady:
+						readyCount++
+					case SessionStatusRunning:
+						runningCount++
+					default:
+						unknownCount++
+					}
+					items = append(items, cached)
+					continue
+				}
 				title := sessionTitleFromTarget(target)
 				currentCommand := ""
 				if hasMetaProvider {

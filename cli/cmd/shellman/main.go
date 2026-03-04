@@ -306,7 +306,7 @@ func runWSRuntime(
 	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, autoCompleteExec, outputSource, paneInterval, taskStateActor)
 	bindMessageLoop(wsClient, handler, registry, inputTracker, logger.With("module", "message_loop"))
 	go runTaskStateActorLoop(runtimeCtx, taskStateActor, time.Second)
-	go runStatusPump(runtimeCtx, wsClient, tmuxService, httpExec, statusPumpInterval, inputTracker, logger.With("module", "status_pump"), paneBaseline)
+	go runStatusPump(runtimeCtx, wsClient, tmuxService, httpExec, statusPumpInterval, inputTracker, logger.With("module", "status_pump"), paneBaseline, registry)
 	return wsClient.Run(runtimeCtx)
 }
 

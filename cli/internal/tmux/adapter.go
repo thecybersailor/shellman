@@ -16,6 +16,9 @@ import (
 type Adapter struct {
 	exec       Exec
 	tmuxSocket string
+
+	cacheMu           sync.Mutex
+	paneCommandByPane map[string]paneCommandCacheEntry
 }
 
 const rootSessionName = "shellman"
@@ -30,12 +33,25 @@ type processInfo struct {
 	name string
 }
 
+type paneCommandCacheEntry struct {
+	panePID int
+	tpgid   int
+	command string
+}
+
 func NewAdapter(e Exec) *Adapter {
-	return &Adapter{exec: e}
+	return &Adapter{
+		exec:              e,
+		paneCommandByPane: map[string]paneCommandCacheEntry{},
+	}
 }
 
 func NewAdapterWithSocket(e Exec, socket string) *Adapter {
-	return &Adapter{exec: e, tmuxSocket: socket}
+	return &Adapter{
+		exec:              e,
+		tmuxSocket:        socket,
+		paneCommandByPane: map[string]paneCommandCacheEntry{},
+	}
 }
 
 func (a *Adapter) SocketName() string {
@@ -225,21 +241,82 @@ func (a *Adapter) PaneTitleAndCurrentCommand(target string) (string, string, err
 	if len(parts) == 3 {
 		panePID, convErr := strconv.Atoi(strings.TrimSpace(parts[2]))
 		if convErr == nil && panePID > 0 {
-			if derived := deriveCurrentCommandFromPanePID(panePID); strings.TrimSpace(derived) != "" {
-				current = derived
+			tpgid, hasTPGID := foregroundProcessGroupIDForPID(panePID)
+			if hasTPGID {
+				if cached, ok := a.getPaneCommandCache(target, panePID, tpgid); ok {
+					return title, cached, nil
+				}
+			}
+			if derived := deriveCurrentCommandFromActivePID(panePID, tpgid, hasTPGID); strings.TrimSpace(derived) != "" {
+				current = strings.TrimSpace(derived)
+				if hasTPGID {
+					a.setPaneCommandCache(target, panePID, tpgid, current)
+				}
 			}
 		}
 	}
 	return title, current, nil
 }
 
-func deriveCurrentCommandFromPanePID(panePID int) string {
+func (a *Adapter) getPaneCommandCache(target string, panePID, tpgid int) (string, bool) {
+	if a == nil {
+		return "", false
+	}
+	target = strings.TrimSpace(target)
+	if target == "" || panePID <= 0 || tpgid <= 0 {
+		return "", false
+	}
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
+	entry, ok := a.paneCommandByPane[target]
+	if !ok {
+		return "", false
+	}
+	if entry.panePID != panePID || entry.tpgid != tpgid {
+		return "", false
+	}
+	command := strings.TrimSpace(entry.command)
+	if command == "" {
+		return "", false
+	}
+	return command, true
+}
+
+func (a *Adapter) setPaneCommandCache(target string, panePID, tpgid int, command string) {
+	if a == nil {
+		return
+	}
+	target = strings.TrimSpace(target)
+	command = strings.TrimSpace(command)
+	if target == "" || panePID <= 0 || tpgid <= 0 || command == "" {
+		return
+	}
+	a.cacheMu.Lock()
+	defer a.cacheMu.Unlock()
+	if a.paneCommandByPane == nil {
+		a.paneCommandByPane = map[string]paneCommandCacheEntry{}
+	}
+	a.paneCommandByPane[target] = paneCommandCacheEntry{
+		panePID: panePID,
+		tpgid:   tpgid,
+		command: command,
+	}
+	if len(a.paneCommandByPane) <= 2048 {
+		return
+	}
+	for key := range a.paneCommandByPane {
+		delete(a.paneCommandByPane, key)
+		break
+	}
+}
+
+func deriveCurrentCommandFromActivePID(panePID, tpgid int, hasTPGID bool) string {
 	if panePID <= 0 {
 		return ""
 	}
 	activePID := panePID
-	if fgPID, ok := foregroundProcessGroupIDForPID(panePID); ok && fgPID > 0 {
-		activePID = fgPID
+	if hasTPGID && tpgid > 0 {
+		activePID = tpgid
 	}
 	return deriveDisplayNameByPID(activePID)
 }

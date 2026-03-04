@@ -57,11 +57,13 @@ type PaneActor struct {
 	autoProcessArmed    bool
 
 	runCtx                 context.Context
+	loopCancel             context.CancelFunc
 	realtimeActive         bool
 	realtimeStop           func()
 	lastTaskStateReportAt  time.Time
 	firstTaskStateReported bool
 	seededLastActiveAt     time.Time
+	lastCurrentCommand     string
 
 	startOnce sync.Once
 }
@@ -175,9 +177,27 @@ func (p *PaneActor) Start(ctx context.Context) {
 	p.runCtx = ctx
 	p.mu.Unlock()
 	p.startOnce.Do(func() {
-		go p.loop(ctx)
+		loopCtx, cancel := context.WithCancel(ctx)
+		p.mu.Lock()
+		p.loopCancel = cancel
+		p.mu.Unlock()
+		go p.loop(loopCtx)
 	})
 	p.ensureRealtimeSubscribed()
+}
+
+func (p *PaneActor) Stop() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	cancel := p.loopCancel
+	p.loopCancel = nil
+	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	p.stopRealtime()
 }
 
 func (p *PaneActor) loop(ctx context.Context) {
@@ -408,11 +428,18 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 	p.firstTaskStateReported = true
 	p.mu.Unlock()
 	currentCommand := ""
+	commandLoaded := false
 	if provider, ok := p.tmuxService.(paneStatusMetadataProvider); ok {
 		_, cmd, err := provider.PaneTitleAndCurrentCommand(p.target)
 		if err == nil {
 			currentCommand = strings.TrimSpace(cmd)
+			commandLoaded = true
 		}
+	}
+	if commandLoaded {
+		p.mu.Lock()
+		p.lastCurrentCommand = currentCommand
+		p.mu.Unlock()
 	}
 
 	p.taskStateSink.OnPaneReport(PaneStateReport{
@@ -427,6 +454,31 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 		HasCursor:      hasCursor,
 		UpdatedAt:      reportAt.Unix(),
 	})
+}
+
+func (p *PaneActor) statusItem(now time.Time) (sessionStatusItem, bool) {
+	if p == nil {
+		return sessionStatusItem{}, false
+	}
+	p.mu.RLock()
+	started := p.startupHashCaptured || p.statusState.Emitted != ""
+	status := normalizeSessionStatus(p.statusState.Emitted)
+	if status == "" {
+		status = SessionStatusUnknown
+	}
+	at := p.statusState.LastActiveAt
+	if at.IsZero() {
+		at = now
+	}
+	item := sessionStatusItem{
+		Target:         p.target,
+		Title:          sessionTitleFromTarget(p.target),
+		CurrentCommand: strings.TrimSpace(p.lastCurrentCommand),
+		Status:         status,
+		UpdatedAt:      at.Unix(),
+	}
+	p.mu.RUnlock()
+	return item, started
 }
 
 func (p *PaneActor) captureResetSnapshot() (string, int, int, bool, error) {

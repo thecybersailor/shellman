@@ -306,11 +306,89 @@ func (r *RegistryActor) discoverPanesOnce(logger *slog.Logger) {
 		}
 		return
 	}
+	live := make(map[string]struct{}, len(targets))
 	for _, target := range targets {
 		target = strings.TrimSpace(target)
 		if target == "" {
 			continue
 		}
+		live[target] = struct{}{}
 		r.GetOrCreatePane(target)
 	}
+
+	type stalePane struct {
+		target string
+		actor  *PaneActor
+	}
+	toStop := make([]stalePane, 0)
+	r.mu.Lock()
+	for target, pane := range r.panes {
+		if _, ok := live[target]; ok {
+			continue
+		}
+		if session := sessionFromPaneTarget(target); session != "" {
+			if _, ok := live[session]; ok {
+				continue
+			}
+		}
+		if strings.HasPrefix(target, "%") {
+			// For pane-id targets, missing from live set means pane is gone.
+		} else {
+			// For legacy session-style targets in tests or compatibility flows, avoid
+			// aggressive cleanup when discovery only provides session names.
+			continue
+		}
+		delete(r.panes, target)
+		toStop = append(toStop, stalePane{target: target, actor: pane})
+	}
+	r.mu.Unlock()
+
+	for _, stale := range toStop {
+		if stale.actor != nil {
+			stale.actor.Stop()
+		}
+		if logger != nil {
+			logger.Info("pane removed and actor stopped", "pane_target", stale.target)
+		}
+	}
+}
+
+func (r *RegistryActor) StatusItemsByTargets(targets []string, now time.Time) map[string]sessionStatusItem {
+	if r == nil {
+		return nil
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	r.mu.Lock()
+	panes := make(map[string]*PaneActor, len(targets))
+	for _, raw := range targets {
+		target := strings.TrimSpace(raw)
+		if target == "" {
+			continue
+		}
+		pane := r.panes[target]
+		if pane != nil {
+			panes[target] = pane
+		}
+	}
+	r.mu.Unlock()
+
+	out := make(map[string]sessionStatusItem, len(panes))
+	for _, raw := range targets {
+		target := strings.TrimSpace(raw)
+		if target == "" {
+			continue
+		}
+		pane := panes[target]
+		if pane == nil {
+			continue
+		}
+		item, ok := pane.statusItem(now)
+		if !ok {
+			continue
+		}
+		out[target] = item
+	}
+	return out
 }
