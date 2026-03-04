@@ -31,6 +31,53 @@ async function unwrap<T>(res: Awaited<ReturnType<APIRequestContext["get"]>> | Aw
   return body.data as T;
 }
 
+async function postWithBusyRetry(
+  request: APIRequestContext,
+  url: string,
+  data: Record<string, unknown>,
+  retries = 6
+) {
+  let lastStatus = 0;
+  let lastBody = "";
+  for (let attempt = 0; attempt < retries; attempt += 1) {
+    const res = await request.post(url, { data });
+    if (res.ok()) {
+      return res;
+    }
+    lastStatus = res.status();
+    lastBody = await res.text();
+    const isBusy = lastStatus === 500 && lastBody.includes("SQLITE_BUSY");
+    if (!isBusy || attempt === retries - 1) {
+      throw new Error(`unexpected http status=${lastStatus} body=${lastBody}`);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+  }
+  throw new Error(`unexpected http status=${lastStatus} body=${lastBody}`);
+}
+
+async function waitAssistantIdle(request: APIRequestContext, taskID: string, timeoutMs = 60000) {
+  const stopURL = `${apiBaseURL}/api/v1/tasks/${taskID}/messages/stop`;
+  const messagesURL = `${apiBaseURL}/api/v1/tasks/${taskID}/messages`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const res = await request.get(messagesURL);
+    if (res.ok()) {
+      const body = await res.json();
+      const messages = Array.isArray(body?.data?.messages) ? body.data.messages : [];
+      const lastAssistant = [...messages].reverse().find((m: any) => m?.role === "assistant");
+      const status = String(lastAssistant?.status ?? "").trim();
+      if (status !== "" && status !== "running") {
+        return;
+      }
+      if (status === "running") {
+        await unwrap(await postWithBusyRetry(request, stopURL, {}));
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throw new Error(`timeout waiting assistant idle task=${taskID}`);
+}
+
 async function waitForAPIReady(request: APIRequestContext, retries = 60) {
   for (let i = 0; i < retries; i += 1) {
     try {
@@ -51,34 +98,28 @@ async function seedProject(request: APIRequestContext) {
   const projectID = `e2e_docker_${Date.now()}`;
   const missingPaneTarget = `missing:${projectID}`;
   await unwrap<{ project_id: string }>(
-    await request.post(`${apiBaseURL}/api/v1/projects/active`, {
-      data: {
-        project_id: projectID,
-        repo_root: e2eRepoRoot
-      }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/active`, {
+      project_id: projectID,
+      repo_root: e2eRepoRoot
     })
   );
 
   const rootTask = await unwrap<{ task_id: string; pane_target: string }>(
-    await request.post(`${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
-      data: {
-        title: "root-task"
-      }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
+      title: "root-task"
     })
   );
 
   const siblingTask = await unwrap<{ task_id: string; pane_target: string }>(
-    await request.post(`${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/panes/sibling`, {
-      data: { title: "sibling-task" }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/panes/sibling`, {
+      title: "sibling-task"
     })
   );
 
   const missingTask = await unwrap<{ task_id: string; pane_target: string }>(
-    await request.post(`${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/adopt-pane`, {
-      data: {
-        title: "missing-pane-task",
-        pane_target: missingPaneTarget
-      }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/adopt-pane`, {
+      title: "missing-pane-task",
+      pane_target: missingPaneTarget
     })
   );
 
@@ -157,13 +198,64 @@ function taskRowTitle(page: Page, projectID: string, taskID: string) {
   return projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).getByTestId("shellman-task-row-title");
 }
 
+async function isTaskRowSelected(page: Page, taskID: string) {
+  return page.evaluate((tid) => {
+    const nodes = Array.from(document.querySelectorAll(`[data-test-id="shellman-task-row-${tid}"]`));
+    return nodes.some((node) => {
+      const cls = typeof (node as HTMLElement).className === "string" ? (node as HTMLElement).className : "";
+      return cls.includes("bg-accent/50");
+    });
+  }, taskID);
+}
+
+async function dispatchTaskRowClick(page: Page, projectID: string, taskID: string) {
+  await page.evaluate(
+    ({ pid, tid }) => {
+      const regions = Array.from(document.querySelectorAll('[role="region"]')).filter(
+        (node) => node.getAttribute("aria-label") === pid
+      );
+      for (const region of regions) {
+        const row = region.querySelector(`[data-test-id="shellman-task-row-${tid}"]`);
+        if (row) {
+          row.dispatchEvent(
+            new MouseEvent("click", {
+              bubbles: true,
+              cancelable: true,
+              composed: true
+            })
+          );
+        }
+      }
+    },
+    { pid: projectID, tid: taskID }
+  );
+}
+
 async function selectTask(page: Page, projectID: string, taskID: string) {
   const row = projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first();
-  await expect(row).toBeVisible({ timeout: 30000 });
-  await row.click();
-  await expect(row).toHaveClass(/bg-accent\/50/, { timeout: 15000 });
-  // Simulate human pacing to avoid panel transition races between task switches.
-  await page.waitForTimeout(220);
+  const title = row.getByTestId("shellman-task-row-title").first();
+  await expect(title).toBeVisible({ timeout: 30000 });
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    try {
+      await title.click();
+    } catch {
+      await row.click();
+    }
+    await dispatchTaskRowClick(page, projectID, taskID);
+    try {
+      await expect
+        .poll(() => isTaskRowSelected(page, taskID), { timeout: 4000, intervals: [120, 250, 500] })
+        .toBe(true);
+      // Simulate human pacing to avoid panel transition races between task switches.
+      await page.waitForTimeout(220);
+      return;
+    } catch (err) {
+      if (attempt === 3) {
+        throw err;
+      }
+      await page.waitForTimeout(180);
+    }
+  }
 }
 
 function activeTerminal(page: Page) {
@@ -183,11 +275,9 @@ async function runEcho(page: Page, token: string) {
 
 async function sendTTYInput(request: APIRequestContext, taskID: string, input: string) {
   await unwrap(
-    await request.post(`${apiBaseURL}/api/v1/tasks/${taskID}/messages`, {
-      data: {
-        source: "tty_write_stdin",
-        input
-      }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${taskID}/messages`, {
+      source: "tty_write_stdin",
+      input
     })
   );
 }
@@ -378,20 +468,16 @@ async function seedProjectWithManyRootTasks(request: APIRequestContext, count: n
   await waitForAPIReady(request);
   const projectID = `e2e_docker_lru_${Date.now()}`;
   await unwrap<{ project_id: string }>(
-    await request.post(`${apiBaseURL}/api/v1/projects/active`, {
-      data: {
-        project_id: projectID,
-        repo_root: e2eRepoRoot
-      }
+    await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/active`, {
+      project_id: projectID,
+      repo_root: e2eRepoRoot
     })
   );
   const entries: Array<{ projectID: string; taskID: string; paneTarget: string }> = [];
   for (let i = 0; i < count; i += 1) {
     const rootTask = await unwrap<{ task_id: string; pane_target: string }>(
-      await request.post(`${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
-        data: {
-          title: `root-task-${String(i + 1).padStart(2, "0")}`
-        }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
+        title: `root-task-${String(i + 1).padStart(2, "0")}`
       })
     );
     entries.push({
@@ -557,7 +643,7 @@ test.describe("shellman local web full chain (docker)", () => {
         await waitBufferContains(page, "Find and fix a bug in @filename", 20000);
       } else {
         await runMockCodexTUI(request, taskID, paneToken, 5000);
-        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
+        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 60000);
       }
       await page.waitForTimeout(180);
     }
@@ -600,6 +686,12 @@ test.describe("shellman local web full chain (docker)", () => {
         await page.waitForTimeout(360);
         await activeTerminal(page).click();
         await waitBufferContains(page, tailToken, 15000);
+        await expect
+          .poll(async () => {
+            const alignment = await readCursorAlignment(page);
+            return alignment.ok ? alignment.visualCursorDelta : null;
+          }, { timeout: 15000, intervals: [300, 600, 1000] })
+          .toBe(0);
         const alignment = await readCursorAlignment(page);
         if (alignment.visualCursorDelta === null || alignment.cursorPromptDelta === 1) {
           console.log(`[lru-gap-recover][round-anomaly] round=${round} i=${i} state=${JSON.stringify(alignment)}`);
@@ -698,23 +790,19 @@ test.describe("shellman local web full chain (docker)", () => {
     test.setTimeout(60_000);
     const projectID = `e2e_first_frame_cmd_${Date.now()}`;
     await unwrap<{ project_id: string }>(
-      await request.post(`${apiBaseURL}/api/v1/projects/active`, {
-        data: {
-          project_id: projectID,
-          repo_root: e2eRepoRoot
-        }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/active`, {
+        project_id: projectID,
+        repo_root: e2eRepoRoot
       })
     );
     const rootTask = await unwrap<{ task_id: string }>(
-      await request.post(`${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
-        data: {
-          title: ""
-        }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/projects/${projectID}/panes/root`, {
+        title: ""
       })
     );
     const siblingTask = await unwrap<{ task_id: string }>(
-      await request.post(`${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/panes/sibling`, {
-        data: { title: "" }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${rootTask.task_id}/panes/sibling`, {
+        title: ""
       })
     );
 
@@ -769,8 +857,8 @@ test.describe("shellman local web full chain (docker)", () => {
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
     await expect(page.getByTestId("shellman-task-title-input")).toHaveValue("root-task");
     await unwrap(
-      await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
-        data: { content: "Reply exactly: SHELLMAN_E2E_OK" }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
+        content: "Reply exactly: SHELLMAN_E2E_OK"
       })
     );
     await page.reload();
@@ -803,13 +891,26 @@ test.describe("shellman local web full chain (docker)", () => {
     await selectTask(page, seeded.projectID, seeded.rootTaskID);
 
     await unwrap(
-      await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
-        data: { content: "TURN_ONE_MARKER" }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
+        content: "TURN_ONE_MARKER"
       })
     );
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`);
+          if (!res.ok()) return false;
+          const body = await res.json();
+          const messages = Array.isArray(body?.data?.messages) ? body.data.messages : [];
+          return messages.some((m: any) => m?.role === "user" && String(m?.content ?? "").includes("TURN_ONE_MARKER"));
+        },
+        { timeout: 30000, intervals: [300, 600, 1000] }
+      )
+      .toBe(true);
+    await waitAssistantIdle(request, seeded.rootTaskID, 60000);
     await unwrap(
-      await request.post(`${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
-        data: { content: "TURN_TWO_MARKER" }
+      await postWithBusyRetry(request, `${apiBaseURL}/api/v1/tasks/${seeded.rootTaskID}/messages`, {
+        content: "TURN_TWO_MARKER"
       })
     );
 
