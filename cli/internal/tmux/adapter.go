@@ -9,6 +9,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/shirou/gopsutil/v4/process"
 )
 
 type Adapter struct {
@@ -220,7 +222,51 @@ func (a *Adapter) PaneTitleAndCurrentCommand(target string) (string, string, err
 	}
 	title := strings.TrimSpace(parts[0])
 	current := strings.TrimSpace(parts[1])
+	if len(parts) == 3 {
+		panePID, convErr := strconv.Atoi(strings.TrimSpace(parts[2]))
+		if convErr == nil && panePID > 0 {
+			if derived := deriveCurrentCommandFromPanePID(panePID); strings.TrimSpace(derived) != "" {
+				current = derived
+			}
+		}
+	}
 	return title, current, nil
+}
+
+func deriveCurrentCommandFromPanePID(panePID int) string {
+	if panePID <= 0 {
+		return ""
+	}
+	activePID := panePID
+	if fgPID, ok := foregroundProcessGroupIDForPID(panePID); ok && fgPID > 0 {
+		activePID = fgPID
+	}
+	return deriveDisplayNameByPID(activePID)
+}
+
+func deriveDisplayNameByPID(pid int) string {
+	if pid <= 0 {
+		return ""
+	}
+	proc, err := process.NewProcess(int32(pid))
+	if err != nil {
+		return ""
+	}
+	name, _ := proc.Name()
+	cmdline, _ := proc.Cmdline()
+	derived := deriveDisplayProcessName(name, cmdline)
+	if derived != "" {
+		return derived
+	}
+	name = normalizeProcName(name)
+	if name != "" {
+		return name
+	}
+	tokens := strings.Fields(strings.TrimSpace(cmdline))
+	if len(tokens) == 0 {
+		return ""
+	}
+	return normalizeProcName(tokens[0])
 }
 
 func deriveDisplayProcessName(comm, args string) string {
