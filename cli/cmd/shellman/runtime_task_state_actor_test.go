@@ -222,7 +222,7 @@ func TestTaskStateActor_Tick_TrimsSnapshotToRecentLines(t *testing.T) {
 	if got := store.lastBatch.Panes[0].Snapshot; got != "l4\nl5\nl6\n" {
 		t.Fatalf("expected trimmed snapshot, got %q", got)
 	}
-	if got := store.lastBatch.Panes[0].SnapshotHash; got != sha1Text("l4\nl5\nl6\n") {
+	if got := store.lastBatch.Panes[0].SnapshotHash; got != snapshotChangeHash("l4\nl5\nl6\n") {
 		t.Fatalf("unexpected snapshot hash, got %q", got)
 	}
 }
@@ -289,10 +289,10 @@ func TestTaskStateActor_Tick_EmitsTreeDeltaWhenTasksChanged(t *testing.T) {
 
 func TestTaskStateActor_EventLoop_NoPollingWithoutTrigger(t *testing.T) {
 	store := &fakeTaskStateStore{
-		panesByTask:      projectstate.PanesIndex{},
-		tasksByProject:   map[string][]projectstate.TaskRecordRow{},
-		maxByProject:     map[string]int64{"p1": 0},
-		batchSignal:      make(chan struct{}, 1),
+		panesByTask:    projectstate.PanesIndex{},
+		tasksByProject: map[string][]projectstate.TaskRecordRow{},
+		maxByProject:   map[string]int64{"p1": 0},
+		batchSignal:    make(chan struct{}, 1),
 	}
 	actor := NewTaskStateActor()
 	actor.SetProjectProvider(func() ([]taskStateProject, error) {

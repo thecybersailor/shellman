@@ -1,8 +1,6 @@
 package main
 
 import (
-	"crypto/sha1"
-	"encoding/hex"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -79,18 +77,40 @@ func TestChunkTermData_DoesNotSplitUTF8Rune(t *testing.T) {
 	}
 }
 
-func TestSha1Text_MatchesStandardLibrary(t *testing.T) {
+func TestSnapshotChangeHash_IsDeterministic(t *testing.T) {
 	inputs := []string{
 		"",
 		"hello",
 		"hello\nworld\n",
-		strings.Repeat("x", 8193),
+		strings.Repeat("x", 32768),
 	}
 	for _, in := range inputs {
-		sum := sha1.Sum([]byte(in))
-		want := hex.EncodeToString(sum[:])
-		if got := sha1Text(in); got != want {
-			t.Fatalf("sha1Text mismatch for len=%d: got=%q want=%q", len(in), got, want)
+		got1 := snapshotChangeHash(in)
+		got2 := snapshotChangeHash(in)
+		if got1 != got2 {
+			t.Fatalf("hash must be stable for len=%d: %q != %q", len(in), got1, got2)
 		}
+		if len(got1) != 8 {
+			t.Fatalf("hash must be 8 hex chars, got=%q", got1)
+		}
+	}
+}
+
+func TestSnapshotChangeHash_ChangesWhenSampledRegionsChange(t *testing.T) {
+	base := strings.Repeat("a", 50000)
+	headChanged := "b" + base[1:]
+	midIdx := len(base) / 2
+	midChanged := base[:midIdx] + "b" + base[midIdx+1:]
+	tailChanged := base[:len(base)-1] + "b"
+
+	baseHash := snapshotChangeHash(base)
+	if baseHash == snapshotChangeHash(headChanged) {
+		t.Fatal("expected head change to update hash")
+	}
+	if baseHash == snapshotChangeHash(midChanged) {
+		t.Fatal("expected middle change to update hash")
+	}
+	if baseHash == snapshotChangeHash(tailChanged) {
+		t.Fatal("expected tail change to update hash")
 	}
 }

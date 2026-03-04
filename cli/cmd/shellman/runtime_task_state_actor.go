@@ -336,7 +336,7 @@ func (a *TaskStateActor) flushDirtyRuntime(projects []taskStateProject) projects
 			CurrentCommand: report.CurrentCommand,
 			RuntimeStatus:  report.RuntimeStatus,
 			Snapshot:       trimmedSnapshot,
-			SnapshotHash:   sha1Text(trimmedSnapshot),
+			SnapshotHash:   snapshotChangeHash(trimmedSnapshot),
 			CursorX:        report.CursorX,
 			CursorY:        report.CursorY,
 			HasCursor:      report.HasCursor,

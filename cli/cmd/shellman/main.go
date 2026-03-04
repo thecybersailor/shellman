@@ -2,8 +2,6 @@ package main
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1316,8 +1314,7 @@ func tailString(text string, limit int) string {
 }
 
 func snapshotHash(text string) string {
-	sum := sha1.Sum([]byte(text))
-	return hex.EncodeToString(sum[:])
+	return snapshotChangeHash(text)
 }
 
 func executeTaskChildSpawnAction(

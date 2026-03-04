@@ -883,7 +883,7 @@ func TestPaneActor_ReportTaskState_UsesLastActiveAtAsUpdatedAt(t *testing.T) {
 	actor.SetRuntimeBaseline(paneRuntimeBaseline{
 		LastActiveAt:  1704067200,
 		RuntimeStatus: SessionStatusReady,
-		SnapshotHash:  sha1Text(normalizeTermSnapshot("hello\n")),
+		SnapshotHash:  snapshotChangeHash(normalizeTermSnapshot("hello\n")),
 	})
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -1011,13 +1011,13 @@ func TestPaneActor_ReadyEdgeSuppressedWhenHashAlreadyConsumedByTool(t *testing.T
 
 	actor.emitStatus("boot$\n", base)
 	actor.emitStatus("run$\n", base.Add(20*time.Millisecond))
-	registerAutoProgressSuppression(target, sha1Text(normalizeTermSnapshot("run$\n")), true)
+	registerAutoProgressSuppression(target, snapshotChangeHash(normalizeTermSnapshot("run$\n")), true)
 	actor.emitStatus("run$\n", base.Add(2400*time.Millisecond))
 	actor.emitStatus("run$\n", base.Add(5000*time.Millisecond))
 	if got := autoCompleteCalls.Load(); got != 0 {
 		t.Fatalf("expected suppressed ready edge not to trigger auto-complete, got %d", got)
 	}
-	if consumeAutoProgressSuppression(target, sha1Text(normalizeTermSnapshot("run$\n"))) {
+	if consumeAutoProgressSuppression(target, snapshotChangeHash(normalizeTermSnapshot("run$\n"))) {
 		t.Fatal("expected suppression entry consumed by first ready edge check")
 	}
 }

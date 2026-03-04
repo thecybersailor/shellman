@@ -197,7 +197,7 @@ func (p *PaneActor) Start(ctx context.Context) {
 	cursorY := p.lastCursorY
 	hasCursor := p.hasCursor
 	p.mu.RUnlock()
-	p.reportTaskState(time.Now().UTC(), snapshot, cursorX, cursorY, hasCursor)
+	p.reportTaskState(time.Now().UTC(), snapshot, cursorX, cursorY, hasCursor, "")
 }
 
 func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...paneSubscribeOptions) {
@@ -377,11 +377,12 @@ func (p *PaneActor) onSnapshotUpdated(now time.Time) {
 	hasCursor := p.hasCursor
 	p.mu.RUnlock()
 
-	p.emitStatus(snapshot, now)
-	p.reportTaskState(now, snapshot, cursorX, cursorY, hasCursor)
+	snapshotHash := snapshotChangeHash(snapshot)
+	p.emitStatusWithHash(snapshotHash, now)
+	p.reportTaskState(now, snapshot, cursorX, cursorY, hasCursor, snapshotHash)
 }
 
-func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cursorY int, hasCursor bool) {
+func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cursorY int, hasCursor bool, snapshotHash string) {
 	if p == nil || p.taskStateSink == nil {
 		return
 	}
@@ -416,6 +417,9 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 		p.lastCurrentCommand = currentCommand
 		p.mu.Unlock()
 	}
+	if snapshotHash == "" {
+		snapshotHash = snapshotChangeHash(snapshot)
+	}
 
 	p.taskStateSink.OnPaneReport(PaneStateReport{
 		PaneID:         p.target,
@@ -423,7 +427,7 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 		CurrentCommand: currentCommand,
 		RuntimeStatus:  runtimeStatus,
 		Snapshot:       snapshot,
-		SnapshotHash:   sha1Text(snapshot),
+		SnapshotHash:   snapshotHash,
 		CursorX:        cursorX,
 		CursorY:        cursorY,
 		HasCursor:      hasCursor,
@@ -509,9 +513,12 @@ func (p *PaneActor) captureResetSnapshotConsistent(capture func() (string, error
 }
 
 func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
+	p.emitStatusWithHash(snapshotChangeHash(snapshot), now)
+}
+
+func (p *PaneActor) emitStatusWithHash(currHash string, now time.Time) {
 	p.mu.Lock()
 	prev := p.statusState
-	currHash := sha1Text(snapshot)
 	firstTick := !p.startupHashCaptured
 	// Cold-start: keep baseline last_active_at on first sample even if hash differs.
 	if firstTick && !prev.LastActiveAt.IsZero() && prev.PrevHash != "" {
@@ -744,14 +751,13 @@ func appendRealtimeSnapshot(prev, chunk string, limit int) string {
 			}
 		}
 	}
-	buf := acquirePooledBuffer(len(prevPart) + len(chunkPart))
+	var buf strings.Builder
+	buf.Grow(len(prevPart) + len(chunkPart))
 	if prevPart != "" {
 		_, _ = buf.WriteString(prevPart)
 	}
 	_, _ = buf.WriteString(chunkPart)
-	out := normalizeTermSnapshot(buf.String())
-	releasePooledBuffer(buf)
-	return out
+	return normalizeTermSnapshot(buf.String())
 }
 
 func (p *PaneActor) stopRealtime() {
