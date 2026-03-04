@@ -35,6 +35,37 @@ describe("shellman store", () => {
     expect(classifyTermFrame("append", "delta")).toBe("append_delta");
   });
 
+  it("reports completion via /api/v1/runs/:run_id/report-result with request_id", async () => {
+    const calls: Array<{ url: string; method: string; body?: string }> = [];
+    const fakeFetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({
+        url,
+        method: init?.method ?? "GET",
+        body: typeof init?.body === "string" ? init.body : undefined
+      });
+      if (url.includes("/api/v1/runs/r1/report-result")) {
+        return {
+          json: async () => ({ ok: true, data: { run_id: "r1", status: "completed", idempotent: false } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: [] }) } as Response;
+    };
+
+    const store = createShellmanStore(fakeFetch as typeof fetch, () => null as unknown as WebSocket);
+    const out = await store.reportRunResult("r1", "done");
+    expect(out.runId).toBe("r1");
+    expect(out.status).toBe("completed");
+
+    const hit = calls.find((c) => c.url.endsWith("/api/v1/runs/r1/report-result"));
+    expect(hit).toBeTruthy();
+    expect(hit?.method).toBe("POST");
+    const payload = JSON.parse(String(hit?.body ?? "{}")) as { summary?: string; request_id?: string };
+    expect(payload.summary).toBe("done");
+    expect(typeof payload.request_id).toBe("string");
+    expect((payload.request_id ?? "").length).toBeGreaterThan(0);
+  });
+
   it("loads active projects/tree and pane binding", async () => {
     const calls: string[] = [];
     const fakeFetch = async (url: string) => {

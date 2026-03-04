@@ -33,6 +33,13 @@ type processInfo struct {
 	name string
 }
 
+type PaneRuntimeState struct {
+	Title          string
+	CurrentCommand string
+	CurrentBinary  string
+	CurrentArgs    []string
+}
+
 type paneCommandCacheEntry struct {
 	panePID int
 	tpgid   int
@@ -224,38 +231,49 @@ func (a *Adapter) PaneLastActiveAt(target string) (time.Time, error) {
 }
 
 func (a *Adapter) PaneTitleAndCurrentCommand(target string) (string, string, error) {
-	out, err := a.exec.Output("tmux", a.withSocket("display-message", "-p", "-t", target, "#{pane_title}\t#{pane_current_command}\t#{pane_pid}")...)
+	state, err := a.PaneRuntimeState(target)
 	if err != nil {
 		return "", "", err
 	}
+	return state.Title, state.CurrentCommand, nil
+}
+
+func (a *Adapter) PaneRuntimeState(target string) (PaneRuntimeState, error) {
+	out, err := a.exec.Output("tmux", a.withSocket("display-message", "-p", "-t", target, "#{pane_title}\t#{pane_current_command}\t#{pane_pid}")...)
+	if err != nil {
+		return PaneRuntimeState{}, err
+	}
 	text := strings.TrimSpace(string(out))
 	if text == "" {
-		return "", "", nil
+		return PaneRuntimeState{}, nil
 	}
 	parts := strings.SplitN(text, "\t", 3)
 	if len(parts) == 1 {
-		return strings.TrimSpace(parts[0]), "", nil
+		return PaneRuntimeState{Title: strings.TrimSpace(parts[0])}, nil
 	}
-	title := strings.TrimSpace(parts[0])
-	current := strings.TrimSpace(parts[1])
+	state := PaneRuntimeState{
+		Title:          strings.TrimSpace(parts[0]),
+		CurrentCommand: strings.TrimSpace(parts[1]),
+	}
 	if len(parts) == 3 {
 		panePID, convErr := strconv.Atoi(strings.TrimSpace(parts[2]))
 		if convErr == nil && panePID > 0 {
 			tpgid, hasTPGID := foregroundProcessGroupIDForPID(panePID)
-			if hasTPGID {
-				if cached, ok := a.getPaneCommandCache(target, panePID, tpgid); ok {
-					return title, cached, nil
-				}
-			}
-			if derived := deriveCurrentCommandFromActivePID(panePID, tpgid, hasTPGID); strings.TrimSpace(derived) != "" {
-				current = strings.TrimSpace(derived)
+			if derivedCommand, derivedBinary, derivedArgs := deriveRuntimeStateFromActivePID(panePID, tpgid, hasTPGID); strings.TrimSpace(derivedCommand) != "" {
+				state.CurrentCommand = strings.TrimSpace(derivedCommand)
+				state.CurrentBinary = strings.TrimSpace(derivedBinary)
+				state.CurrentArgs = append([]string{}, derivedArgs...)
 				if hasTPGID {
-					a.setPaneCommandCache(target, panePID, tpgid, current)
+					a.setPaneCommandCache(target, panePID, tpgid, state.CurrentCommand)
+				}
+			} else if hasTPGID {
+				if cached, ok := a.getPaneCommandCache(target, panePID, tpgid); ok {
+					state.CurrentCommand = cached
 				}
 			}
 		}
 	}
-	return title, current, nil
+	return state, nil
 }
 
 func (a *Adapter) getPaneCommandCache(target string, panePID, tpgid int) (string, bool) {
@@ -311,39 +329,89 @@ func (a *Adapter) setPaneCommandCache(target string, panePID, tpgid int, command
 }
 
 func deriveCurrentCommandFromActivePID(panePID, tpgid int, hasTPGID bool) string {
+	command, _, _ := deriveRuntimeStateFromActivePID(panePID, tpgid, hasTPGID)
+	return command
+}
+
+func deriveRuntimeStateFromActivePID(panePID, tpgid int, hasTPGID bool) (string, string, []string) {
 	if panePID <= 0 {
-		return ""
+		return "", "", nil
 	}
 	activePID := panePID
 	if hasTPGID && tpgid > 0 {
 		activePID = tpgid
 	}
-	return deriveDisplayNameByPID(activePID)
+	return deriveProcessRuntimeByPID(activePID)
 }
 
 func deriveDisplayNameByPID(pid int) string {
+	command, _, _ := deriveProcessRuntimeByPID(pid)
+	return command
+}
+
+func deriveProcessRuntimeByPID(pid int) (string, string, []string) {
 	if pid <= 0 {
-		return ""
+		return "", "", nil
 	}
 	proc, err := process.NewProcess(int32(pid))
 	if err != nil {
-		return ""
+		return "", "", nil
 	}
 	name, _ := proc.Name()
 	cmdline, _ := proc.Cmdline()
-	derived := deriveDisplayProcessName(name, cmdline)
-	if derived != "" {
-		return derived
+	argv, _ := proc.CmdlineSlice()
+	return buildProcessRuntime(name, cmdline, argv)
+}
+
+func buildProcessRuntime(comm, cmdline string, argv []string) (string, string, []string) {
+	binary := normalizeProcName(comm)
+	command := deriveDisplayProcessName(comm, cmdline)
+	if command == "" {
+		command = binary
 	}
-	name = normalizeProcName(name)
-	if name != "" {
-		return name
+	if command == "" {
+		tokens := strings.Fields(strings.TrimSpace(cmdline))
+		if len(tokens) > 0 {
+			command = normalizeProcName(tokens[0])
+		}
 	}
-	tokens := strings.Fields(strings.TrimSpace(cmdline))
+	args := normalizeProcessArgs(binary, argv, cmdline)
+	return command, binary, args
+}
+
+func normalizeProcessArgs(binary string, argv []string, cmdline string) []string {
+	tokens := make([]string, 0, len(argv))
+	if len(argv) > 0 {
+		for _, item := range argv {
+			arg := strings.TrimSpace(item)
+			if arg == "" {
+				continue
+			}
+			tokens = append(tokens, arg)
+		}
+	} else {
+		for _, item := range strings.Fields(strings.TrimSpace(cmdline)) {
+			arg := strings.TrimSpace(item)
+			if arg == "" {
+				continue
+			}
+			tokens = append(tokens, arg)
+		}
+	}
 	if len(tokens) == 0 {
-		return ""
+		return nil
 	}
-	return normalizeProcName(tokens[0])
+	bin := strings.ToLower(strings.TrimSpace(normalizeProcName(binary)))
+	if bin != "" {
+		first := strings.ToLower(strings.TrimSpace(normalizeProcName(tokens[0])))
+		if first == bin {
+			tokens = tokens[1:]
+		}
+	}
+	if len(tokens) == 0 {
+		return nil
+	}
+	return append([]string{}, tokens...)
 }
 
 func deriveDisplayProcessName(comm, args string) string {

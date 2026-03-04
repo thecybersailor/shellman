@@ -19,4 +19,3 @@
 - `webui/src/generated/api-types.ts` is generated and read-only.
 - Keep single source of truth in Go structs.
 - Do not add pnpm command path for type generation.
-- Keep task-centric contracts only: do not introduce `run_id` or `/api/v1/runs/*` back into generated API types.

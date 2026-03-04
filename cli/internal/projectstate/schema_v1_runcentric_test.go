@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestInitGlobalDB_CreatesTaskCentricSchema(t *testing.T) {
+func TestInitGlobalDB_CreatesRunCentricSchema(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {
 		t.Fatalf("InitGlobalDB failed: %v", err)
@@ -18,7 +18,7 @@ func TestInitGlobalDB_CreatesTaskCentricSchema(t *testing.T) {
 	}
 	defer func() { _ = db.Close() }()
 
-	mustHave := []string{"tasks", "notes", "task_messages", "tmux_servers", "legacy_state", "dir_history", "pane_runtime", "task_runtime", "config", "projects"}
+	mustHave := []string{"tasks", "task_runs", "run_bindings", "run_events", "completion_inbox", "action_outbox", "tmux_servers"}
 	for _, name := range mustHave {
 		var got string
 		if err := db.QueryRow(`SELECT name FROM sqlite_master WHERE type='table' AND name=?`, name).Scan(&got); err != nil {

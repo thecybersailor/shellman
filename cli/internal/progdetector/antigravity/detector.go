@@ -5,8 +5,8 @@ import (
 	"errors"
 	"strings"
 
-	"shellman/cli/internal/programadapter"
 	"shellman/cli/internal/progdetector"
+	"shellman/cli/internal/programadapter"
 )
 
 const (
@@ -24,6 +24,10 @@ func New() Detector {
 
 func (Detector) ProgramID() string {
 	return programID
+}
+
+func (d Detector) MatchRuntimeState(state progdetector.RuntimeState) bool {
+	return d.MatchCurrentCommand(state.CurrentCommand)
 }
 
 func (Detector) IsAvailable(ctx context.Context) (bool, error) {

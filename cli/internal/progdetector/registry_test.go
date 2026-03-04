@@ -21,6 +21,10 @@ func (f fakeDetector) MatchCurrentCommand(currentCommand string) bool {
 	return f.matcher(currentCommand)
 }
 
+func (f fakeDetector) MatchRuntimeState(state RuntimeState) bool {
+	return f.MatchCurrentCommand(state.CurrentCommand)
+}
+
 func (f fakeDetector) HasExitedMode(context.Context, RuntimeState) (bool, error) { return false, nil }
 
 func (f fakeDetector) BuildInputPromptSteps(string) ([]PromptStep, error) { return nil, nil }

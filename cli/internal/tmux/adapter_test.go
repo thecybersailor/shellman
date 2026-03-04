@@ -491,3 +491,46 @@ func TestDeriveDisplayProcessName_SkipsOptionValues(t *testing.T) {
 		t.Fatalf("unexpected display name: %q", got)
 	}
 }
+
+func TestBuildProcessRuntime_NodeCodexArgs(t *testing.T) {
+	command, binary, args := buildProcessRuntime(
+		"node",
+		"node /Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex --help",
+		[]string{
+			"node",
+			"/Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex",
+			"--help",
+		},
+	)
+	if command != "codex" {
+		t.Fatalf("unexpected command: %q", command)
+	}
+	if binary != "node" {
+		t.Fatalf("unexpected binary: %q", binary)
+	}
+	if len(args) != 2 || args[0] != "/Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex" || args[1] != "--help" {
+		t.Fatalf("unexpected args: %#v", args)
+	}
+}
+
+func TestBuildProcessRuntime_NodeCursorAgentArgs(t *testing.T) {
+	command, binary, args := buildProcessRuntime(
+		"node",
+		"node /Users/wanglei/.local/bin/cursor-agent --use-system-ca /Users/wanglei/.local/share/cursor-agent/index.js",
+		[]string{
+			"node",
+			"/Users/wanglei/.local/bin/cursor-agent",
+			"--use-system-ca",
+			"/Users/wanglei/.local/share/cursor-agent/index.js",
+		},
+	)
+	if command == "" {
+		t.Fatal("expected non-empty display command")
+	}
+	if binary != "node" {
+		t.Fatalf("unexpected binary: %q", binary)
+	}
+	if len(args) < 1 || args[0] != "/Users/wanglei/.local/bin/cursor-agent" {
+		t.Fatalf("unexpected args head: %#v", args)
+	}
+}

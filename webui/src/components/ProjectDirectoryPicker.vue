@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { Folder } from "lucide-vue-next";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import type { DirectoryHistoryItem, DirectoryItem, DirectoryListResult } from "@/stores/shellman";
@@ -243,7 +244,10 @@ function onPathEscape() {
           @mousedown.prevent
           @click="onSelectAutocomplete(item)"
         >
-          {{ item.path }}
+          <span class="flex items-center gap-1.5">
+            <Folder class="h-3.5 w-3.5 shrink-0 opacity-70" data-test-id="shellman-dir-autocomplete-icon" />
+            <span class="truncate">{{ item.path }}</span>
+          </span>
         </button>
       </div>
     </div>
@@ -258,7 +262,10 @@ function onPathEscape() {
           class="block w-full rounded px-2 py-1 text-left text-sm hover:bg-muted"
           @dblclick="onOpenItem(item)"
         >
-          {{ item.name }}
+          <span class="flex items-center gap-1.5">
+            <Folder class="h-3.5 w-3.5 shrink-0 opacity-70" data-test-id="shellman-dir-item-icon" />
+            <span class="truncate">{{ item.name }}</span>
+          </span>
         </button>
       </div>
 

@@ -91,6 +91,9 @@ func (s *Service) List(path string) (ListResult, error) {
 			continue
 		}
 		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
 		items = append(items, Item{
 			Name:  name,
 			Path:  filepath.Join(resolved, name),
@@ -115,46 +118,34 @@ func (s *Service) Search(base, q string, limit int) ([]Item, error) {
 	if limit <= 0 {
 		limit = 20
 	}
-	const maxDepth = 6
-	type node struct {
-		path  string
-		depth int
+	entries, err := os.ReadDir(resolvedBase)
+	if err != nil {
+		return nil, err
 	}
-	queue := []node{{path: resolvedBase, depth: 0}}
-	seen := map[string]struct{}{resolvedBase: {}}
-	out := make([]Item, 0, limit)
-
-	for len(queue) > 0 && len(out) < limit {
-		cur := queue[0]
-		queue = queue[1:]
-		entries, err := os.ReadDir(cur.path)
-		if err != nil {
+	out := make([]Item, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
 			continue
 		}
-		for _, entry := range entries {
-			if len(out) >= limit {
-				break
-			}
-			if !entry.IsDir() || entry.Type()&os.ModeSymlink != 0 {
-				continue
-			}
-			name := entry.Name()
-			child := filepath.Clean(filepath.Join(cur.path, name))
-			if _, ok := seen[child]; ok {
-				continue
-			}
-			seen[child] = struct{}{}
-			if strings.Contains(strings.ToLower(name), query) || strings.Contains(strings.ToLower(child), query) {
-				out = append(out, Item{Name: name, Path: child, IsDir: true})
-			}
-			if cur.depth+1 <= maxDepth {
-				queue = append(queue, node{path: child, depth: cur.depth + 1})
-			}
+		name := entry.Name()
+		if strings.HasPrefix(name, ".") {
+			continue
+		}
+		child := filepath.Clean(filepath.Join(resolvedBase, name))
+		if strings.Contains(strings.ToLower(name), query) {
+			out = append(out, Item{Name: name, Path: child, IsDir: true})
 		}
 	}
-
 	sort.Slice(out, func(i, j int) bool {
-		return strings.ToLower(out[i].Name) < strings.ToLower(out[j].Name)
+		left := strings.ToLower(out[i].Name)
+		right := strings.ToLower(out[j].Name)
+		if left != right {
+			return left < right
+		}
+		return strings.ToLower(out[i].Path) < strings.ToLower(out[j].Path)
 	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	return out, nil
 }

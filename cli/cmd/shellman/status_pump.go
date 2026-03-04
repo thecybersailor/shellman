@@ -156,6 +156,7 @@ func triggerAutoCompletionByPaneWithObservedAt(autoComplete paneAutoCompletionEx
 		"triggered", resp.Triggered,
 		"result_status", strings.TrimSpace(resp.Status),
 		"reason", strings.TrimSpace(resp.Reason),
+		"run_id", strings.TrimSpace(resp.RunID),
 		"task_id", strings.TrimSpace(resp.TaskID),
 	)
 	if strings.TrimSpace(resp.Reason) == "no-task-pane-binding" {
@@ -165,6 +166,17 @@ func triggerAutoCompletionByPaneWithObservedAt(autoComplete paneAutoCompletionEx
 			"triggered", resp.Triggered,
 			"result_status", strings.TrimSpace(resp.Status),
 			"reason", strings.TrimSpace(resp.Reason),
+			"run_id", strings.TrimSpace(resp.RunID),
+			"task_id", strings.TrimSpace(resp.TaskID),
+		)
+	}
+	if strings.TrimSpace(resp.Reason) == "no-live-running-run" {
+		logger.Error(
+			"auto-complete returned impossible no-live-running-run",
+			"pane_target", paneTarget,
+			"triggered", resp.Triggered,
+			"result_status", strings.TrimSpace(resp.Status),
+			"run_id", strings.TrimSpace(resp.RunID),
 			"task_id", strings.TrimSpace(resp.TaskID),
 		)
 	}

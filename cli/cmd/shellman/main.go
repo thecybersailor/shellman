@@ -1339,6 +1339,7 @@ func executeTaskChildSpawnAction(
 	var created struct {
 		Data struct {
 			TaskID     string `json:"task_id"`
+			RunID      string `json:"run_id"`
 			PaneTarget string `json:"pane_target"`
 		} `json:"data"`
 	}
@@ -1394,6 +1395,7 @@ func executeTaskChildSpawnAction(
 		"data": map[string]any{
 			"parent_task_id": parentTaskID,
 			"task_id":        childTaskID,
+			"run_id":         strings.TrimSpace(created.Data.RunID),
 			"pane_target":    strings.TrimSpace(created.Data.PaneTarget),
 			"sidecar_mode":   parentSidecarMode.Data.SidecarMode,
 		},

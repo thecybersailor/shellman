@@ -22,6 +22,7 @@ type AutoCompleteByPaneResult struct {
 	Triggered   bool
 	PaneTarget  string
 	Reason      string
+	RunID       string
 	TaskID      string
 	Status      string
 	SummaryUsed string
@@ -55,17 +56,19 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 		callerPath = "internal:auto-progress"
 	}
 	callerActivePane := strings.TrimSpace(input.CallerActivePane)
+	currentServerInstanceID := detectServerInstanceID()
 	slog.Info(
-		"task auto-complete lookup start",
+		"run auto-complete lookup start",
 		"pane_target", paneTarget,
 		"trigger_source", triggerSource,
+		"current_server_instance_id", currentServerInstanceID,
 		"caller_path", callerPath,
 		"caller_active_pane_target", callerActivePane,
 	)
 	projectID, store, taskEntry, foundTask, taskDiag, err := s.findTaskByPaneTarget(paneTarget)
 	if err != nil {
 		slog.Error(
-			"task auto-complete task lookup failed",
+			"run auto-complete task lookup failed",
 			"pane_target", paneTarget,
 			"err", err,
 			"projects_scanned", taskDiag.ProjectsScanned,
@@ -78,7 +81,7 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 	}
 	if !foundTask {
 		slog.Error(
-			"task auto-complete task lookup miss",
+			"run auto-complete task lookup miss",
 			"pane_target", paneTarget,
 			"projects_scanned", taskDiag.ProjectsScanned,
 			"bindings_scanned", taskDiag.BindingsScanned,
@@ -92,6 +95,7 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 			Triggered:  false,
 			PaneTarget: paneTarget,
 			Reason:     "no-task-pane-binding",
+			RunID:      "",
 			TaskID:     "",
 			Status:     "skipped",
 		}, nil
@@ -105,7 +109,7 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 		}
 	}
 	slog.Info(
-		"task auto-complete task lookup hit",
+		"run auto-complete task lookup hit",
 		"pane_target", paneTarget,
 		"project_id", projectID,
 		"task_id", taskID,
@@ -123,6 +127,7 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 				Triggered:  false,
 				PaneTarget: paneTarget,
 				Reason:     "sidecar-mode-advisor",
+				RunID:      "",
 				TaskID:     taskID,
 				Status:     "skipped",
 			}, nil
@@ -144,8 +149,6 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 				ParentTaskID: taskEntry.ParentTaskID,
 				Title:        taskEntry.Title,
 				Status:       taskEntry.Status,
-				SidecarMode:  taskEntry.SidecarMode,
-				TaskRole:     taskEntry.TaskRole,
 			}, observedSec)
 			if markErr != nil {
 				return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
@@ -159,17 +162,100 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 					Triggered:  false,
 					PaneTarget: paneTarget,
 					Reason:     "duplicate-observed-last-active-at",
+					RunID:      "",
 					TaskID:     taskID,
 					Status:     "skipped",
 				}, nil
 			}
 		}
 	}
+	run, foundRun, runDiag, err := s.findLiveRunningRunByPaneTargetForTask(store, paneTarget, taskID)
+	if err != nil {
+		slog.Error(
+			"run auto-complete optional run lookup failed",
+			"pane_target", paneTarget,
+			"project_id", projectID,
+			"task_id", taskID,
+			"err", err,
+		)
+		return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
+			HTTPStatus: http.StatusInternalServerError,
+			Code:       "RUN_LOOKUP_FAILED",
+			Message:    err.Error(),
+		}
+	}
+	slog.Info(
+		"run auto-complete optional run lookup finished",
+		"pane_target", paneTarget,
+		"project_id", projectID,
+		"task_id", taskID,
+		"candidate_total", runDiag.CandidateTotal,
+		"candidate_task_match", runDiag.CandidateTaskMatch,
+		"candidate_running", runDiag.CandidateRunning,
+		"candidate_live", runDiag.CandidateLive,
+		"candidate_live_running", runDiag.CandidateLiveRunning,
+		"candidate_server_match", runDiag.CandidateServerMatch,
+		"candidate_server_diff", runDiag.CandidateServerDiff,
+		"found_live_running_run", foundRun,
+		"samples", runDiag.Samples,
+	)
 	summary := strings.TrimSpace(input.Summary)
 	if summary == "" {
 		summary = "auto-complete: pane idle and output stable"
 	}
 	reqMeta := copyTaskCompletionRequestMeta(input.RequestMeta)
+	if foundRun {
+		slog.Info(
+			"run auto-complete proceeding with live running run",
+			"pane_target", paneTarget,
+			"project_id", projectID,
+			"run_id", run.RunID,
+			"task_id", run.TaskID,
+			"run_status", run.RunStatus,
+		)
+		if invalidated, err := s.invalidateBindingIfServerChanged(store, run.RunID); err != nil {
+			return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
+				HTTPStatus: http.StatusInternalServerError,
+				Code:       "RUN_BINDING_CHECK_FAILED",
+				Message:    err.Error(),
+			}
+		} else if invalidated {
+			slog.Warn(
+				"run auto-complete binding invalidated due to tmux server change",
+				"pane_target", paneTarget,
+				"project_id", projectID,
+				"run_id", run.RunID,
+				"task_id", run.TaskID,
+			)
+			return AutoCompleteByPaneResult{
+				Triggered:  false,
+				PaneTarget: paneTarget,
+				Reason:     "binding-invalidated-server-changed",
+				RunID:      run.RunID,
+				TaskID:     run.TaskID,
+				Status:     projectstate.RunStatusNeedsRebind,
+			}, nil
+		}
+		_ = store.AppendRunEvent(run.RunID, "auto_complete.pane_idle", map[string]any{
+			"pane_target": paneTarget,
+			"trigger":     "status.ready",
+		})
+		if err := s.completeRunAndEnqueueActions(run.RunID, summary, "pane-idle", reqMeta); err != nil {
+			return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
+				HTTPStatus: http.StatusInternalServerError,
+				Code:       "RUN_COMPLETE_FAILED",
+				Message:    err.Error(),
+			}
+		}
+		return AutoCompleteByPaneResult{
+			Triggered:   true,
+			PaneTarget:  paneTarget,
+			RunID:       run.RunID,
+			TaskID:      run.TaskID,
+			Status:      projectstate.RunStatusCompleted,
+			SummaryUsed: summary,
+		}, nil
+	}
 	if err := s.updateTaskStatusInternal(store, taskID, projectID, projectstate.StatusCompleted); err != nil {
 		return AutoCompleteByPaneResult{}, &AutoCompleteByPaneError{
 			HTTPStatus: http.StatusInternalServerError,
@@ -179,11 +265,12 @@ func (s *Server) AutoCompleteByPane(input AutoCompleteByPaneInput) (AutoComplete
 	}
 	s.enqueueTaskCompletionActions(projectID, taskID, summary, "pane-idle", reqMeta)
 	s.publishEvent("task.status.updated", projectID, taskID, map[string]any{"status": projectstate.StatusCompleted})
-	s.publishEvent("task.return.reported", projectID, taskID, map[string]any{"summary": summary})
+	s.publishEvent("task.return.reported", projectID, taskID, map[string]any{"summary": summary, "run_id": ""})
 	s.publishEvent("task.tree.updated", projectID, taskID, map[string]any{})
 	return AutoCompleteByPaneResult{
 		Triggered:   true,
 		PaneTarget:  paneTarget,
+		RunID:       "",
 		TaskID:      taskID,
 		Status:      projectstate.StatusCompleted,
 		SummaryUsed: summary,

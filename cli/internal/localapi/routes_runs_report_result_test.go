@@ -13,7 +13,7 @@ import (
 	"shellman/cli/internal/projectstate"
 )
 
-func TestAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {
+func TestRunAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
 	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects})
@@ -36,7 +36,21 @@ func TestAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {
 		t.Fatal("expected task_id")
 	}
 
+	runID := "r_1"
 	store := projectstate.NewStore(repo)
+	if err := store.InsertRun(projectstate.RunRecord{RunID: runID, TaskID: createOut.Data.TaskID, RunStatus: projectstate.RunStatusRunning}); err != nil {
+		t.Fatalf("InsertRun failed: %v", err)
+	}
+
+	if err := store.UpsertRunBinding(projectstate.RunBinding{
+		RunID:            runID,
+		ServerInstanceID: detectServerInstanceID(),
+		PaneID:           "e2e:1.1",
+		PaneTarget:       "e2e:1.1",
+		BindingStatus:    projectstate.BindingStatusLive,
+	}); err != nil {
+		t.Fatalf("UpsertRunBinding failed: %v", err)
+	}
 	panes, err := store.LoadPanes()
 	if err != nil {
 		t.Fatalf("LoadPanes failed: %v", err)
@@ -51,15 +65,17 @@ func TestAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {
 		t.Fatalf("SavePanes failed: %v", err)
 	}
 
-	out1, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{PaneTarget: "e2e:1.1", Summary: "done"})
+	_, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget: "e2e:1.1",
+		Summary:    "done",
+	})
 	if runErr != nil {
 		t.Fatalf("first AutoCompleteByPane failed: %v", runErr)
 	}
-	if !out1.Triggered || out1.Status != projectstate.StatusCompleted {
-		t.Fatalf("expected first trigger completed, got %#v", out1)
-	}
-
-	out2, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{PaneTarget: "e2e:1.1", Summary: "done"})
+	out2, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget: "e2e:1.1",
+		Summary:    "done",
+	})
 	if runErr != nil {
 		t.Fatalf("second AutoCompleteByPane failed: %v", runErr)
 	}
@@ -68,6 +84,21 @@ func TestAutoCompleteByPane_FirstAndSecondBothTrigger(t *testing.T) {
 	}
 	if out2.Status != projectstate.StatusCompleted {
 		t.Fatalf("expected completed status on second request, got %q", out2.Status)
+	}
+
+	run, err := store.GetRun(runID)
+	if err != nil {
+		t.Fatalf("GetRun failed: %v", err)
+	}
+	if run.RunStatus != projectstate.RunStatusCompleted {
+		t.Fatalf("expected completed run, got %q", run.RunStatus)
+	}
+	count, err := store.CountOutboxByRunID(runID)
+	if err != nil {
+		t.Fatalf("CountOutboxByRunID failed: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("expected one outbox row, got %d", count)
 	}
 }
 
@@ -109,7 +140,10 @@ func TestAutoCompleteByPane_CompletesTaskWithoutRunningRun(t *testing.T) {
 		t.Fatalf("SavePanes failed: %v", err)
 	}
 
-	out, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{PaneTarget: "e2e:1.1", Summary: "done"})
+	out, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget: "e2e:1.1",
+		Summary:    "done",
+	})
 	if runErr != nil {
 		t.Fatalf("AutoCompleteByPane failed: %v", runErr)
 	}
@@ -121,6 +155,12 @@ func TestAutoCompleteByPane_CompletesTaskWithoutRunningRun(t *testing.T) {
 	}
 	if out.TaskID != createOut.Data.TaskID {
 		t.Fatalf("expected task_id=%q, got %q", createOut.Data.TaskID, out.TaskID)
+	}
+	if out.RunID != "" {
+		t.Fatalf("expected empty run_id when no running run, got %q", out.RunID)
+	}
+	if out.Reason == "no-live-running-run" {
+		t.Fatalf("unexpected legacy reason no-live-running-run: %#v", out)
 	}
 
 	rows, err := store.ListTasksByProject("p1")
@@ -205,7 +245,10 @@ func TestAutoCompleteByPane_TriggersWhenTaskAlreadyCompleted(t *testing.T) {
 	}
 
 	time.Sleep(20 * time.Millisecond)
-	out, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{PaneTarget: "e2e:1.1", Summary: "done"})
+	out, runErr := srv.AutoCompleteByPane(AutoCompleteByPaneInput{
+		PaneTarget: "e2e:1.1",
+		Summary:    "done",
+	})
 	if runErr != nil {
 		t.Fatalf("AutoCompleteByPane failed: %v", runErr)
 	}

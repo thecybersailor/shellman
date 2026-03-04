@@ -1,4 +1,4 @@
-package cursor
+package opencode
 
 import (
 	"context"
@@ -11,11 +11,10 @@ import (
 )
 
 const (
-	programID       = "cursor"
-	agentCommandID  = "cursor-agent"
+	programID       = "opencode"
 	enterTimeoutMs  = 15000
 	submitTimeoutMs = 1000
-	submitInput     = "\n"
+	submitInput     = "\r"
 )
 
 type Detector struct{}
@@ -29,12 +28,11 @@ func (Detector) ProgramID() string {
 }
 
 func (Detector) IsAvailable(ctx context.Context) (bool, error) {
-	return programadapter.CommandExists(ctx, agentCommandID)
+	return programadapter.CommandExists(ctx, programID)
 }
 
 func (Detector) MatchCurrentCommand(currentCommand string) bool {
-	return progdetector.MatchProgramInCommand(currentCommand, agentCommandID) ||
-		progdetector.MatchProgramInCommand(currentCommand, programID)
+	return progdetector.MatchProgramInCommand(currentCommand, programID)
 }
 
 func (d Detector) MatchRuntimeState(state progdetector.RuntimeState) bool {
@@ -42,12 +40,11 @@ func (d Detector) MatchRuntimeState(state progdetector.RuntimeState) bool {
 		return true
 	}
 	binary := normalizeProgramToken(state.CurrentBinary)
-	if binary == agentCommandID || binary == programID {
+	if binary == programID {
 		return true
 	}
 	for _, arg := range state.CurrentArgs {
-		name := normalizeProgramToken(arg)
-		if name == agentCommandID || name == programID {
+		if normalizeProgramToken(arg) == programID {
 			return true
 		}
 	}
@@ -55,7 +52,32 @@ func (d Detector) MatchRuntimeState(state progdetector.RuntimeState) bool {
 }
 
 func (d Detector) HasExitedMode(_ context.Context, state progdetector.RuntimeState) (bool, error) {
-	return !d.MatchRuntimeState(state), nil
+	if hasRuntimeSignature(state) {
+		return !d.MatchRuntimeState(state), nil
+	}
+	if d.MatchCurrentCommand(state.CurrentCommand) {
+		return false, nil
+	}
+	return !isNodeCommand(state.CurrentCommand), nil
+}
+
+func hasRuntimeSignature(state progdetector.RuntimeState) bool {
+	binary := normalizeProgramToken(state.CurrentBinary)
+	if binary == "" {
+		return false
+	}
+	if binary == "node" && len(state.CurrentArgs) == 0 {
+		return false
+	}
+	return true
+}
+
+func isNodeCommand(command string) bool {
+	parts := strings.Fields(strings.TrimSpace(command))
+	if len(parts) == 0 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(parts[0]), "node")
 }
 
 func normalizeProgramToken(raw string) string {

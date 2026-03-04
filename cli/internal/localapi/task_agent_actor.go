@@ -657,11 +657,13 @@ func isAutoProcessTurnSource(source string) bool {
 
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
 	storedCommand, sidecarMode, taskRole, activeAdapter := resolveTaskAgentModeInputs(store, projectID, taskID)
-	currentCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID))
+	runtimeState := s.detectTaskPaneRuntimeState(store, taskID)
+	currentCommand := strings.TrimSpace(runtimeState.CurrentCommand)
 	if currentCommand == "" {
 		currentCommand = strings.TrimSpace(storedCommand)
+		runtimeState.CurrentCommand = currentCommand
 	}
-	nextActiveAdapter := progdetector.ResolveActiveAdapter(activeAdapter, currentCommand)
+	mode, nextActiveAdapter := resolveTaskAgentToolModeFromRuntimeState(activeAdapter, runtimeState)
 
 	taskID = strings.TrimSpace(taskID)
 	projectID = strings.TrimSpace(projectID)
@@ -677,12 +679,17 @@ func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.St
 		})
 	}
 
-	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
+	s.setTaskAgentMode(taskID, mode)
+	return string(mode), currentCommand, buildTaskAgentToolsForResolvedMode(mode, sidecarMode, taskRole, source)
+}
+
+func resolveTaskAgentToolModeFromRuntimeState(activeAdapter string, runtimeState progdetector.RuntimeState) (taskAgentToolMode, string) {
+	nextActiveAdapter := strings.TrimSpace(progdetector.ResolveActiveAdapterByState(activeAdapter, runtimeState))
+	mode := resolveTaskAgentToolModeFromCommand(runtimeState.CurrentCommand)
 	if nextActiveAdapter != "" {
 		mode = taskAgentToolModeAIAgent
 	}
-	s.setTaskAgentMode(taskID, mode)
-	return string(mode), currentCommand, buildTaskAgentToolsForResolvedMode(mode, sidecarMode, taskRole, source)
+	return mode, nextActiveAdapter
 }
 
 func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, taskRole, source string) []string {
@@ -846,25 +853,30 @@ func (s *Server) clearTaskAgentDetector(taskID string) {
 }
 
 func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID string) string {
+	state := s.detectTaskPaneRuntimeState(store, taskID)
+	return strings.TrimSpace(state.CurrentCommand)
+}
+
+func (s *Server) detectTaskPaneRuntimeState(store *projectstate.Store, taskID string) progdetector.RuntimeState {
 	if s == nil || store == nil {
-		return ""
+		return progdetector.RuntimeState{}
 	}
 	panes, err := store.LoadPanes()
 	if err != nil {
-		return ""
+		return progdetector.RuntimeState{}
 	}
 	binding, ok := panes[strings.TrimSpace(taskID)]
 	if !ok {
-		return ""
+		return progdetector.RuntimeState{}
 	}
 	target := strings.TrimSpace(binding.PaneTarget)
 	if target == "" {
 		target = strings.TrimSpace(binding.PaneID)
 	}
 	if target == "" {
-		return ""
+		return progdetector.RuntimeState{}
 	}
-	return strings.TrimSpace(s.detectPaneCurrentCommand(target))
+	return s.detectPaneRuntimeState(target)
 }
 
 func resolveTaskAgentToolModeFromCommand(command string) taskAgentToolMode {

@@ -4,11 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -464,7 +462,7 @@ func TestProjectRootPaneCreationRoute_PersistsCurrentCommand(t *testing.T) {
 	}
 }
 
-func TestPaneCreate_TaskCentricResponseWithoutRunID(t *testing.T) {
+func TestPaneCreate_CreatesRunAndLiveBinding(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}}}
 	paneSvc := &fakePaneService{}
@@ -480,33 +478,35 @@ func TestPaneCreate_TaskCentricResponseWithoutRunID(t *testing.T) {
 		t.Fatalf("POST root pane expected 200, got %d", resp.StatusCode)
 	}
 	var out struct {
-		Data map[string]any `json:"data"`
+		Data struct {
+			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
+		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
 		t.Fatalf("decode root pane failed: %v", err)
 	}
-	taskID := strings.TrimSpace(fmt.Sprint(out.Data["task_id"]))
-	if taskID == "" {
-		t.Fatalf("expected task_id, got %#v", out.Data)
-	}
-	if _, exists := out.Data["run_id"]; exists {
-		t.Fatalf("expected run_id removed from response, got %#v", out.Data)
+	if out.Data.TaskID == "" || out.Data.RunID == "" {
+		t.Fatalf("expected task_id and run_id, got %#v", out.Data)
 	}
 
 	store := projectstate.NewStore(repo)
-	rows, err := store.ListTasksByProject("p1")
+	run, err := store.GetRun(out.Data.RunID)
 	if err != nil {
-		t.Fatalf("ListTasksByProject failed: %v", err)
+		t.Fatalf("GetRun failed: %v", err)
 	}
-	foundRunning := false
-	for _, row := range rows {
-		if strings.TrimSpace(row.TaskID) == taskID && strings.TrimSpace(row.Status) == projectstate.StatusRunning {
-			foundRunning = true
-			break
-		}
+	if run.RunStatus != projectstate.RunStatusRunning {
+		t.Fatalf("expected run running, got %q", run.RunStatus)
 	}
-	if !foundRunning {
-		t.Fatalf("expected created task %s status=running", taskID)
+	binding, ok, err := store.GetLiveBindingByRunID(out.Data.RunID)
+	if err != nil {
+		t.Fatalf("GetLiveBindingByRunID failed: %v", err)
+	}
+	if !ok {
+		t.Fatal("expected live binding")
+	}
+	if binding.PaneID == "" || binding.PaneTarget == "" || binding.ServerInstanceID == "" {
+		t.Fatalf("unexpected binding: %#v", binding)
 	}
 }
 
@@ -575,13 +575,14 @@ func TestPaneCreate_ChildSpawnFallbackCompletesAutopilotReadyChild(t *testing.T)
 	var childOut struct {
 		Data struct {
 			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(childResp.Body).Decode(&childOut); err != nil {
 		t.Fatalf("decode child response failed: %v", err)
 	}
-	if childOut.Data.TaskID == "" {
-		t.Fatalf("expected child task_id, got %#v", childOut.Data)
+	if childOut.Data.TaskID == "" || childOut.Data.RunID == "" {
+		t.Fatalf("expected child task_id and run_id, got %#v", childOut.Data)
 	}
 
 	deadline := time.Now().Add(2 * time.Second)
@@ -606,6 +607,13 @@ func TestPaneCreate_ChildSpawnFallbackCompletesAutopilotReadyChild(t *testing.T)
 		time.Sleep(20 * time.Millisecond)
 	}
 
+	run, err := store.GetRun(childOut.Data.RunID)
+	if err != nil {
+		t.Fatalf("GetRun failed: %v", err)
+	}
+	if run.RunStatus != projectstate.RunStatusCompleted {
+		t.Fatalf("expected child run completed, got %q", run.RunStatus)
+	}
 }
 
 func TestPaneCreate_ChildSpawnFallbackSkipsWhenRuntimeNotReady(t *testing.T) {
@@ -673,6 +681,7 @@ func TestPaneCreate_ChildSpawnFallbackSkipsWhenRuntimeNotReady(t *testing.T) {
 	var childOut struct {
 		Data struct {
 			TaskID string `json:"task_id"`
+			RunID  string `json:"run_id"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(childResp.Body).Decode(&childOut); err != nil {

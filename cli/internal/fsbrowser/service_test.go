@@ -12,6 +12,9 @@ func TestService_ListDirectoriesOnly(t *testing.T) {
 	if err := os.Mkdir(filepath.Join(root, "a"), 0o755); err != nil {
 		t.Fatalf("mkdir failed: %v", err)
 	}
+	if err := os.Mkdir(filepath.Join(root, ".hidden"), 0o755); err != nil {
+		t.Fatalf("mkdir hidden failed: %v", err)
+	}
 	if err := os.WriteFile(filepath.Join(root, "f.txt"), []byte("x"), 0o644); err != nil {
 		t.Fatalf("write file failed: %v", err)
 	}
@@ -75,5 +78,43 @@ func TestService_ResolveTildeSubPath(t *testing.T) {
 	}
 	if abs != filepath.Clean(tmp) {
 		t.Fatalf("unexpected abs: %s", abs)
+	}
+}
+
+func TestService_SearchOnlyMatchesCurrentLevelAndSkipsHiddenPaths(t *testing.T) {
+	root := t.TempDir()
+	immediate := filepath.Join(root, "y")
+	deepParent := filepath.Join(root, "foo", "brr")
+	deep := filepath.Join(deepParent, "y")
+	hidden := filepath.Join(root, ".cache", "y")
+
+	if err := os.MkdirAll(immediate, 0o755); err != nil {
+		t.Fatalf("mkdir immediate failed: %v", err)
+	}
+	if err := os.MkdirAll(deep, 0o755); err != nil {
+		t.Fatalf("mkdir deep failed: %v", err)
+	}
+	if err := os.MkdirAll(hidden, 0o755); err != nil {
+		t.Fatalf("mkdir hidden failed: %v", err)
+	}
+
+	svc := NewService()
+	items, err := svc.Search(root, "y", 20)
+	if err != nil {
+		t.Fatalf("search failed: %v", err)
+	}
+	if len(items) != 1 {
+		t.Fatalf("expected only current-level match, got %+v", items)
+	}
+	if items[0].Path != filepath.Clean(immediate) {
+		t.Fatalf("expected immediate directory only, got %+v", items)
+	}
+	for _, item := range items {
+		if strings.Contains(item.Path, string(filepath.Separator)+".") {
+			t.Fatalf("hidden path must not be returned, got %+v", items)
+		}
+		if strings.Contains(item.Path, filepath.Join("foo", "brr")) {
+			t.Fatalf("deep path must not be returned, got %+v", items)
+		}
 	}
 }

@@ -50,6 +50,44 @@ func TestDetectorModeMatchAndExit(t *testing.T) {
 	}
 }
 
+func TestDetectorMatchRuntimeState_NodeArgsCodex(t *testing.T) {
+	d := New()
+	if !d.MatchRuntimeState(progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex", "--model", "gpt-5"},
+	}) {
+		t.Fatal("expected runtime state match for codex node argv")
+	}
+}
+
+func TestDetectorHasExitedMode_RuntimeArgsControl(t *testing.T) {
+	d := New()
+	exited, err := d.HasExitedMode(context.Background(), progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex"},
+	})
+	if err != nil {
+		t.Fatalf("has exited failed: %v", err)
+	}
+	if exited {
+		t.Fatal("expected exited=false when args still point to codex")
+	}
+
+	exited, err = d.HasExitedMode(context.Background(), progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.local/bin/cursor-agent"},
+	})
+	if err != nil {
+		t.Fatalf("has exited failed: %v", err)
+	}
+	if !exited {
+		t.Fatal("expected exited=true when node args no longer match codex")
+	}
+}
+
 func TestDetectorIsAvailable_RespectsCanceledContext(t *testing.T) {
 	d := New()
 	ctx, cancel := context.WithCancel(context.Background())

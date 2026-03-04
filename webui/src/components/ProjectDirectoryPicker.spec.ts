@@ -146,4 +146,29 @@ describe("ProjectDirectoryPicker", () => {
 
     expect(wrapper.emitted("select-directory")?.[0]).toEqual(["/tmp/repo"]);
   });
+
+  it("renders folder icon for directory list and autocomplete items", async () => {
+    const wrapper = mount(ProjectDirectoryPicker, {
+      props: {
+        show: true,
+        listDirectories: vi.fn().mockResolvedValue({
+          path: "/tmp",
+          items: [{ name: "repo", path: "/tmp/repo", is_dir: true }]
+        }),
+        resolveDirectory: vi.fn().mockResolvedValue("/tmp"),
+        searchDirectories: vi.fn().mockResolvedValue([{ name: "repo", path: "/tmp/repo", is_dir: true }]),
+        getDirectoryHistory: vi.fn().mockResolvedValue([]),
+        recordDirectoryHistory: vi.fn().mockResolvedValue(undefined)
+      }
+    });
+    await flushPromises();
+
+    const pathInput = wrapper.get("[data-test-id='shellman-dir-path-input']");
+    await pathInput.trigger("focus");
+    await pathInput.setValue("rep");
+    await flushPromises();
+
+    expect(wrapper.find("[data-test-id='shellman-dir-item-/tmp/repo'] [data-test-id='shellman-dir-item-icon']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-dir-autocomplete-item-/tmp/repo'] [data-test-id='shellman-dir-autocomplete-icon']").exists()).toBe(true);
+  });
 });

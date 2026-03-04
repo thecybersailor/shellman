@@ -8,7 +8,7 @@ import (
 )
 
 func TestBuiltinDetectorsRegistered(t *testing.T) {
-	for _, id := range []string{"codex", "cursor", "claude", "antigravity"} {
+	for _, id := range []string{"codex", "cursor", "claude", "antigravity", "opencode"} {
 		if _, ok := progdetector.ProgramDetectorRegistry.Get(id); !ok {
 			t.Fatalf("expected builtin detector %q registered", id)
 		}

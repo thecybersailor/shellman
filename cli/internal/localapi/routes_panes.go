@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +17,34 @@ import (
 var childSpawnAutoProgressFallbackDelay = 6 * time.Second
 
 func (s *Server) registerPaneRoutes() {}
+
+func detectServerInstanceID() string {
+	if got := strings.TrimSpace(os.Getenv("SHELLMAN_SERVER_INSTANCE_ID")); got != "" {
+		return got
+	}
+	return "srv_local"
+}
+
+func (s *Server) createRunAndLiveBinding(store *projectstate.Store, taskID, paneID, paneTarget string) (string, error) {
+	runID := newRunID()
+	if err := store.InsertRun(projectstate.RunRecord{
+		RunID:     runID,
+		TaskID:    taskID,
+		RunStatus: projectstate.RunStatusRunning,
+	}); err != nil {
+		return "", err
+	}
+	if err := store.UpsertRunBinding(projectstate.RunBinding{
+		RunID:            runID,
+		ServerInstanceID: detectServerInstanceID(),
+		PaneID:           paneID,
+		PaneTarget:       paneTarget,
+		BindingStatus:    projectstate.BindingStatusLive,
+	}); err != nil {
+		return "", err
+	}
+	return runID, nil
+}
 
 func (s *Server) persistTaskCurrentCommand(store *projectstate.Store, taskID, projectID, paneTarget string) error {
 	currentCommand := strings.TrimSpace(s.detectPaneCurrentCommand(paneTarget))
@@ -91,6 +120,12 @@ func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Requ
 		respondError(w, http.StatusInternalServerError, "STATUS_UPDATE_FAILED", err.Error())
 		return
 	}
+	runID, err := s.createRunAndLiveBinding(store, newTaskID, paneID, paneID)
+	if err != nil {
+		_ = s.rollbackTaskCreation(projectID, newTaskID)
+		respondError(w, http.StatusInternalServerError, "RUN_CREATE_FAILED", err.Error())
+		return
+	}
 	if err := s.persistTaskCurrentCommand(store, newTaskID, projectID, paneID); err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
 		respondError(w, http.StatusInternalServerError, "TASK_COMMAND_SAVE_FAILED", err.Error())
@@ -99,6 +134,7 @@ func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Requ
 	s.publishEvent("task.status.updated", projectID, newTaskID, map[string]any{"status": projectstate.StatusRunning})
 	s.publishEvent("pane.created", projectID, newTaskID, map[string]any{
 		"relation":    "root",
+		"run_id":      runID,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
@@ -106,6 +142,7 @@ func (s *Server) handleProjectRootPaneCreate(w http.ResponseWriter, r *http.Requ
 	s.publishEvent("task.tree.updated", projectID, newTaskID, map[string]any{})
 	respondOK(w, map[string]any{
 		"task_id":     newTaskID,
+		"run_id":      runID,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
@@ -209,6 +246,12 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 		respondError(w, http.StatusInternalServerError, "STATUS_UPDATE_FAILED", err.Error())
 		return
 	}
+	runID, err := s.createRunAndLiveBinding(store, newTaskID, paneID, paneID)
+	if err != nil {
+		_ = s.rollbackTaskCreation(projectID, newTaskID)
+		respondError(w, http.StatusInternalServerError, "RUN_CREATE_FAILED", err.Error())
+		return
+	}
 	if err := s.persistTaskCurrentCommand(store, newTaskID, projectID, paneID); err != nil {
 		_ = s.rollbackTaskCreation(projectID, newTaskID)
 		respondError(w, http.StatusInternalServerError, "TASK_COMMAND_SAVE_FAILED", err.Error())
@@ -217,6 +260,7 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 	s.publishEvent("task.status.updated", projectID, newTaskID, map[string]any{"status": projectstate.StatusRunning})
 	s.publishEvent("pane.created", projectID, newTaskID, map[string]any{
 		"relation":    relation,
+		"run_id":      runID,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
@@ -225,6 +269,7 @@ func (s *Server) handlePaneCreate(w http.ResponseWriter, r *http.Request, taskID
 	s.scheduleChildSpawnAutoProgressFallback(projectID, entry.SidecarMode, newTaskID, paneID, relation)
 	respondOK(w, map[string]any{
 		"task_id":     newTaskID,
+		"run_id":      runID,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneID,
 		"pane_target": paneID,
@@ -332,6 +377,7 @@ func (s *Server) runChildSpawnAutoProgressFallback(projectID, childTaskID, paneT
 		"pane_target": resolvedPaneTarget,
 		"status":      out.Status,
 		"reason":      out.Reason,
+		"run_id":      out.RunID,
 	}, reqMeta))
 }
 

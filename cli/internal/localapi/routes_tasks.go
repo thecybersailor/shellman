@@ -348,6 +348,8 @@ func (s *Server) handleTaskActions(w http.ResponseWriter, r *http.Request) {
 		s.handlePostTaskMessage(w, r, taskID)
 	case r.Method == http.MethodPost && action == "messages/stop":
 		s.handleStopTaskMessage(w, r, taskID)
+	case r.Method == http.MethodPost && action == "runs":
+		s.handleCreateRun(w, r, taskID)
 	case r.Method == http.MethodPost && action == "panes/sibling":
 		s.handlePaneCreate(w, r, taskID, "sibling")
 	case r.Method == http.MethodPost && action == "panes/child":
@@ -787,10 +789,17 @@ func (s *Server) handleAdoptPane(w http.ResponseWriter, r *http.Request, parentT
 		respondError(w, http.StatusInternalServerError, "STATUS_UPDATE_FAILED", err.Error())
 		return
 	}
+	runID, err := s.createRunAndLiveBinding(store, taskID, paneTarget, paneTarget)
+	if err != nil {
+		_ = s.rollbackTaskCreation(projectID, taskID)
+		respondError(w, http.StatusInternalServerError, "RUN_CREATE_FAILED", err.Error())
+		return
+	}
 
 	s.publishEvent("task.status.updated", projectID, taskID, map[string]any{"status": projectstate.StatusRunning})
 	s.publishEvent("pane.created", projectID, taskID, map[string]any{
 		"relation":    "child",
+		"run_id":      runID,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneTarget,
 		"pane_target": paneTarget,
@@ -798,6 +807,7 @@ func (s *Server) handleAdoptPane(w http.ResponseWriter, r *http.Request, parentT
 	s.publishEvent("task.tree.updated", projectID, taskID, map[string]any{})
 	respondOK(w, map[string]any{
 		"task_id":     taskID,
+		"run_id":      runID,
 		"title":       title,
 		"pane_uuid":   paneUUID,
 		"pane_id":     paneTarget,

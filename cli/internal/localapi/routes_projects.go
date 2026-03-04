@@ -3,7 +3,7 @@ package localapi
 import (
 	"encoding/json"
 	"errors"
-	"log/slog"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -55,51 +55,51 @@ func (s *Server) handleProjectsActive(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		respondOK(w, payload)
-	case http.MethodPost:
-		var req global.ActiveProject
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-			respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
-			return
+		case http.MethodPost:
+			var req global.ActiveProject
+			if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+				respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
+				return
 		}
 		if req.ProjectID == "" || req.RepoRoot == "" {
 			respondError(w, http.StatusBadRequest, "INVALID_PROJECT", "project_id and repo_root are required")
 			return
 		}
-		if err := validateRepoRoot(req.RepoRoot); err != nil {
-			respondError(w, http.StatusBadRequest, "INVALID_PROJECT_ROOT", err.Error())
-			return
-		}
-		source := strings.TrimSpace(r.Header.Get("X-Shellman-Gateway-Source"))
-		sortOrder := optionalSortOrder(req.SortOrder)
-		seq, startedAt := logProjectsActiveWriteStart(http.MethodPost, req.ProjectID, source, sortOrder, &req.Collapsed)
-		var opErr error
-		defer func() {
-			logProjectsActiveWriteEnd(seq, http.MethodPost, req.ProjectID, source, startedAt, opErr)
-		}()
+			if err := validateRepoRoot(req.RepoRoot); err != nil {
+				respondError(w, http.StatusBadRequest, "INVALID_PROJECT_ROOT", err.Error())
+				return
+			}
+			source := strings.TrimSpace(r.Header.Get("X-Shellman-Gateway-Source"))
+			sortOrder := optionalSortOrder(req.SortOrder)
+			seq, startedAt := logProjectsActiveWriteStart(http.MethodPost, req.ProjectID, source, sortOrder, &req.Collapsed)
+			var opErr error
+			defer func() {
+				logProjectsActiveWriteEnd(seq, http.MethodPost, req.ProjectID, source, startedAt, opErr)
+			}()
 
-		if err := s.deps.ProjectsStore.AddProject(req); err != nil {
-			opErr = err
-			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", err.Error())
-			return
-		}
-		projects, err := s.deps.ProjectsStore.ListProjects()
-		if err != nil {
-			opErr = err
-			respondError(w, http.StatusInternalServerError, "PROJECTS_LIST_FAILED", err.Error())
-			return
-		}
+			if err := s.deps.ProjectsStore.AddProject(req); err != nil {
+				opErr = err
+				respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", err.Error())
+				return
+			}
+			projects, err := s.deps.ProjectsStore.ListProjects()
+			if err != nil {
+				opErr = err
+				respondError(w, http.StatusInternalServerError, "PROJECTS_LIST_FAILED", err.Error())
+				return
+			}
 		var saved *global.ActiveProject
 		for i := range projects {
 			if projects[i].ProjectID == req.ProjectID {
 				saved = &projects[i]
 				break
 			}
-		}
-		if saved == nil {
-			opErr = errors.New("project not found after save")
-			respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", "project not found after save")
-			return
-		}
+			}
+			if saved == nil {
+				opErr = errors.New("project not found after save")
+				respondError(w, http.StatusInternalServerError, "PROJECT_ADD_FAILED", "project not found after save")
+				return
+			}
 		displayName := strings.TrimSpace(saved.DisplayName)
 		if displayName == "" {
 			displayName = saved.ProjectID
@@ -148,11 +148,11 @@ func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request
 			return
 		}
 		respondOK(w, map[string]any{"project_id": projectID})
-	case http.MethodPatch:
-		var req struct {
-			DisplayName *string `json:"display_name"`
-			SortOrder   *int64  `json:"sort_order"`
-			Collapsed   *bool   `json:"collapsed"`
+		case http.MethodPatch:
+			var req struct {
+				DisplayName *string `json:"display_name"`
+				SortOrder   *int64  `json:"sort_order"`
+				Collapsed   *bool   `json:"collapsed"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			respondError(w, http.StatusBadRequest, "INVALID_JSON", err.Error())
@@ -194,37 +194,37 @@ func (s *Server) handleProjectsActiveByID(w http.ResponseWriter, r *http.Request
 			}
 			next.SortOrder = *req.SortOrder
 		}
-		if req.Collapsed != nil {
-			next.Collapsed = *req.Collapsed
-		}
+			if req.Collapsed != nil {
+				next.Collapsed = *req.Collapsed
+			}
 
-		source := strings.TrimSpace(r.Header.Get("X-Shellman-Gateway-Source"))
-		seq, startedAt := logProjectsActiveWriteStart(http.MethodPatch, projectID, source, req.SortOrder, req.Collapsed)
-		var opErr error
-		defer func() {
-			logProjectsActiveWriteEnd(seq, http.MethodPatch, projectID, source, startedAt, opErr)
-		}()
+			source := strings.TrimSpace(r.Header.Get("X-Shellman-Gateway-Source"))
+			seq, startedAt := logProjectsActiveWriteStart(http.MethodPatch, projectID, source, req.SortOrder, req.Collapsed)
+			var opErr error
+			defer func() {
+				logProjectsActiveWriteEnd(seq, http.MethodPatch, projectID, source, startedAt, opErr)
+			}()
 
-		if err := s.deps.ProjectsStore.AddProject(global.ActiveProject{
-			ProjectID:   next.ProjectID,
-			RepoRoot:    next.RepoRoot,
-			DisplayName: next.DisplayName,
-			SortOrder:   next.SortOrder,
-			Collapsed:   next.Collapsed,
-		}); err != nil {
-			opErr = err
-			respondError(w, http.StatusInternalServerError, "PROJECT_RENAME_FAILED", err.Error())
-			return
-		}
+			if err := s.deps.ProjectsStore.AddProject(global.ActiveProject{
+				ProjectID:   next.ProjectID,
+				RepoRoot:    next.RepoRoot,
+				DisplayName: next.DisplayName,
+				SortOrder:   next.SortOrder,
+				Collapsed:   next.Collapsed,
+			}); err != nil {
+				opErr = err
+				respondError(w, http.StatusInternalServerError, "PROJECT_RENAME_FAILED", err.Error())
+				return
+			}
 		respondOK(w, map[string]any{
 			"project_id":   next.ProjectID,
 			"display_name": next.DisplayName,
 			"sort_order":   next.SortOrder,
 			"collapsed":    next.Collapsed,
 		})
-	default:
-		respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
-	}
+		default:
+			respondError(w, http.StatusMethodNotAllowed, "METHOD_NOT_ALLOWED", "method not allowed")
+		}
 }
 
 func optionalSortOrder(value int64) *int64 {
@@ -239,15 +239,15 @@ func logProjectsActiveWriteStart(method, projectID, source string, sortOrder *in
 	seq := projectsActiveWriteSeq.Add(1)
 	inflight := projectsActiveWriteInflight.Add(1)
 	startedAt := time.Now().UTC()
-	slog.Info(
-		"projects.active.write.start",
-		"seq", seq,
-		"method", strings.TrimSpace(method),
-		"project_id", strings.TrimSpace(projectID),
-		"source", strings.TrimSpace(source),
-		"sort_order", formatOptionalInt64(sortOrder),
-		"collapsed", formatOptionalBool(collapsed),
-		"inflight", inflight,
+	log.Printf(
+		"projects.active.write start seq=%d method=%s project_id=%s source=%s sort_order=%s collapsed=%s inflight=%d",
+		seq,
+		strings.TrimSpace(method),
+		strings.TrimSpace(projectID),
+		strings.TrimSpace(source),
+		formatOptionalInt64(sortOrder),
+		formatOptionalBool(collapsed),
+		inflight,
 	)
 	return seq, startedAt
 }
@@ -256,28 +256,26 @@ func logProjectsActiveWriteEnd(seq int64, method, projectID, source string, star
 	inflight := projectsActiveWriteInflight.Add(-1)
 	durationMs := time.Since(startedAt).Milliseconds()
 	if opErr != nil {
-		slog.Error(
-			"projects.active.write.end",
-			"seq", seq,
-			"method", strings.TrimSpace(method),
-			"project_id", strings.TrimSpace(projectID),
-			"source", strings.TrimSpace(source),
-			"status", "error",
-			"duration_ms", durationMs,
-			"inflight", inflight,
-			"err", opErr,
+		log.Printf(
+			"projects.active.write end seq=%d method=%s project_id=%s source=%s status=error duration_ms=%d inflight=%d err=%q",
+			seq,
+			strings.TrimSpace(method),
+			strings.TrimSpace(projectID),
+			strings.TrimSpace(source),
+			durationMs,
+			inflight,
+			opErr.Error(),
 		)
 		return
 	}
-	slog.Info(
-		"projects.active.write.end",
-		"seq", seq,
-		"method", strings.TrimSpace(method),
-		"project_id", strings.TrimSpace(projectID),
-		"source", strings.TrimSpace(source),
-		"status", "ok",
-		"duration_ms", durationMs,
-		"inflight", inflight,
+	log.Printf(
+		"projects.active.write end seq=%d method=%s project_id=%s source=%s status=ok duration_ms=%d inflight=%d",
+		seq,
+		strings.TrimSpace(method),
+		strings.TrimSpace(projectID),
+		strings.TrimSpace(source),
+		durationMs,
+		inflight,
 	)
 }
 

@@ -1,5 +1,20 @@
 package projectstate
 
+import "errors"
+
+const (
+	RunStatusRunning     = "running"
+	RunStatusNeedsRebind = "needs_rebind"
+	RunStatusCompleted   = "completed"
+)
+
+const (
+	BindingStatusLive  = "live"
+	BindingStatusStale = "stale"
+)
+
+var ErrDuplicateInboxRequest = errors.New("duplicate inbox request")
+
 type TaskRecord struct {
 	TaskID         string
 	ProjectID      string
@@ -83,4 +98,36 @@ type TaskRuntimeRecord struct {
 type RuntimeBatchUpdate struct {
 	Panes []PaneRuntimeRecord
 	Tasks []TaskRuntimeRecord
+}
+
+type RunRecord struct {
+	RunID       string
+	TaskID      string
+	RunStatus   string
+	StartedAt   int64
+	CompletedAt int64
+	UpdatedAt   int64
+	LastError   string
+}
+
+type RunBinding struct {
+	RunID            string
+	ServerInstanceID string
+	PaneID           string
+	PaneTarget       string
+	BindingStatus    string
+	StaleReason      string
+}
+
+type RunLookupCandidate struct {
+	RunID            string
+	TaskID           string
+	RunStatus        string
+	PaneID           string
+	PaneTarget       string
+	BindingStatus    string
+	StaleReason      string
+	ServerInstanceID string
+	RunUpdatedAt     int64
+	BindingUpdatedAt int64
 }

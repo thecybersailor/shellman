@@ -25,4 +25,3 @@
 - Generated file is read-only for manual edits.
 - No duplicate hand-written API contract type if generated equivalent exists.
 - Validation must fail when generated output drifts.
-- Execution contract is task-centric: API scope must not expose run domain fields (`run_id`) or run routes.

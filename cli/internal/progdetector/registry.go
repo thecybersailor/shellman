@@ -66,6 +66,12 @@ func (r *Registry) Get(programID string) (Detector, bool) {
 }
 
 func (r *Registry) DetectByCurrentCommand(currentCommand string) (Detector, bool) {
+	return r.DetectByState(RuntimeState{
+		CurrentCommand: currentCommand,
+	})
+}
+
+func (r *Registry) DetectByState(state RuntimeState) (Detector, bool) {
 	if r == nil {
 		return nil, false
 	}
@@ -73,7 +79,7 @@ func (r *Registry) DetectByCurrentCommand(currentCommand string) (Detector, bool
 	defer r.mu.RUnlock()
 	for _, id := range r.order {
 		detector := r.byID[id]
-		if detector != nil && detector.MatchCurrentCommand(currentCommand) {
+		if detector != nil && detector.MatchRuntimeState(state) {
 			return detector, true
 		}
 	}

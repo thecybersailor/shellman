@@ -8,6 +8,8 @@ import (
 // RuntimeState is the minimal runtime snapshot for mode enter/exit detection.
 type RuntimeState struct {
 	CurrentCommand string
+	CurrentBinary  string
+	CurrentArgs    []string
 	ViewportText   string
 	CursorVisible  bool
 }
@@ -24,6 +26,7 @@ type ProgramAdapter interface {
 	ProgramID() string
 	IsAvailable(ctx context.Context) (bool, error)
 	MatchCurrentCommand(currentCommand string) bool
+	MatchRuntimeState(state RuntimeState) bool
 	HasExitedMode(ctx context.Context, state RuntimeState) (bool, error)
 	BuildInputPromptSteps(prompt string) ([]PromptStep, error)
 }

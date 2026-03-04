@@ -5,4 +5,5 @@ import (
 	_ "shellman/cli/internal/progdetector/claude"
 	_ "shellman/cli/internal/progdetector/codex"
 	_ "shellman/cli/internal/progdetector/cursor"
+	_ "shellman/cli/internal/progdetector/opencode"
 )

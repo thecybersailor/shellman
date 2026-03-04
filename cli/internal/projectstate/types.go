@@ -59,6 +59,7 @@ type TaskIndexEntry struct {
 	Status       string `json:"status"`
 	SidecarMode  string `json:"sidecar_mode,omitempty"`
 	LastModified int64  `json:"last_modified"`
+	CurrentRunID string `json:"current_run_id,omitempty"`
 }
 
 type TaskIndex map[string]TaskIndexEntry

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"shellman/cli/internal/progdetector"
 	"shellman/cli/internal/projectstate"
 )
 
@@ -20,6 +21,7 @@ func TestResolveTaskAgentToolModeFromCommand(t *testing.T) {
 		{command: "   ", want: taskAgentToolModeDefault},
 		{command: "codex --ask", want: taskAgentToolModeAIAgent},
 		{command: "node (codex)", want: taskAgentToolModeAIAgent},
+		{command: "opencode --prompt hi", want: taskAgentToolModeAIAgent},
 		{command: "claude", want: taskAgentToolModeAIAgent},
 		{command: "gemini -p hi", want: taskAgentToolModeDefault},
 		{command: "cursor agent", want: taskAgentToolModeAIAgent},
@@ -478,5 +480,61 @@ func TestResolveTaskAgentToolModeAndNamesFromInputs_ExecutorHasNoSpawn(t *testin
 	}
 	if !containsString(tools, "exec_command") || !containsString(tools, "write_stdin") {
 		t.Fatalf("executor should have execution tools, got tools=%v", tools)
+	}
+}
+
+func TestResolveTaskAgentToolModeFromRuntimeState_NodeArgsCodexEntersAIAgent(t *testing.T) {
+	mode, adapter := resolveTaskAgentToolModeFromRuntimeState("", progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.nvm/versions/node/v20.19.0/bin/codex", "--model", "gpt-5"},
+	})
+	if mode != taskAgentToolModeAIAgent {
+		t.Fatalf("expected ai-agent mode, got=%q", mode)
+	}
+	if adapter != "codex" {
+		t.Fatalf("expected active adapter codex, got=%q", adapter)
+	}
+}
+
+func TestResolveTaskAgentToolModeFromRuntimeState_NodeArgsCursorAgentEntersAIAgent(t *testing.T) {
+	mode, adapter := resolveTaskAgentToolModeFromRuntimeState("", progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.local/bin/cursor-agent", "--stdio"},
+	})
+	if mode != taskAgentToolModeAIAgent {
+		t.Fatalf("expected ai-agent mode, got=%q", mode)
+	}
+	if adapter != "cursor" {
+		t.Fatalf("expected active adapter cursor, got=%q", adapter)
+	}
+}
+
+func TestResolveTaskAgentToolModeFromRuntimeState_NodeArgsOpenCodeEntersAIAgent(t *testing.T) {
+	mode, adapter := resolveTaskAgentToolModeFromRuntimeState("", progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/Users/wanglei/.nvm/versions/node/v20.19.0/bin/opencode", "--mode", "agent"},
+	})
+	if mode != taskAgentToolModeAIAgent {
+		t.Fatalf("expected ai-agent mode, got=%q", mode)
+	}
+	if adapter != "opencode" {
+		t.Fatalf("expected active adapter opencode, got=%q", adapter)
+	}
+}
+
+func TestResolveTaskAgentToolModeFromRuntimeState_ActiveCodexExitsWhenRuntimeNoLongerMatches(t *testing.T) {
+	mode, adapter := resolveTaskAgentToolModeFromRuntimeState("codex", progdetector.RuntimeState{
+		CurrentCommand: "node",
+		CurrentBinary:  "node",
+		CurrentArgs:    []string{"/tmp/not_codex.js"},
+	})
+	if mode != taskAgentToolModeDefault {
+		t.Fatalf("expected default mode after codex exit, got=%q", mode)
+	}
+	if adapter != "" {
+		t.Fatalf("expected active adapter cleared, got=%q", adapter)
 	}
 }

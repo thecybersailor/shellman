@@ -1,9 +1,9 @@
 # Shellman
 
 [![CI Status](https://github.com/thecybersailor/shellman/actions/workflows/pr-ci.yml/badge.svg)](https://github.com/thecybersailor/shellman/actions/workflows/pr-ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/thecybersailor/shellman)](https://goreportcard.com/report/github.com/thecybersailor/shellman)
+[![Go Report Card](https://goreportcard.com/badge/shellman/cli)](https://goreportcard.com/report/shellman/cli)
 [![codecov](https://codecov.io/gh/thecybersailor/shellman/branch/main/graph/badge.svg)](https://codecov.io/gh/thecybersailor/shellman)
-[![Go Reference](https://pkg.go.dev/badge/github.com/thecybersailor/shellman.svg)](https://pkg.go.dev/github.com/thecybersailor/shellman)
+[![Go Reference](https://pkg.go.dev/badge/shellman/cli.svg)](https://pkg.go.dev/shellman/cli)
 [![GitHub release](https://img.shields.io/github/release/thecybersailor/shellman.svg)](https://github.com/thecybersailor/shellman/releases)
 [![GitHub issues](https://img.shields.io/github/issues/thecybersailor/shellman.svg)](https://github.com/thecybersailor/shellman/issues)
 
@@ -22,14 +22,6 @@ npm install -g shellman
 Shellman is an AI coding sidecar that turns scattered agent conversations into a structured execution system.
 
 Build order from chaos with a `TODO Tree + Sidecar Modes`.
-
-## Execution Model
-
-Shellman uses a single execution model: `task lifecycle + pane binding`.
-
-- Task status (`pending/running/waiting_*/completed/...`) is the only completion state.
-- Pane identity (`pane_id/pane_target`) is the only runtime binding identity.
-- No run layer, no `run_id`, and no run route in task/pane contracts.
 
 ## Core Capabilities
 
