@@ -3251,29 +3251,6 @@ export function createShellmanStore(
     }
   }
 
-  async function reportRunResult(runId: string, summary: string) {
-    const nextRunID = String(runId ?? "").trim();
-    const nextSummary = String(summary ?? "").trim();
-    if (!nextRunID) {
-      throw new Error("INVALID_RUN_ID");
-    }
-    const requestID = nextRequestID();
-    const res = (await fetchImpl(apiURL(`/api/v1/runs/${encodeURIComponent(nextRunID)}/report-result`), {
-      method: "POST",
-      headers: apiHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify({ summary: nextSummary, request_id: requestID })
-    }).then((r) => r.json())) as APIResponse<{ run_id?: string; status?: string; idempotent?: boolean; request_id?: string }>;
-    if (!res.ok) {
-      throw new Error(res.error?.code || "RUN_REPORT_RESULT_FAILED");
-    }
-    return {
-      runId: String(res.data?.run_id ?? nextRunID),
-      status: String(res.data?.status ?? "completed"),
-      idempotent: Boolean(res.data?.idempotent),
-      requestId: String(res.data?.request_id ?? requestID)
-    };
-  }
-
   return {
     state,
     load,
@@ -3320,7 +3297,6 @@ export function createShellmanStore(
     stopTaskMessage,
     setTaskSidecarMode,
     submitTaskCommit,
-    reportRunResult,
     getOrphanPaneItems,
     adoptPaneAsChild,
     manualLaunchPaneForTask

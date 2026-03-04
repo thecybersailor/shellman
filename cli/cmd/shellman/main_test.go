@@ -187,7 +187,7 @@ func TestEnrichGatewayHTTPMessage_AddsActivePaneHeader(t *testing.T) {
 		Op:   "gateway.http",
 		Payload: protocol.MustRaw(map[string]any{
 			"method":  "POST",
-			"path":    "/api/v1/runs/r_1/report-result",
+			"path":    "/api/v1/tasks/t_1/report-result",
 			"headers": map[string]string{},
 			"body":    `{"summary":"done"}`,
 		}),
@@ -211,7 +211,7 @@ func TestEnrichGatewayHTTPMessage_RespectsExistingActivePaneHeader(t *testing.T)
 		Op:   "gateway.http",
 		Payload: protocol.MustRaw(map[string]any{
 			"method": "POST",
-			"path":   "/api/v1/runs/r_1/report-result",
+			"path":   "/api/v1/tasks/t_1/report-result",
 			"headers": map[string]string{
 				"X-Shellman-Active-Pane-Target": "botworks:1.0",
 			},

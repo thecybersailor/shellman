@@ -16,13 +16,8 @@ func TestOpenSQLiteWithMigrations_CreatesCoreTables(t *testing.T) {
 
 	mustHave := []string{
 		"tasks",
-		"task_runs",
-		"run_bindings",
-		"run_events",
-		"completion_inbox",
 		"notes",
 		"task_messages",
-		"action_outbox",
 		"tmux_servers",
 		"legacy_state",
 		"dir_history",

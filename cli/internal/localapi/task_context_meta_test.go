@@ -163,7 +163,7 @@ func TestBuildAutoProgressPromptInput_LoadsTaskCompletionContext_ConfigFallback(
 		t.Fatalf("create task failed: %v", err)
 	}
 
-	input := srv.buildAutoProgressPromptInput("p1", taskID, "done", "")
+	input := srv.buildAutoProgressPromptInput("p1", taskID, "done")
 	prompt := buildTaskAgentAutoProgressPrompt(input)
 	if !strings.Contains(prompt, `"path":"`+filepath.ToSlash(filepath.Join(configDir, "AGENTS-SIDECAR.md"))+`"`) {
 		t.Fatalf("expected config context path injected for auto progress prompt, got %q", prompt)

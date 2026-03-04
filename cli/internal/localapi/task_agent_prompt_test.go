@@ -7,7 +7,7 @@ import (
 )
 
 func TestBuildTaskAgentAutoProgressDisplayContent_ReturnsRuntimeTypedJSON(t *testing.T) {
-	raw := buildTaskAgentAutoProgressDisplayContent("t_1", "done", "r_1")
+	raw := buildTaskAgentAutoProgressDisplayContent("t_1", "done")
 	var parsed struct {
 		Text string `json:"text"`
 		Meta struct {
@@ -15,7 +15,6 @@ func TestBuildTaskAgentAutoProgressDisplayContent_ReturnsRuntimeTypedJSON(t *tes
 			Source      string `json:"source"`
 			Event       string `json:"event"`
 			TaskID      string `json:"task_id"`
-			RunID       string `json:"run_id"`
 		} `json:"meta"`
 	}
 	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
@@ -27,15 +26,14 @@ func TestBuildTaskAgentAutoProgressDisplayContent_ReturnsRuntimeTypedJSON(t *tes
 	if parsed.Meta.DisplayType != "runtime" || parsed.Meta.Source != "tty_output" || parsed.Meta.Event != "tty_output" {
 		t.Fatalf("unexpected runtime meta: %#v", parsed.Meta)
 	}
-	if parsed.Meta.TaskID != "t_1" || parsed.Meta.RunID != "r_1" {
-		t.Fatalf("unexpected task/run ids: %#v", parsed.Meta)
+	if parsed.Meta.TaskID != "t_1" {
+		t.Fatalf("unexpected task id: %#v", parsed.Meta)
 	}
 }
 
 func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testing.T) {
 	prompt := buildTaskAgentAutoProgressPrompt(TaskAgentAutoProgressPromptInput{
 		TaskID:            "t_1",
-		RunID:             "r_1",
 		Name:              "task name",
 		Description:       "task desc",
 		Summary:           "done",

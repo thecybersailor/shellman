@@ -78,39 +78,9 @@ func (s *Server) evaluateTaskCompletionDispatch() completionDispatchDecision {
 	return decision
 }
 
-func (s *Server) completeRunAndEnqueueActions(runID, summary, source string, reqMeta map[string]any) error {
-	projectID, store, run, err := s.findRun(runID)
-	if err != nil {
-		return err
-	}
-	if err := store.MarkRunCompleted(runID); err != nil {
-		return err
-	}
-	_, taskStore, _, err := s.findTask(run.TaskID)
-	if err != nil {
-		return err
-	}
-	if err := s.updateTaskStatusInternal(taskStore, run.TaskID, projectID, projectstate.StatusCompleted); err != nil {
-		return err
-	}
-
-	if err := store.EnqueueRunAction(runID, "run_completion_dispatch", map[string]any{
-		"task_id": run.TaskID,
-		"summary": strings.TrimSpace(summary),
-		"source":  strings.TrimSpace(source),
-	}); err != nil {
-		return err
-	}
-	s.enqueueRunCompletionActions(runID, projectID, run.TaskID, summary, source, reqMeta)
-	s.publishEvent("task.status.updated", projectID, run.TaskID, map[string]any{"status": projectstate.StatusCompleted})
-	s.publishEvent("task.return.reported", projectID, run.TaskID, map[string]any{"summary": summary, "run_id": runID})
-	s.publishEvent("task.tree.updated", projectID, run.TaskID, map[string]any{})
-	return nil
-}
-
 func (s *Server) enqueueTaskCompletionActions(projectID, taskID, summary, source string, reqMeta map[string]any) {
 	if strings.EqualFold(strings.TrimSpace(source), "pane-idle") {
-		promptInput := s.buildAutoProgressPromptInput(projectID, taskID, summary, "")
+		promptInput := s.buildAutoProgressPromptInput(projectID, taskID, summary)
 		_, repoErr := s.findProjectRepoRoot(projectID)
 		if repoErr == nil {
 			s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.received", taskCompletionAuditFields(map[string]any{
@@ -120,7 +90,7 @@ func (s *Server) enqueueTaskCompletionActions(projectID, taskID, summary, source
 			}, reqMeta))
 		}
 		prompt := buildTaskAgentAutoProgressPrompt(promptInput)
-		displayContent := buildTaskAgentAutoProgressDisplayContent(taskID, promptInput.Summary, "")
+		displayContent := buildTaskAgentAutoProgressDisplayContent(taskID, promptInput.Summary)
 		if err := s.sendTaskAgentLoop(context.Background(), TaskAgentLoopEvent{
 			TaskID:         strings.TrimSpace(taskID),
 			ProjectID:      strings.TrimSpace(projectID),
@@ -173,76 +143,6 @@ func (s *Server) enqueueTaskCompletionActions(projectID, taskID, summary, source
 	go s.dispatchTaskCompletionActions(projectID, taskID, summary)
 }
 
-func (s *Server) enqueueRunCompletionActions(runID, projectID, taskID, summary, source string, reqMeta map[string]any) {
-	if strings.EqualFold(strings.TrimSpace(source), "pane-idle") {
-		promptInput := s.buildAutoProgressPromptInput(projectID, taskID, summary, runID)
-		_, repoErr := s.findProjectRepoRoot(projectID)
-		if repoErr == nil {
-			s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.received", taskCompletionAuditFields(map[string]any{
-				"run_id":       strings.TrimSpace(runID),
-				"source":       "pane-idle",
-				"will_enqueue": true,
-				"target":       "task-agent-loop",
-			}, reqMeta))
-		}
-		prompt := buildTaskAgentAutoProgressPrompt(promptInput)
-		displayContent := buildTaskAgentAutoProgressDisplayContent(taskID, promptInput.Summary, runID)
-		if err := s.sendTaskAgentLoop(context.Background(), TaskAgentLoopEvent{
-			TaskID:         strings.TrimSpace(taskID),
-			ProjectID:      strings.TrimSpace(projectID),
-			Source:         "tty_output",
-			DisplayContent: displayContent,
-			AgentPrompt:    prompt,
-			TriggerMeta:    reqMeta,
-		}); err != nil {
-			if repoErr == nil {
-				s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.skipped", taskCompletionAuditFields(map[string]any{
-					"run_id": strings.TrimSpace(runID),
-					"source": "pane-idle",
-					"reason": "agent-loop-enqueue-failed",
-					"error":  err.Error(),
-				}, reqMeta))
-			}
-			return
-		}
-		if repoErr == nil {
-			s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.enqueued", taskCompletionAuditFields(map[string]any{
-				"run_id": strings.TrimSpace(runID),
-				"source": "pane-idle",
-				"status": "queued",
-			}, reqMeta))
-		}
-		return
-	}
-	decision := s.evaluateTaskCompletionDispatch()
-	_, err := s.findProjectRepoRoot(projectID)
-	if err == nil {
-		fields := map[string]any{
-			"run_id":             strings.TrimSpace(runID),
-			"source":             strings.TrimSpace(source),
-			"will_dispatch":      decision.Dispatch,
-			"reason":             decision.Reason,
-			"notify_enabled":     decision.NotifyEnabled,
-			"notify_command_set": decision.NotifyCommandSet,
-		}
-		for k, v := range reqMeta {
-			fields[k] = v
-		}
-		s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.received", fields)
-		if !decision.Dispatch {
-			s.writeTaskCompletionAuditLog(projectID, taskID, "trigger.skipped", map[string]any{
-				"run_id": strings.TrimSpace(runID),
-				"source": strings.TrimSpace(source),
-				"reason": decision.Reason,
-			})
-		}
-	}
-	if !decision.Dispatch {
-		return
-	}
-	s.dispatchRunCompletionActions(runID, projectID, taskID, summary)
-}
-
 func (s *Server) dispatchTaskCompletionActions(projectID, taskID, summary string) {
 	_, err := s.findProjectRepoRoot(projectID)
 	if err != nil {
@@ -288,54 +188,6 @@ func (s *Server) dispatchTaskCompletionActions(projectID, taskID, summary string
 	s.writeTaskCompletionAuditLog(projectID, taskID, "finish", nil)
 }
 
-func (s *Server) dispatchRunCompletionActions(runID, projectID, taskID, summary string) {
-	_, err := s.findProjectRepoRoot(projectID)
-	if err != nil {
-		return
-	}
-	s.writeTaskCompletionAuditLog(projectID, taskID, "start", map[string]any{
-		"run_id":      strings.TrimSpace(runID),
-		"summary_len": len(strings.TrimSpace(summary)),
-	})
-
-	cfg, err := s.deps.ConfigStore.LoadOrInit()
-	if err != nil {
-		s.writeTaskCompletionAuditLog(projectID, taskID, "command.config.error", map[string]any{"error": err.Error()})
-	} else {
-		command := strings.TrimSpace(cfg.TaskCompletion.NotifyCommand)
-		if cfg.TaskCompletion.NotifyEnabled && command != "" {
-			if cfg.TaskCompletion.NotifyIdleDuration > 0 {
-				s.writeTaskCompletionAuditLog(projectID, taskID, "command.idle.ignored", map[string]any{
-					"idle_threshold": cfg.TaskCompletion.NotifyIdleDuration,
-				})
-			}
-			now := time.Now().UTC()
-			payload := map[string]string{
-				"task_id":      taskID,
-				"project_id":   projectID,
-				"status":       "completed",
-				"summary":      strings.TrimSpace(summary),
-				"finished_at":  strconv.FormatInt(now.Unix(), 10),
-				"idle_seconds": strconv.Itoa(cfg.TaskCompletion.NotifyIdleDuration),
-			}
-			if err := runTaskCompletionCommand(taskID, command, payload); err != nil {
-				s.writeTaskCompletionAuditLog(projectID, taskID, "command.error", map[string]any{
-					"error":   err.Error(),
-					"command": command,
-				})
-			} else {
-				s.writeTaskCompletionAuditLog(projectID, taskID, "command.done", map[string]any{
-					"command": command,
-				})
-			}
-		}
-	}
-
-	s.writeTaskCompletionAuditLog(projectID, taskID, "finish", map[string]any{
-		"run_id": strings.TrimSpace(runID),
-	})
-}
-
 func runTaskCompletionCommand(taskID, command string, payload map[string]string) error {
 	shell, shellArg, err := resolveShell()
 	if err != nil {
@@ -353,10 +205,9 @@ func runTaskCompletionCommand(taskID, command string, payload map[string]string)
 	return err
 }
 
-func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID string) TaskAgentAutoProgressPromptInput {
+func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary string) TaskAgentAutoProgressPromptInput {
 	input := TaskAgentAutoProgressPromptInput{
 		TaskID:  strings.TrimSpace(taskID),
-		RunID:   strings.TrimSpace(runID),
 		Summary: strings.TrimSpace(summary),
 	}
 	if input.Summary == "" {

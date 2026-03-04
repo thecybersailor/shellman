@@ -23,6 +23,14 @@ Shellman is an AI coding sidecar that turns scattered agent conversations into a
 
 Build order from chaos with a `TODO Tree + Sidecar Modes`.
 
+## Execution Model
+
+Shellman uses a single execution model: `task lifecycle + pane binding`.
+
+- Task status (`pending/running/waiting_*/completed/...`) is the only completion state.
+- Pane identity (`pane_id/pane_target`) is the only runtime binding identity.
+- No run layer, no `run_id`, and no run route in task/pane contracts.
+
 ## Core Capabilities
 
 ### TODO Tree

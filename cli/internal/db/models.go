@@ -25,50 +25,6 @@ type Task struct {
 
 func (Task) TableName() string { return "tasks" }
 
-type TaskRun struct {
-	RunID       string `gorm:"column:run_id;primaryKey"`
-	TaskID      string `gorm:"column:task_id;not null"`
-	RunStatus   string `gorm:"column:run_status;not null;default:'running'"`
-	StartedAt   int64  `gorm:"column:started_at;not null;default:0"`
-	CompletedAt int64  `gorm:"column:completed_at;not null;default:0"`
-	UpdatedAt   int64  `gorm:"column:updated_at;not null;default:0"`
-	LastError   string `gorm:"column:last_error;not null;default:''"`
-}
-
-func (TaskRun) TableName() string { return "task_runs" }
-
-type RunBinding struct {
-	RunID            string `gorm:"column:run_id;primaryKey"`
-	ServerInstanceID string `gorm:"column:server_instance_id;not null;default:''"`
-	PaneID           string `gorm:"column:pane_id;not null;default:''"`
-	PaneTarget       string `gorm:"column:pane_target;not null;default:''"`
-	BindingStatus    string `gorm:"column:binding_status;not null;default:'live'"`
-	StaleReason      string `gorm:"column:stale_reason;not null;default:''"`
-	UpdatedAt        int64  `gorm:"column:updated_at;not null;default:0"`
-}
-
-func (RunBinding) TableName() string { return "run_bindings" }
-
-type RunEvent struct {
-	ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	RunID       string `gorm:"column:run_id;not null"`
-	EventType   string `gorm:"column:event_type;not null"`
-	PayloadJSON string `gorm:"column:payload_json;not null;default:''"`
-	CreatedAt   int64  `gorm:"column:created_at;not null;default:0"`
-}
-
-func (RunEvent) TableName() string { return "run_events" }
-
-type CompletionInbox struct {
-	RunID     string `gorm:"column:run_id;primaryKey"`
-	RequestID string `gorm:"column:request_id;primaryKey"`
-	Summary   string `gorm:"column:summary;not null;default:''"`
-	Source    string `gorm:"column:source;not null;default:''"`
-	CreatedAt int64  `gorm:"column:created_at;not null;default:0"`
-}
-
-func (CompletionInbox) TableName() string { return "completion_inbox" }
-
 type Note struct {
 	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
 	TaskID    string `gorm:"column:task_id;not null"`
@@ -117,20 +73,6 @@ type PMMessage struct {
 }
 
 func (PMMessage) TableName() string { return "pm_messages" }
-
-type ActionOutbox struct {
-	ID          int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	RunID       string `gorm:"column:run_id;not null"`
-	ActionType  string `gorm:"column:action_type;not null"`
-	PayloadJSON string `gorm:"column:payload_json;not null;default:''"`
-	Status      string `gorm:"column:status;not null;default:'pending'"`
-	RetryCount  int    `gorm:"column:retry_count;not null;default:0"`
-	NextRetryAt int64  `gorm:"column:next_retry_at;not null;default:0"`
-	CreatedAt   int64  `gorm:"column:created_at;not null;default:0"`
-	UpdatedAt   int64  `gorm:"column:updated_at;not null;default:0"`
-}
-
-func (ActionOutbox) TableName() string { return "action_outbox" }
 
 type TmuxServer struct {
 	ServerInstanceID string `gorm:"column:server_instance_id;primaryKey"`

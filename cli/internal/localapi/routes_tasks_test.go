@@ -123,14 +123,6 @@ func (f *cancelAwareTaskMessageRunner) Run(ctx context.Context, userPrompt strin
 func postRunReportResult(t *testing.T, srv *Server, ts *httptest.Server, repo, taskID, summary string, headers map[string]string) (AutoCompleteByPaneResult, *AutoCompleteByPaneError) {
 	t.Helper()
 	store := projectstate.NewStore(repo)
-	runID := "r_test_" + strings.ReplaceAll(time.Now().UTC().Format("150405.000000000"), ".", "") + "_" + taskID
-	if err := store.InsertRun(projectstate.RunRecord{
-		RunID:     runID,
-		TaskID:    taskID,
-		RunStatus: projectstate.RunStatusRunning,
-	}); err != nil {
-		t.Fatalf("InsertRun failed: %v", err)
-	}
 	paneTarget := ""
 	panes, err := store.LoadPanes()
 	if err != nil {
@@ -156,20 +148,6 @@ func postRunReportResult(t *testing.T, srv *Server, ts *httptest.Server, repo, t
 			t.Fatalf("SavePanes failed: %v", err)
 		}
 	}
-	bindBody := bytes.NewBufferString(`{"pane_target":"` + paneTarget + `"}`)
-	bindReq, _ := http.NewRequest(http.MethodPost, ts.URL+"/api/v1/runs/"+runID+"/bind-pane", bindBody)
-	bindReq.Header.Set("Content-Type", "application/json")
-	for k, v := range headers {
-		bindReq.Header.Set(k, v)
-	}
-	bindResp, err := http.DefaultClient.Do(bindReq)
-	if err != nil {
-		t.Fatalf("POST run bind-pane failed: %v", err)
-	}
-	if bindResp.StatusCode != http.StatusOK {
-		t.Fatalf("POST bind-pane expected 200, got %d", bindResp.StatusCode)
-	}
-	_ = bindResp.Body.Close()
 
 	return srv.AutoCompleteByPane(AutoCompleteByPaneInput{
 		PaneTarget: paneTarget,

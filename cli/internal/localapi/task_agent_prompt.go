@@ -38,7 +38,6 @@ type TaskAgentChildContext struct {
 
 type TaskAgentAutoProgressPromptInput struct {
 	TaskID            string
-	RunID             string
 	Name              string
 	Description       string
 	Summary           string
@@ -55,7 +54,6 @@ type TaskAgentAutoProgressPromptInput struct {
 
 func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) string {
 	input.TaskID = strings.TrimSpace(input.TaskID)
-	input.RunID = strings.TrimSpace(input.RunID)
 	input.Name = strings.TrimSpace(input.Name)
 	input.Description = strings.TrimSpace(input.Description)
 	input.Summary = strings.TrimSpace(input.Summary)
@@ -73,11 +71,6 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	b.WriteString("task_id: ")
 	b.WriteString(input.TaskID)
 	b.WriteString("\n")
-	if input.RunID != "" {
-		b.WriteString("run_id: ")
-		b.WriteString(input.RunID)
-		b.WriteString("\n")
-	}
 	b.WriteString("name: ")
 	b.WriteString(input.Name)
 	b.WriteString("\n")
@@ -292,10 +285,9 @@ func inferCursorSemantic(tty TaskAgentTTYContext) string {
 	return "terminal_program"
 }
 
-func buildTaskAgentAutoProgressDisplayContent(taskID, summary, runID string) string {
+func buildTaskAgentAutoProgressDisplayContent(taskID, summary string) string {
 	taskID = strings.TrimSpace(taskID)
 	summary = strings.TrimSpace(summary)
-	runID = strings.TrimSpace(runID)
 	if summary == "" {
 		summary = "auto-complete: pane idle and output stable"
 	}
@@ -304,9 +296,6 @@ func buildTaskAgentAutoProgressDisplayContent(taskID, summary, runID string) str
 		"source":       "tty_output",
 		"event":        "tty_output",
 		"task_id":      taskID,
-	}
-	if runID != "" {
-		meta["run_id"] = runID
 	}
 	raw, err := json.Marshal(map[string]any{
 		"text": summary,
