@@ -43,7 +43,7 @@ func TestExecuteTaskChildSpawnAction_AutoEnterSidecarModeAndPrompt(t *testing.T)
 		calls = append(calls, spawnCall{Method: method, Path: path, Body: body})
 		switch {
 		case method == http.MethodPost && path == "/api/v1/tasks/t_parent/panes/child":
-			return `{"ok":true,"data":{"task_id":"t_child","run_id":"r1","pane_target":"e2e:0.2"}}`, nil
+			return `{"ok":true,"data":{"task_id":"t_child","pane_target":"e2e:0.2"}}`, nil
 		case method == http.MethodPatch && path == "/api/v1/tasks/t_child/description":
 			return `{"ok":true}`, nil
 		case method == http.MethodGet && path == "/api/v1/tasks/t_parent/sidecar-mode":

@@ -15,15 +15,10 @@ func SyncSchema(db *gorm.DB) error {
 	}
 	if err := db.AutoMigrate(
 		&Task{},
-		&TaskRun{},
-		&RunBinding{},
-		&RunEvent{},
-		&CompletionInbox{},
 		&Note{},
 		&TaskMessage{},
 		&PMSession{},
 		&PMMessage{},
-		&ActionOutbox{},
 		&TmuxServer{},
 		&LegacyState{},
 		&DirHistory{},
@@ -35,13 +30,22 @@ func SyncSchema(db *gorm.DB) error {
 		return err
 	}
 	for _, stmt := range []string{
-		`CREATE INDEX IF NOT EXISTS idx_task_runs_task_id_started_at ON task_runs(task_id, started_at DESC);`,
-		`CREATE INDEX IF NOT EXISTS idx_outbox_status_retry ON action_outbox(status, next_retry_at);`,
 		`CREATE INDEX IF NOT EXISTS idx_notes_task_created_at ON notes(task_id, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_task_messages_task_created_at ON task_messages(task_id, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_pm_sessions_repo_project_updated ON pm_sessions(repo_root, project_id, updated_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_pm_messages_session_created_at ON pm_messages(session_id, created_at DESC);`,
 		`CREATE INDEX IF NOT EXISTS idx_projects_sort_order ON projects(sort_order ASC, updated_at DESC);`,
+	} {
+		if err := db.Exec(stmt).Error; err != nil {
+			return err
+		}
+	}
+	for _, stmt := range []string{
+		`DROP TABLE IF EXISTS task_runs;`,
+		`DROP TABLE IF EXISTS run_bindings;`,
+		`DROP TABLE IF EXISTS run_events;`,
+		`DROP TABLE IF EXISTS completion_inbox;`,
+		`DROP TABLE IF EXISTS action_outbox;`,
 	} {
 		if err := db.Exec(stmt).Error; err != nil {
 			return err

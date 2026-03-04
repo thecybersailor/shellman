@@ -116,7 +116,6 @@ func NewServer(deps Deps) *Server {
 	s.registerSystemRoutes()
 	s.registerFSRoutes()
 	s.registerTaskRoutes()
-	s.registerRunRoutes()
 	s.registerPaneRoutes()
 	s.mux.HandleFunc("/healthz", s.handleHealth)
 	s.mux.HandleFunc("/ws", s.hub.HandleWS)
