@@ -38,7 +38,7 @@ function onHistoryMore(event: MouseEvent) {
     >
       <span data-test-id="shellman-console-pane-uuid" class="sr-only">{{ props.paneUuid || "" }}</span>
       <span data-test-id="shellman-console-pane-current-command" class="sr-only">{{ props.currentCommand || "" }}</span>
-      <div class="flex items-center gap-1.5 overflow-hidden shrink-0">
+      <div class="hidden md:flex items-center gap-1.5 overflow-hidden shrink-0">
         <Terminal class="size-3.5 shrink-0 text-primary/70" />
         <TaskTitleResolver
           :task-title="props.taskTitle"

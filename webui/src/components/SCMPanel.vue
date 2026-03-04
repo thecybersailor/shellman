@@ -463,7 +463,7 @@ watch([commitMessage, selectedFilePath], persistDraftSnapshot, { deep: true });
             @click="handleSubmitCommitMessage"
           >
             <Loader2 v-if="props.submitLoading || submitInternalLoading" class="mr-1 h-3.5 w-3.5 animate-spin" />
-            {{ props.submitLoading || submitInternalLoading ? "提交中" : "提交" }}
+            {{ props.submitLoading || submitInternalLoading ? "Committing" : "Commit" }}
           </Button>
         </InputGroupAddon>
       </InputGroup>

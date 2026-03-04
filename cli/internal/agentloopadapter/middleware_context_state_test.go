@@ -21,7 +21,7 @@ type middlewareEchoTool struct{}
 
 type middlewareOtherTool struct{}
 
-func (middlewareEchoTool) Name() string { return "echo" }
+func (middlewareEchoTool) Name() string  { return "echo" }
 func (middlewareOtherTool) Name() string { return "other" }
 
 func (middlewareEchoTool) Spec() core.ResponseToolSpec {

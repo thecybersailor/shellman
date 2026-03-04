@@ -3,6 +3,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { detectHardStrings } from "@cybersailor/i18n-detect-vue/dist/index.js";
+import { detectHTML } from "@cybersailor/i18n-detect-vue/dist/parsers/index.js";
 import { checkLocalizedKeys } from "@cybersailor/i18n-detect-vue/dist/check/index.js";
 
 const argv = process.argv.slice(2);
@@ -36,7 +37,9 @@ if (mode === "keys") {
 
 if (mode === "hardcoded") {
   for (const file of hardcodedFiles) {
-    const detections = detectHardStrings(file);
+    const detections = file.endsWith(".vue")
+      ? detectHTML(readFileSync(file, "utf-8"))
+      : detectHardStrings(file);
     for (const detection of detections) {
       const normalizedText = String(detection.text ?? "").replace(/\s+/g, " ").trim();
       if (!normalizedText) {

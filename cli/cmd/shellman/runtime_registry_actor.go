@@ -18,11 +18,11 @@ import (
 type RegistryActor struct {
 	logger *slog.Logger
 
-	mu        sync.Mutex
-	conns     map[string]*ConnActor
-	panes     map[string]*PaneActor
-	paneItems map[string]sessionStatusItem
-	connLoops map[string]struct{}
+	mu                sync.Mutex
+	conns             map[string]*ConnActor
+	panes             map[string]*PaneActor
+	paneItems         map[string]sessionStatusItem
+	connLoops         map[string]struct{}
 	paneBootstrapDone bool
 
 	runtimeCtx    context.Context

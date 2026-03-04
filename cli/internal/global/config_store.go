@@ -1,7 +1,6 @@
 package global
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -122,18 +121,6 @@ func normalizeDefaults(defaults GlobalDefaults) GlobalDefaults {
 
 func writeTOMLAtomically(path string, v any) error {
 	b, err := toml.Marshal(v)
-	if err != nil {
-		return err
-	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o644); err != nil {
-		return err
-	}
-	return os.Rename(tmp, path)
-}
-
-func writeJSONAtomically(path string, v any) error {
-	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
 		return err
 	}

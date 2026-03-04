@@ -15,9 +15,7 @@ defineOptions({
 
 const props = withDefaults(
   defineProps<ContextMenuContentProps & { class?: HTMLAttributes["class"] }>(),
-  {
-    sideOffset: 4,
-  },
+  {},
 )
 const emits = defineEmits<ContextMenuContentEmits>()
 

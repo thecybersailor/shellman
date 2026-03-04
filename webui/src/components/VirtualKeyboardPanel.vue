@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { VirtualKey } from "@/lib/terminal_keys";
 import { Paperclip } from "lucide-vue-next";
+import { useI18n } from "vue-i18n";
 
 defineProps<{
   ctrlArmed: boolean;
   altArmed: boolean;
   topOffsetPx?: number;
 }>();
+
+const { t } = useI18n();
 
 const emit = defineEmits<{
   (event: "press-key", key: VirtualKey): void;
@@ -85,7 +88,7 @@ function triggerHistoryMore() {
           type="button"
           tabindex="-1"
           class="h-8 shrink-0 rounded-md border border-border bg-background px-2 text-sm font-medium text-foreground transition hover:bg-accent"
-          aria-label="Load previous page"
+          :aria-label="t('terminal.loadPreviousPage')"
           @click="triggerHistoryMore"
         >
           PgUp
@@ -108,7 +111,7 @@ function triggerHistoryMore() {
         type="button"
         tabindex="-1"
         class="h-8 w-8 shrink-0 rounded-md border border-border bg-background text-sm font-medium leading-none text-foreground transition hover:bg-accent"
-        aria-label="Upload image"
+        :aria-label="t('terminal.uploadImage')"
         @mousedown.prevent
         @click="triggerImagePicker"
       >

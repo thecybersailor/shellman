@@ -10,7 +10,7 @@ import OverviewSheet from "./components/OverviewSheet.vue";
 import ActiveProjectEntry from "./components/ActiveProjectEntry.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 import { createShellmanStore } from "./stores/shellman";
-import type { TerminalFrame } from "./stores/shellman";
+import type { TaskMessage, TerminalFrame } from "./stores/shellman";
 import { resolvePathLinkInProject } from "@/lib/terminal_path_resolver";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Button } from "@/components/ui/button";
@@ -429,10 +429,10 @@ const overviewPmSessions = computed(() => {
   }));
 });
 
-const overviewPmMessages = computed(() => {
+const overviewPmMessages = computed<TaskMessage[]>(() => {
   const sessionID = String(overviewPmSessionId.value ?? "").trim();
   const raw = store.state.pmMessagesBySessionId[sessionID] ?? [];
-  return raw.map((item) => ({
+  return raw.map((item): TaskMessage => ({
     id: Number(item.id ?? 0),
     task_id: sessionID,
     role: item.role === "assistant" ? "assistant" : "user",

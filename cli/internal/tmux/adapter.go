@@ -25,14 +25,6 @@ const rootSessionName = "shellman"
 
 var rootSessionCreateMu sync.Mutex
 
-type processInfo struct {
-	pid  int
-	ppid int
-	comm string
-	args string
-	name string
-}
-
 type PaneRuntimeState struct {
 	Title          string
 	CurrentCommand string
@@ -328,11 +320,6 @@ func (a *Adapter) setPaneCommandCache(target string, panePID, tpgid int, command
 	}
 }
 
-func deriveCurrentCommandFromActivePID(panePID, tpgid int, hasTPGID bool) string {
-	command, _, _ := deriveRuntimeStateFromActivePID(panePID, tpgid, hasTPGID)
-	return command
-}
-
 func deriveRuntimeStateFromActivePID(panePID, tpgid int, hasTPGID bool) (string, string, []string) {
 	if panePID <= 0 {
 		return "", "", nil
@@ -342,11 +329,6 @@ func deriveRuntimeStateFromActivePID(panePID, tpgid int, hasTPGID bool) (string,
 		activePID = tpgid
 	}
 	return deriveProcessRuntimeByPID(activePID)
-}
-
-func deriveDisplayNameByPID(pid int) string {
-	command, _, _ := deriveProcessRuntimeByPID(pid)
-	return command
 }
 
 func deriveProcessRuntimeByPID(pid int) (string, string, []string) {
@@ -543,62 +525,6 @@ func normalizeProcName(raw string) string {
 		return raw
 	}
 	return base
-}
-
-func isShellProcess(name string) bool {
-	switch strings.ToLower(strings.TrimSpace(name)) {
-	case "", "sh", "bash", "zsh", "fish", "dash", "ksh", "tcsh", "csh", "login":
-		return true
-	default:
-		return false
-	}
-}
-
-func collectActiveProcessChain(rootPID int, byPID map[int]processInfo, children map[int][]int) []string {
-	bestLeaf := 0
-	var visit func(pid int)
-	visit = func(pid int) {
-		for _, child := range children[pid] {
-			visit(child)
-		}
-		if pid == rootPID {
-			return
-		}
-		p := byPID[pid]
-		if isShellProcess(p.comm) {
-			return
-		}
-		nonShellChild := false
-		for _, child := range children[pid] {
-			cp := byPID[child]
-			if !isShellProcess(cp.comm) {
-				nonShellChild = true
-				break
-			}
-		}
-		if !nonShellChild && pid > bestLeaf {
-			bestLeaf = pid
-		}
-	}
-	visit(rootPID)
-	if bestLeaf == 0 {
-		return nil
-	}
-	reversed := make([]string, 0, 8)
-	for pid := bestLeaf; pid != 0 && pid != rootPID; pid = byPID[pid].ppid {
-		p := byPID[pid]
-		if !isShellProcess(p.comm) {
-			reversed = append(reversed, p.name)
-		}
-	}
-	if len(reversed) == 0 {
-		return nil
-	}
-	chain := make([]string, 0, len(reversed))
-	for i := len(reversed) - 1; i >= 0; i-- {
-		chain = append(chain, reversed[i])
-	}
-	return chain
 }
 
 func (a *Adapter) CreateSiblingPane(target string) (string, error) {

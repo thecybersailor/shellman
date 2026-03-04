@@ -68,9 +68,9 @@ type ParsedToolCall = {
   type: "dynamic-tool";
   state: "input-streaming" | "input-available" | "output-available" | "output-error";
   toolName: string;
-  input?: unknown;
-  output?: unknown;
-  errorText?: string;
+  input: unknown;
+  output: unknown;
+  errorText: string | undefined;
 };
 
 type ParsedMessageMeta = {
@@ -113,26 +113,30 @@ function parseStructuredContent(content: string): ParsedMessageContent {
         event: typeof rawMeta.event === "string" ? rawMeta.event : undefined
       };
     }
-    const toolCalls = Array.isArray(parsed.tools)
-      ? parsed.tools
-          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
-          .map((item) => {
-            const toolName = typeof item.tool_name === "string" ? item.tool_name.trim() : "";
-            const state = parseToolState(typeof item.state === "string" ? item.state : undefined);
-            if (!toolName || !state) {
-              return undefined;
-            }
-            return {
-              type: "dynamic-tool" as const,
-              state,
-              toolName,
-              input: item.input,
-              output: item.output,
-              errorText: typeof item.error_text === "string" ? item.error_text : undefined
-            };
-          })
-          .filter((item): item is ParsedToolCall => !!item)
-      : undefined;
+    let toolCalls: ParsedToolCall[] | undefined;
+    if (Array.isArray(parsed.tools)) {
+      const next: ParsedToolCall[] = [];
+      for (const rawTool of parsed.tools) {
+        if (!rawTool || typeof rawTool !== "object") {
+          continue;
+        }
+        const item = rawTool as Record<string, unknown>;
+        const toolName = typeof item.tool_name === "string" ? item.tool_name.trim() : "";
+        const state = parseToolState(typeof item.state === "string" ? item.state : undefined);
+        if (!toolName || !state) {
+          continue;
+        }
+        next.push({
+          type: "dynamic-tool",
+          state,
+          toolName,
+          input: item.input,
+          output: item.output,
+          errorText: typeof item.error_text === "string" ? item.error_text : undefined
+        });
+      }
+      toolCalls = next;
+    }
     return { text, reasoning, toolCalls, meta };
   } catch {
     return { text: String(content ?? "") };

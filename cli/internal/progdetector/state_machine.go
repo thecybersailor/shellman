@@ -26,7 +26,6 @@ func ResolveActiveAdapterByState(activeAdapterID string, state RuntimeState) str
 				return activeAdapterID
 			}
 		}
-		activeAdapterID = ""
 	}
 
 	if detector, ok := ProgramDetectorRegistry.DetectByState(state); ok && detector != nil {

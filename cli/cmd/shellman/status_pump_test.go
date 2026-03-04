@@ -91,7 +91,7 @@ func (s *statusPumpTmux) CreateSiblingPaneInDirLoginShell(string, string) (strin
 	return "e2e:0.1", nil
 }
 func (s *statusPumpTmux) CreateChildPaneInDir(string, string) (string, error) { return "e2e:0.2", nil }
-func (s *statusPumpTmux) ClosePane(string) error                                { return nil }
+func (s *statusPumpTmux) ClosePane(string) error                              { return nil }
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))

@@ -181,25 +181,3 @@ func triggerAutoCompletionByPaneWithObservedAt(autoComplete paneAutoCompletionEx
 		)
 	}
 }
-
-func hashPrefix(hash string) string {
-	hash = strings.TrimSpace(hash)
-	if len(hash) <= 8 {
-		return hash
-	}
-	return hash[:8]
-}
-
-func unixSecondOrZero(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.UTC().Unix()
-}
-
-func ageMilliseconds(now, at time.Time) int64 {
-	if at.IsZero() {
-		return -1
-	}
-	return now.Sub(at).Milliseconds()
-}

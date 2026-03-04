@@ -774,23 +774,6 @@ func keepTaskAgentTools(tools []string, allowed ...string) []string {
 	return filtered
 }
 
-func (s *Server) getTaskAgentMode(taskID string) taskAgentToolMode {
-	if s == nil {
-		return taskAgentToolModeDefault
-	}
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return taskAgentToolModeDefault
-	}
-	s.taskAgentModeMu.Lock()
-	defer s.taskAgentModeMu.Unlock()
-	mode, ok := s.taskAgentModeByTask[taskID]
-	if !ok {
-		return taskAgentToolModeDefault
-	}
-	return mode
-}
-
 func (s *Server) setTaskAgentMode(taskID string, mode taskAgentToolMode) {
 	if s == nil {
 		return
@@ -805,56 +788,6 @@ func (s *Server) setTaskAgentMode(taskID string, mode taskAgentToolMode) {
 	}
 	s.taskAgentModeByTask[taskID] = mode
 	s.taskAgentModeMu.Unlock()
-}
-
-func (s *Server) getTaskAgentDetector(taskID string) string {
-	if s == nil {
-		return ""
-	}
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return ""
-	}
-	s.taskAgentModeMu.Lock()
-	defer s.taskAgentModeMu.Unlock()
-	return strings.TrimSpace(s.taskAgentDetectorByTask[taskID])
-}
-
-func (s *Server) setTaskAgentDetector(taskID, detectorID string) {
-	if s == nil {
-		return
-	}
-	taskID = strings.TrimSpace(taskID)
-	detectorID = strings.TrimSpace(detectorID)
-	if taskID == "" || detectorID == "" {
-		return
-	}
-	s.taskAgentModeMu.Lock()
-	if s.taskAgentDetectorByTask == nil {
-		s.taskAgentDetectorByTask = map[string]string{}
-	}
-	s.taskAgentDetectorByTask[taskID] = detectorID
-	s.taskAgentModeMu.Unlock()
-}
-
-func (s *Server) clearTaskAgentDetector(taskID string) {
-	if s == nil {
-		return
-	}
-	taskID = strings.TrimSpace(taskID)
-	if taskID == "" {
-		return
-	}
-	s.taskAgentModeMu.Lock()
-	if s.taskAgentDetectorByTask != nil {
-		delete(s.taskAgentDetectorByTask, taskID)
-	}
-	s.taskAgentModeMu.Unlock()
-}
-
-func (s *Server) detectTaskPaneCurrentCommand(store *projectstate.Store, taskID string) string {
-	state := s.detectTaskPaneRuntimeState(store, taskID)
-	return strings.TrimSpace(state.CurrentCommand)
 }
 
 func (s *Server) detectTaskPaneRuntimeState(store *projectstate.Store, taskID string) progdetector.RuntimeState {

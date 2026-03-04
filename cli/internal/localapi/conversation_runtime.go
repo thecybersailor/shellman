@@ -17,11 +17,11 @@ type ConversationEvent struct {
 type ConversationHandler func(context.Context, ConversationEvent) error
 
 type conversationActor struct {
-	key           string
-	queue         chan ConversationEvent
-	handler       ConversationHandler
-	mu            sync.Mutex
-	inflight      context.CancelFunc
+	key      string
+	queue    chan ConversationEvent
+	handler  ConversationHandler
+	mu       sync.Mutex
+	inflight context.CancelFunc
 }
 
 type ConversationRuntime struct {

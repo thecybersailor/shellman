@@ -10,6 +10,7 @@ describe("SettingsPanel", () => {
         defaultLaunchProgram: "shell",
         defaultHelperProgram: "codex",
         defaultSidecarMode: "observer",
+        defaultTerminalFontSize: 13,
         providers: [
           { id: "codex", display_name: "codex", command: "codex" },
           { id: "claude", display_name: "Claude", command: "claude" },
@@ -77,6 +78,7 @@ describe("SettingsPanel", () => {
     expect(wrapper.emitted("save")?.[0]).toEqual([{
       defaultLaunchProgram: "codex",
       defaultHelperProgram: "codex",
+      defaultTerminalFontSize: 13,
       taskCompletionMode: "command",
       taskCompletionCommand: "notify --flag",
       taskCompletionIdleDuration: 60,
@@ -97,6 +99,7 @@ describe("SettingsPanel", () => {
       defaultLaunchProgram: "shell",
       defaultHelperProgram: "codex",
       defaultSidecarMode: "observer",
+      defaultTerminalFontSize: 13,
       taskCompletionMode: "none",
       taskCompletionCommand: "",
       taskCompletionIdleDuration: 10,
@@ -113,6 +116,7 @@ describe("SettingsPanel", () => {
       defaultLaunchProgram: "shell",
       defaultHelperProgram: "codex",
       defaultSidecarMode: "observer",
+      defaultTerminalFontSize: 13,
       taskCompletionMode: "none",
       taskCompletionCommand: "",
       taskCompletionIdleDuration: 10,
