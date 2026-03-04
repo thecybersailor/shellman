@@ -197,7 +197,7 @@ function formatRelativeTime(unixSecond: number | undefined) {
 }
 
 function displayTime(task: Task) {
-  if (task.runtimeStatus === "running") {
+  if (isTaskRunning(task)) {
     return "";
   }
   if (task.runtimeUpdatedAt) {
@@ -207,6 +207,16 @@ function displayTime(task: Task) {
     return formatRelativeTime(task.updatedAt);
   }
   return task.metadata || "";
+}
+
+function isTaskRunning(task: Task) {
+  if (task.status === "running" || task.status === "waiting_user" || task.status === "waiting_children") {
+    return true;
+  }
+  if (task.runtimeStatus === "running") {
+    return true;
+  }
+  return false;
 }
 
 function isTaskChecked(task: Task) {
@@ -603,7 +613,7 @@ function onProjectDragEnd() {
                             class="inline-flex"
                           >
                             <LoaderCircle
-                              v-if="row.task.runtimeStatus === 'running'"
+                              v-if="isTaskRunning(row.task)"
                               class="h-3.5 w-3.5 text-muted-foreground/60 animate-spin"
                             />
                           </span>

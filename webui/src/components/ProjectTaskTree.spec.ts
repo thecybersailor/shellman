@@ -36,7 +36,7 @@ describe("ProjectTaskTree", () => {
             title: "Project One",
             tasks: [
               { taskId: "t1", title: "Root", status: "running", runtimeStatus: "running", runtimeUpdatedAt: 1771409340 },
-              { taskId: "t2", title: "Child", status: "waiting_children", runtimeStatus: "ready", runtimeUpdatedAt: 1771402200 }
+              { taskId: "t2", title: "Child", status: "completed", runtimeStatus: "ready", runtimeUpdatedAt: 1771402200 }
             ]
           }
         ],
@@ -47,6 +47,40 @@ describe("ProjectTaskTree", () => {
     expect(wrapper.get("[data-test-id='shellman-task-status-t1'] svg").classes()).toContain("animate-spin");
     expect(wrapper.text()).toContain("2h");
     nowSpy.mockRestore();
+  });
+
+  it("keeps spinner when task status is running but runtime status is unknown", () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          {
+            projectId: "p1",
+            title: "Project One",
+            tasks: [{ taskId: "t1", title: "Root", status: "running", runtimeStatus: "unknown", runtimeUpdatedAt: 1771409340 }]
+          }
+        ],
+        selectedTaskId: "t1"
+      }
+    });
+
+    expect(wrapper.get("[data-test-id='shellman-task-status-t1'] svg").classes()).toContain("animate-spin");
+  });
+
+  it("keeps spinner when task status is waiting_user even if runtime status is ready", () => {
+    const wrapper = mount(ProjectTaskTree, {
+      props: {
+        projects: [
+          {
+            projectId: "p1",
+            title: "Project One",
+            tasks: [{ taskId: "t1", title: "Root", status: "waiting_user", runtimeStatus: "ready", runtimeUpdatedAt: 1771409340 }]
+          }
+        ],
+        selectedTaskId: "t1"
+      }
+    });
+
+    expect(wrapper.get("[data-test-id='shellman-task-status-t1'] svg").classes()).toContain("animate-spin");
   });
 
   it("uses task updatedAt when runtimeUpdatedAt is absent", () => {
