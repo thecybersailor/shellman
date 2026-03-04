@@ -105,6 +105,37 @@ func (c *ConnActor) Selected() string {
 	return c.selected
 }
 
+func (c *ConnActor) DropWatch(target string) {
+	if c == nil {
+		return
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.watchSet != nil {
+		delete(c.watchSet, target)
+	}
+	if len(c.watchOrder) > 0 {
+		nextOrder := c.watchOrder[:0]
+		for _, item := range c.watchOrder {
+			if strings.TrimSpace(item) == target {
+				continue
+			}
+			nextOrder = append(nextOrder, item)
+		}
+		c.watchOrder = nextOrder
+	}
+	if strings.TrimSpace(c.selected) == target {
+		c.selected = ""
+		if n := len(c.watchOrder); n > 0 {
+			c.selected = c.watchOrder[n-1]
+		}
+	}
+}
+
 func (c *ConnActor) Outbound() chan protocol.Message {
 	if c == nil {
 		return nil

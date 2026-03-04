@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"shellman/cli/internal/projectstate"
 	"shellman/cli/internal/protocol"
@@ -14,8 +16,10 @@ type fakeTaskStateStore struct {
 	tasksByProject map[string][]projectstate.TaskRecordRow
 	maxByProject   map[string]int64
 
-	batchCalls int
-	lastBatch  projectstate.RuntimeBatchUpdate
+	batchCalls    int
+	lastBatch     projectstate.RuntimeBatchUpdate
+	batchSignal   chan struct{}
+	maxQueryCalls atomic.Int32
 }
 
 func (f *fakeTaskStateStore) LoadPanes() (projectstate.PanesIndex, error) {
@@ -29,6 +33,12 @@ func (f *fakeTaskStateStore) LoadPanes() (projectstate.PanesIndex, error) {
 func (f *fakeTaskStateStore) BatchUpsertRuntime(input projectstate.RuntimeBatchUpdate) error {
 	f.batchCalls++
 	f.lastBatch = input
+	if f.batchSignal != nil {
+		select {
+		case f.batchSignal <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }
 
@@ -40,6 +50,7 @@ func (f *fakeTaskStateStore) ListTasksByProject(projectID string) ([]projectstat
 }
 
 func (f *fakeTaskStateStore) GetProjectMaxTaskLastModified(projectID string) (int64, error) {
+	f.maxQueryCalls.Add(1)
 	return f.maxByProject[projectID], nil
 }
 
@@ -273,5 +284,174 @@ func TestTaskStateActor_Tick_EmitsTreeDeltaWhenTasksChanged(t *testing.T) {
 	}
 	if len(payload.Tree.Reparented) != 1 || payload.Tree.Reparented[0].TaskID != "t2" {
 		t.Fatalf("unexpected reparented delta: %#v", payload.Tree.Reparented)
+	}
+}
+
+func TestTaskStateActor_EventLoop_NoPollingWithoutTrigger(t *testing.T) {
+	store := &fakeTaskStateStore{
+		panesByTask:      projectstate.PanesIndex{},
+		tasksByProject:   map[string][]projectstate.TaskRecordRow{},
+		maxByProject:     map[string]int64{"p1": 0},
+		batchSignal:      make(chan struct{}, 1),
+	}
+	actor := NewTaskStateActor()
+	actor.SetProjectProvider(func() ([]taskStateProject, error) {
+		return []taskStateProject{{ProjectID: "p1", RepoRoot: "/tmp/p1"}}, nil
+	})
+	actor.SetStoreFactory(func(repoRoot string) taskStateStore {
+		return store
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runTaskStateActorLoop(ctx, actor)
+		close(done)
+	}()
+	time.Sleep(40 * time.Millisecond)
+	if got := store.maxQueryCalls.Load(); got != 0 {
+		t.Fatalf("expected no task-state polling query, got %d", got)
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("task state loop did not stop after context cancel")
+	}
+}
+
+func TestTaskStateActor_EventLoop_TriggeredByPaneReport(t *testing.T) {
+	store := &fakeTaskStateStore{
+		panesByTask: projectstate.PanesIndex{
+			"t1": {TaskID: "t1", PaneID: "e2e:0.0", PaneTarget: "e2e:0.0"},
+		},
+		tasksByProject: map[string][]projectstate.TaskRecordRow{},
+		maxByProject:   map[string]int64{"p1": 0},
+		batchSignal:    make(chan struct{}, 1),
+	}
+	actor := NewTaskStateActor()
+	actor.SetProjectProvider(func() ([]taskStateProject, error) {
+		return []taskStateProject{{ProjectID: "p1", RepoRoot: "/tmp/p1"}}, nil
+	})
+	actor.SetStoreFactory(func(repoRoot string) taskStateStore {
+		return store
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go runTaskStateActorLoop(ctx, actor)
+	actor.OnPaneReport(PaneStateReport{
+		PaneID:        "e2e:0.0",
+		PaneTarget:    "e2e:0.0",
+		RuntimeStatus: "running",
+		Snapshot:      "hello\n",
+		SnapshotHash:  "h1",
+		UpdatedAt:     100,
+	})
+
+	select {
+	case <-store.batchSignal:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected pane report to trigger runtime flush without ticker polling")
+	}
+}
+
+func TestTaskStateActor_OnPaneReport_DropsTriggerWhenQueueFull(t *testing.T) {
+	actor := NewTaskStateActor()
+	actor.triggerQueue <- struct{}{}
+
+	start := time.Now()
+	actor.OnPaneReport(PaneStateReport{
+		PaneID:       "e2e:0.0",
+		SnapshotHash: "h1",
+	})
+	if time.Since(start) > 100*time.Millisecond {
+		t.Fatal("OnPaneReport should not block when trigger queue is full")
+	}
+	if got := len(actor.triggerQueue); got != 1 {
+		t.Fatalf("expected trigger queue to stay full with one signal, got %d", got)
+	}
+	if !actor.IsPaneDirty("e2e:0.0") {
+		t.Fatal("expected pane to be marked dirty even when trigger signal is dropped")
+	}
+}
+
+func TestTaskStateActor_EventLoop_BurstReports_CoalescedSingleFlush(t *testing.T) {
+	store := &fakeTaskStateStore{
+		panesByTask: projectstate.PanesIndex{
+			"t1": {TaskID: "t1", PaneID: "e2e:0.0", PaneTarget: "e2e:0.0"},
+		},
+		tasksByProject: map[string][]projectstate.TaskRecordRow{},
+		maxByProject:   map[string]int64{"p1": 0},
+		batchSignal:    make(chan struct{}, 1),
+	}
+	actor := NewTaskStateActor()
+	actor.SetProjectProvider(func() ([]taskStateProject, error) {
+		return []taskStateProject{{ProjectID: "p1", RepoRoot: "/tmp/p1"}}, nil
+	})
+	actor.SetStoreFactory(func(repoRoot string) taskStateStore {
+		return store
+	})
+
+	// Queue several updates before the loop starts; one trigger should flush all buffered reports.
+	actor.OnPaneReport(PaneStateReport{PaneID: "e2e:0.0", PaneTarget: "e2e:0.0", SnapshotHash: "h1", UpdatedAt: 100})
+	actor.OnPaneReport(PaneStateReport{PaneID: "e2e:0.0", PaneTarget: "e2e:0.0", SnapshotHash: "h2", UpdatedAt: 101})
+	actor.OnPaneReport(PaneStateReport{PaneID: "e2e:0.0", PaneTarget: "e2e:0.0", SnapshotHash: "h3", UpdatedAt: 102})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		runTaskStateActorLoop(ctx, actor)
+		close(done)
+	}()
+
+	select {
+	case <-store.batchSignal:
+	case <-time.After(500 * time.Millisecond):
+		t.Fatal("expected buffered reports to flush after loop start")
+	}
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(300 * time.Millisecond):
+		t.Fatal("task state loop did not stop after context cancel")
+	}
+	if store.batchCalls != 1 {
+		t.Fatalf("expected one coalesced batch flush, got %d", store.batchCalls)
+	}
+	if len(store.lastBatch.Tasks) != 3 {
+		t.Fatalf("expected three task runtime records in coalesced flush, got %d", len(store.lastBatch.Tasks))
+	}
+}
+
+func TestTaskStateActor_RunLoop_ReturnsWhenTriggerQueueNil(t *testing.T) {
+	actor := NewTaskStateActor()
+	actor.triggerQueue = nil
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		actor.runLoop(ctx)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected runLoop to return immediately when trigger queue is nil")
+	}
+}
+
+func TestTaskStateActorLoop_NilActor_ReturnsImmediately(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	done := make(chan struct{})
+	go func() {
+		runTaskStateActorLoop(ctx, nil)
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected runTaskStateActorLoop(nil) to return immediately")
 	}
 }

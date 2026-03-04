@@ -76,6 +76,8 @@ type TaskStateActor struct {
 	paneLatest   map[string]PaneStateReport
 	dirtyPaneIDs map[string]struct{}
 	reportQueue  []PaneStateReport
+	triggerQueue chan struct{}
+	startOnce    sync.Once
 
 	projectProvider taskStateProjectProvider
 	storeFactory    taskStateStoreFactory
@@ -92,6 +94,7 @@ func NewTaskStateActor() *TaskStateActor {
 		paneLatest:   map[string]PaneStateReport{},
 		dirtyPaneIDs: map[string]struct{}{},
 		reportQueue:  []PaneStateReport{},
+		triggerQueue: make(chan struct{}, 1),
 		storeFactory: func(repoRoot string) taskStateStore { return projectstate.NewStore(repoRoot) },
 		now:          time.Now,
 		projectCache: map[string]taskRowsCache{},
@@ -159,14 +162,22 @@ func (a *TaskStateActor) OnPaneReport(r PaneStateReport) {
 	r.PaneID = paneID
 
 	a.mu.Lock()
-	defer a.mu.Unlock()
 	prev, ok := a.paneLatest[paneID]
 	if ok && samePaneContent(prev, r) {
+		a.mu.Unlock()
 		return
 	}
 	a.paneLatest[paneID] = r
 	a.dirtyPaneIDs[paneID] = struct{}{}
 	a.reportQueue = append(a.reportQueue, r)
+	queue := a.triggerQueue
+	a.mu.Unlock()
+	if queue != nil {
+		select {
+		case queue <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func (a *TaskStateActor) Tick(ctx context.Context) {
@@ -195,21 +206,42 @@ func (a *TaskStateActor) Tick(ctx context.Context) {
 	a.emitTmuxStatusDelta(ctx, payload)
 }
 
-func runTaskStateActorLoop(ctx context.Context, actor *TaskStateActor, interval time.Duration) {
+func runTaskStateActorLoop(ctx context.Context, actor *TaskStateActor) {
 	if actor == nil {
 		return
 	}
-	if interval <= 0 {
-		interval = time.Second
+	actor.Start(ctx)
+	<-ctx.Done()
+}
+
+func (a *TaskStateActor) Start(ctx context.Context) {
+	if a == nil {
+		return
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	a.startOnce.Do(func() {
+		go a.runLoop(ctx)
+	})
+}
+
+func (a *TaskStateActor) runLoop(ctx context.Context) {
+	if a == nil {
+		return
+	}
+	a.mu.RLock()
+	queue := a.triggerQueue
+	a.mu.RUnlock()
+	if queue == nil {
+		return
+	}
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
-			actor.Tick(ctx)
+		case <-queue:
+			a.Tick(ctx)
 		}
 	}
 }

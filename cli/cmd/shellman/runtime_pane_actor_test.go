@@ -36,6 +36,13 @@ type delayedCaptureTmux struct {
 	captureDelay time.Duration
 }
 
+func (d *delayedCaptureTmux) CapturePane(target string) (string, error) {
+	if d.captureDelay > 0 {
+		time.Sleep(d.captureDelay)
+	}
+	return d.streamPumpTmux.CapturePane(target)
+}
+
 func (d *delayedCaptureTmux) CaptureHistory(target string, lines int) (string, error) {
 	if d.captureDelay > 0 {
 		time.Sleep(d.captureDelay)
@@ -75,6 +82,57 @@ func (e *eagerRealtimeSource) Subscribe(target string) (<-chan string, func(), e
 		ch <- "APPEND\n"
 	}()
 	return ch, func() {}, nil
+}
+
+type countingRealtimeSource struct {
+	mu        sync.Mutex
+	streams   map[string]chan string
+	subscribe atomic.Int32
+}
+
+func (c *countingRealtimeSource) Subscribe(target string) (<-chan string, func(), error) {
+	c.subscribe.Add(1)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.streams == nil {
+		c.streams = map[string]chan string{}
+	}
+	ch := c.streams[target]
+	if ch == nil {
+		ch = make(chan string, 32)
+		c.streams[target] = ch
+	}
+	return ch, func() {}, nil
+}
+
+func (c *countingRealtimeSource) Emit(target, data string) {
+	c.mu.Lock()
+	ch := c.streams[target]
+	c.mu.Unlock()
+	if ch == nil {
+		return
+	}
+	ch <- data
+}
+
+func (c *countingRealtimeSource) SubscribeCalls() int32 {
+	return c.subscribe.Load()
+}
+
+type pollSpyTmux struct {
+	streamPumpTmux
+	captureCalls atomic.Int32
+	cursorCalls  atomic.Int32
+}
+
+func (p *pollSpyTmux) CapturePane(target string) (string, error) {
+	p.captureCalls.Add(1)
+	return p.streamPumpTmux.CapturePane(target)
+}
+
+func (p *pollSpyTmux) CursorPosition(target string) (int, int, error) {
+	p.cursorCalls.Add(1)
+	return p.streamPumpTmux.CursorPosition(target)
 }
 
 type fakeTaskStateSink struct {
@@ -261,29 +319,36 @@ func TestPaneActor_SubscribeMissingPaneEmitsPaneEndedEvenIfHistoryExists(t *test
 func TestPaneActor_Subscribe_BuffersAppendUntilResetSent(t *testing.T) {
 	tmuxService := &delayedCaptureTmux{
 		streamPumpTmux: streamPumpTmux{
-			history:       "BASE\nAPPEND\n",
-			paneSnapshots: []string{"BASE\n", "BASE\nAPPEND\n", "BASE\nAPPEND\n"},
-			cursors:       [][2]int{{0, 1}, {0, 1}, {0, 1}},
+			paneSnapshots: []string{"BASE\n"},
+			cursors:       [][2]int{{0, 0}},
 		},
 		captureDelay: 45 * time.Millisecond,
 	}
-	actor := NewPaneActor("e2e:0.0", tmuxService, 10*time.Millisecond, nil, nil, nil, testLogger())
+	realtime := &countingRealtimeSource{}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 10*time.Millisecond, nil, nil, realtime, testLogger())
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	actor.Start(ctx)
 
-	// Seed last snapshot before subscribe so tick emits append-delta during delayed capture.
-	time.Sleep(15 * time.Millisecond)
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if realtime.SubscribeCalls() > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if realtime.SubscribeCalls() == 0 {
+		t.Fatal("expected realtime subscription before subscribe gap-recover")
+	}
 
 	out := make(chan protocol.Message, 16)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		actor.Subscribe("conn_1", out, paneSubscribeOptions{
-			GapRecover:   true,
-			HistoryLines: 4000,
-		})
+		actor.Subscribe("conn_1", out)
 	}()
+	time.Sleep(10 * time.Millisecond)
+	realtime.Emit("e2e:0.0", "APPEND\n")
 
 	first := readNextTermOutput(t, out, time.Second)
 	var firstPayload struct {
@@ -296,7 +361,7 @@ func TestPaneActor_Subscribe_BuffersAppendUntilResetSent(t *testing.T) {
 	if firstPayload.Mode != "reset" {
 		t.Fatalf("expected first frame reset, got %s with data=%q", firstPayload.Mode, firstPayload.Data)
 	}
-	if firstPayload.Data != "BASE\nAPPEND" {
+	if firstPayload.Data != "BASE" {
 		t.Fatalf("unexpected reset payload data (trailing newline stripped): %q", firstPayload.Data)
 	}
 
@@ -387,7 +452,7 @@ func TestPaneActor_CaptureResetSnapshot_StableSnapshotKeepsCursor(t *testing.T) 
 	}
 }
 
-func TestPaneActor_CaptureResetSnapshot_SnapshotChangedDropsCursor(t *testing.T) {
+func TestPaneActor_CaptureResetSnapshot_SnapshotChangedCanRecoverCursorOnRetry(t *testing.T) {
 	tmuxService := &streamPumpTmux{
 		paneSnapshots: []string{"line-1\n", "line-1\nline-2\n"},
 		cursors:       [][2]int{{2, 0}},
@@ -401,11 +466,11 @@ func TestPaneActor_CaptureResetSnapshot_SnapshotChangedDropsCursor(t *testing.T)
 	if snapshot != "line-1\nline-2\n" {
 		t.Fatalf("expected latest snapshot after drift, got %q", snapshot)
 	}
-	if hasCursor {
-		t.Fatal("expected cursor to be dropped when snapshot drift is detected")
+	if !hasCursor {
+		t.Fatal("expected cursor to be recovered after snapshot drift stabilizes")
 	}
-	if cursorX != 0 || cursorY != 0 {
-		t.Fatalf("unexpected cursor fallback: %d,%d", cursorX, cursorY)
+	if cursorX != 2 || cursorY != 0 {
+		t.Fatalf("unexpected recovered cursor: %d,%d", cursorX, cursorY)
 	}
 }
 
@@ -502,6 +567,58 @@ func TestPaneActor_SubscribeSendsResetBeforeRealtimeAppend(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected first output frame after subscribe")
+	}
+}
+
+func TestPaneActor_Start_SubscribesRealtimeWithoutFrontendSubscribers(t *testing.T) {
+	tmuxService := &streamPumpTmux{
+		paneSnapshots: []string{"boot$\n"},
+		cursors:       [][2]int{{0, 0}},
+	}
+	realtime := &countingRealtimeSource{}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, nil, realtime, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actor.Start(ctx)
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if realtime.SubscribeCalls() > 0 {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("expected realtime subscription on start even without frontend subscribers, subscribe_calls=%d", realtime.SubscribeCalls())
+}
+
+func TestPaneActor_Start_DoesNotPollTmuxAfterRealtimeEnabled(t *testing.T) {
+	tmuxService := &pollSpyTmux{
+		streamPumpTmux: streamPumpTmux{
+			paneSnapshots: []string{"boot$\n"},
+			cursors:       [][2]int{{0, 0}},
+		},
+	}
+	realtime := &countingRealtimeSource{}
+	actor := NewPaneActor("e2e:0.0", tmuxService, 20*time.Millisecond, nil, nil, realtime, testLogger())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	actor.Start(ctx)
+
+	deadline := time.Now().Add(200 * time.Millisecond)
+	for time.Now().Before(deadline) {
+		if realtime.SubscribeCalls() > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	realtime.Emit("e2e:0.0", "run$\n")
+	time.Sleep(120 * time.Millisecond)
+
+	if got := tmuxService.captureCalls.Load(); got != 0 {
+		t.Fatalf("expected no tmux capture polling after start, got capture_calls=%d", got)
+	}
+	if got := tmuxService.cursorCalls.Load(); got != 0 {
+		t.Fatalf("expected no tmux cursor polling after start, got cursor_calls=%d", got)
 	}
 }
 
@@ -655,17 +772,13 @@ func TestPaneActor_ReadyEdgeTriggersAutoCompleteOnce(t *testing.T) {
 }
 
 func TestPaneActor_ColdStartStaticPane_DoesNotTriggerAutoComplete(t *testing.T) {
-	oldStatusInterval := statusPumpInterval
 	oldStreamInterval := streamPumpInterval
 	oldDelay := statusTransitionDelay
 	oldInputWindow := statusInputIgnoreWindow
-	// Keep status pump out of this test window so pane actor snapshot sequence is deterministic.
-	statusPumpInterval = 5 * time.Second
 	streamPumpInterval = 5 * time.Millisecond
 	statusTransitionDelay = 10 * time.Millisecond
 	statusInputIgnoreWindow = 10 * time.Millisecond
 	defer func() {
-		statusPumpInterval = oldStatusInterval
 		streamPumpInterval = oldStreamInterval
 		statusTransitionDelay = oldDelay
 		statusInputIgnoreWindow = oldInputWindow
@@ -906,5 +1019,27 @@ func TestPaneActor_ReadyEdgeSuppressedWhenHashAlreadyConsumedByTool(t *testing.T
 	}
 	if consumeAutoProgressSuppression(target, sha1Text(normalizeTermSnapshot("run$\n"))) {
 		t.Fatal("expected suppression entry consumed by first ready edge check")
+	}
+}
+
+func TestPaneActor_ScheduleStatusEvalTimer_ReusesEarlierDueAt(t *testing.T) {
+	actor := NewPaneActor("e2e:0.0", &streamPumpTmux{}, 20*time.Millisecond, nil, nil, nil, testLogger())
+	now := time.Now().UTC()
+
+	actor.mu.Lock()
+	actor.scheduleStatusEvalTimerLocked(now.Add(200 * time.Millisecond))
+	seq1 := actor.statusEvalSeq
+	due1 := actor.statusEvalDueAt
+	actor.scheduleStatusEvalTimerLocked(now.Add(500 * time.Millisecond))
+	seq2 := actor.statusEvalSeq
+	due2 := actor.statusEvalDueAt
+	actor.mu.Unlock()
+	defer actor.stopStatusEvalTimer()
+
+	if seq2 != seq1 {
+		t.Fatalf("expected later dueAt not to reschedule timer, seq1=%d seq2=%d", seq1, seq2)
+	}
+	if !due2.Equal(due1) {
+		t.Fatalf("expected dueAt unchanged for later schedule, due1=%v due2=%v", due1, due2)
 	}
 }

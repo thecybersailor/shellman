@@ -31,6 +31,17 @@ func (f *fakeControlSessionClient) PaneMap() map[string]string {
 	return out
 }
 
+func (f *fakeControlSessionClient) PaneTarget(paneID string) (string, bool) {
+	paneID = strings.TrimSpace(paneID)
+	if paneID == "" {
+		return "", false
+	}
+	f.paneMapMu.RLock()
+	defer f.paneMapMu.RUnlock()
+	target, ok := f.paneMap[paneID]
+	return strings.TrimSpace(target), ok
+}
+
 func (f *fakeControlSessionClient) RefreshPaneMap() error {
 	if f.refreshFn == nil {
 		return nil
@@ -159,6 +170,61 @@ func TestControlModeHub_BuffersPartialUTF8AcrossChunks(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("expected reconstructed utf8 output")
+	}
+}
+
+func TestControlModeHub_EmitsPaneClosedOnTopologyChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	refreshCalls := 0
+	client := &fakeControlSessionClient{
+		lines: make(chan string, 8),
+		paneMap: map[string]string{
+			"%1": "e2e:0.0",
+			"%2": "e2e:0.1",
+		},
+	}
+	client.refreshFn = func() error {
+		refreshCalls++
+		if refreshCalls >= 3 {
+			client.paneMapMu.Lock()
+			delete(client.paneMap, "%2")
+			client.paneMapMu.Unlock()
+		}
+		return nil
+	}
+
+	hub := newControlModeHubWithFactory(ctx, "", testLogger(), func(context.Context, string, string) (controlSessionClient, error) {
+		return client, nil
+	})
+	closedCh := make(chan string, 4)
+	hub.SetPaneClosedHook(func(target, reason string) {
+		closedCh <- target + "|" + reason
+	})
+
+	out0, un0, err := hub.Subscribe("e2e:0.0")
+	if err != nil {
+		t.Fatalf("subscribe e2e:0.0 failed: %v", err)
+	}
+	defer un0()
+	out1, un1, err := hub.Subscribe("e2e:0.1")
+	if err != nil {
+		t.Fatalf("subscribe e2e:0.1 failed: %v", err)
+	}
+	defer un1()
+	_ = out0
+	_ = out1
+
+	client.lines <- `%window-close @3`
+
+	select {
+	case got := <-closedCh:
+		if !strings.HasPrefix(got, "e2e:0.1|tmux-window-close") {
+			t.Fatalf("unexpected pane closed callback: %q", got)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected pane closed callback after topology change")
 	}
 }
 

@@ -41,12 +41,9 @@ func (t *lifecycleTmux) CreateSiblingPane(string) (string, error)   { return "e2
 func (t *lifecycleTmux) CreateChildPane(string) (string, error)     { return "e2e:0.2", nil }
 
 func TestRunWSRuntime_StopsPumpsAfterSocketClose(t *testing.T) {
-	oldStatus := statusPumpInterval
 	oldStream := streamPumpInterval
-	statusPumpInterval = 5 * time.Millisecond
 	streamPumpInterval = 5 * time.Millisecond
 	defer func() {
-		statusPumpInterval = oldStatus
 		streamPumpInterval = oldStream
 	}()
 
