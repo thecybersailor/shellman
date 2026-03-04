@@ -18,9 +18,14 @@ type paneOutputRealtimeSource interface {
 	Subscribe(target string) (<-chan string, func(), error)
 }
 
+type paneOutputLifecycleSource interface {
+	SetPaneClosedHook(func(target, reason string))
+}
+
 type controlSessionClient interface {
 	Lines() <-chan string
 	PaneMap() map[string]string
+	PaneTarget(paneID string) (string, bool)
 	Close() error
 }
 
@@ -48,6 +53,7 @@ type ControlModeHub struct {
 	socket  string
 	logger  *slog.Logger
 	factory controlSessionFactory
+	onClose func(target, reason string)
 
 	mu       sync.Mutex
 	sessions map[string]*controlModeSessionWatcher
@@ -139,7 +145,17 @@ func (h *ControlModeHub) Subscribe(target string) (<-chan string, func(), error)
 	return out, unsubscribe, nil
 }
 
+func (h *ControlModeHub) SetPaneClosedHook(fn func(target, reason string)) {
+	if h == nil {
+		return
+	}
+	h.mu.Lock()
+	h.onClose = fn
+	h.mu.Unlock()
+}
+
 func (h *ControlModeHub) loopSession(w *controlModeSessionWatcher) {
+	defer h.onSessionLoopExit(w)
 	for {
 		select {
 		case <-h.ctx.Done():
@@ -149,19 +165,20 @@ func (h *ControlModeHub) loopSession(w *controlModeSessionWatcher) {
 			if !ok {
 				return
 			}
+			h.handleTopologySignal(w, line)
 			ev, ok := tmuxpkg.ParseControlOutputLine(line)
 			if !ok {
 				continue
 			}
-			paneMap := w.client.PaneMap()
-			target := strings.TrimSpace(paneMap[ev.PaneID])
+			target, _ := w.client.PaneTarget(ev.PaneID)
+			target = strings.TrimSpace(target)
 			if target == "" {
 				if refresher, ok := w.client.(controlSessionPaneMapRefresher); ok {
 					if err := refresher.RefreshPaneMap(); err != nil {
 						h.logger.Warn("control mode pane map refresh failed", "session", w.session, "pane_id", ev.PaneID, "error", err)
 					}
-					paneMap = w.client.PaneMap()
-					target = strings.TrimSpace(paneMap[ev.PaneID])
+					target, _ = w.client.PaneTarget(ev.PaneID)
+					target = strings.TrimSpace(target)
 				}
 			}
 			if target == "" {
@@ -175,6 +192,127 @@ func (h *ControlModeHub) loopSession(w *controlModeSessionWatcher) {
 			h.broadcast(w.session, target, data)
 		}
 	}
+}
+
+func (h *ControlModeHub) onSessionLoopExit(w *controlModeSessionWatcher) {
+	if h == nil || w == nil {
+		return
+	}
+	closedTargets := map[string]struct{}{}
+	h.mu.Lock()
+	existing := h.sessions[w.session]
+	if existing == w {
+		delete(h.sessions, w.session)
+	}
+	for _, sub := range w.subs {
+		target := strings.TrimSpace(sub.target)
+		if target == "" {
+			continue
+		}
+		closedTargets[target] = struct{}{}
+	}
+	cb := h.onClose
+	h.mu.Unlock()
+
+	if cb == nil {
+		return
+	}
+	for target := range closedTargets {
+		cb(target, "control-session-exit")
+	}
+}
+
+func (h *ControlModeHub) handleTopologySignal(w *controlModeSessionWatcher, line string) {
+	if h == nil || w == nil || !isPaneTopologySignal(line) {
+		return
+	}
+	refresher, ok := w.client.(controlSessionPaneMapRefresher)
+	if !ok {
+		return
+	}
+	before := w.client.PaneMap()
+	if err := refresher.RefreshPaneMap(); err != nil {
+		h.logger.Warn("control mode pane map refresh failed", "session", w.session, "error", err)
+		return
+	}
+	after := w.client.PaneMap()
+	removed := removedPaneTargets(before, after)
+	if len(removed) == 0 {
+		return
+	}
+	reason := "tmux-topology-change"
+	if op := controlSignalOperation(line); op != "" {
+		reason = "tmux-" + op
+	}
+	h.emitPaneClosed(removed, reason)
+}
+
+func (h *ControlModeHub) emitPaneClosed(targets []string, reason string) {
+	if h == nil || len(targets) == 0 {
+		return
+	}
+	h.mu.Lock()
+	cb := h.onClose
+	h.mu.Unlock()
+	if cb == nil {
+		return
+	}
+	for _, target := range targets {
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		cb(target, reason)
+	}
+}
+
+func isPaneTopologySignal(line string) bool {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "%") {
+		return false
+	}
+	switch controlSignalOperation(line) {
+	case "window-add", "window-close", "unlinked-window-add", "unlinked-window-close", "layout-change", "sessions-changed", "session-window-changed":
+		return true
+	default:
+		return false
+	}
+}
+
+func controlSignalOperation(line string) string {
+	line = strings.TrimSpace(line)
+	if line == "" || !strings.HasPrefix(line, "%") {
+		return ""
+	}
+	rest := strings.TrimPrefix(line, "%")
+	fields := strings.Fields(rest)
+	if len(fields) == 0 {
+		return ""
+	}
+	return strings.TrimSpace(fields[0])
+}
+
+func removedPaneTargets(before, after map[string]string) []string {
+	if len(before) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(before))
+	seen := map[string]struct{}{}
+	for paneID, target := range before {
+		if _, ok := after[paneID]; ok {
+			continue
+		}
+		target = strings.TrimSpace(target)
+		if target == "" {
+			continue
+		}
+		if _, ok := seen[target]; ok {
+			continue
+		}
+		seen[target] = struct{}{}
+		out = append(out, target)
+	}
+	return out
 }
 
 func (h *ControlModeHub) consumeUTF8Chunk(w *controlModeSessionWatcher, target, chunk string) string {
@@ -346,6 +484,17 @@ func (c *realControlSessionClient) PaneMap() map[string]string {
 		out[k] = v
 	}
 	return out
+}
+
+func (c *realControlSessionClient) PaneTarget(paneID string) (string, bool) {
+	paneID = strings.TrimSpace(paneID)
+	if paneID == "" {
+		return "", false
+	}
+	c.paneMapMu.RLock()
+	target, ok := c.paneIDToTG[paneID]
+	c.paneMapMu.RUnlock()
+	return strings.TrimSpace(target), ok
 }
 
 func (c *realControlSessionClient) RefreshPaneMap() error {

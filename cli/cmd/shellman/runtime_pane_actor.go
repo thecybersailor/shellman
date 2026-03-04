@@ -12,15 +12,15 @@ import (
 
 	"shellman/cli/internal/bridge"
 	"shellman/cli/internal/protocol"
-	"shellman/cli/internal/streamdiff"
 )
 
 type paneStatusUpdate struct {
-	Target   string
-	Title    string
-	Status   SessionStatus
-	At       time.Time
-	Previous SessionStatus
+	Target         string
+	Title          string
+	CurrentCommand string
+	Status         SessionStatus
+	At             time.Time
+	Previous       SessionStatus
 }
 
 type paneLastActiveProvider interface {
@@ -29,6 +29,7 @@ type paneLastActiveProvider interface {
 
 const (
 	toolHashTransitionFast = 1200 * time.Millisecond
+	realtimeSnapshotMaxLen = 512 * 1024
 )
 
 type PaneActor struct {
@@ -50,6 +51,7 @@ type PaneActor struct {
 	lastCursorX         int
 	lastCursorY         int
 	hasCursor           bool
+	lastCurrentCommand  string
 	statusState         paneStatusState
 	// Prevent cold-start static panes from immediately triggering auto-process.
 	startupHashCaptured bool
@@ -59,6 +61,10 @@ type PaneActor struct {
 	runCtx                 context.Context
 	realtimeActive         bool
 	realtimeStop           func()
+	statusEvalTimer        *time.Timer
+	statusEvalDueAt        time.Time
+	statusEvalSeq          uint64
+	statusHookLastAt       time.Time
 	lastTaskStateReportAt  time.Time
 	firstTaskStateReported bool
 	seededLastActiveAt     time.Time
@@ -171,27 +177,27 @@ func (p *PaneActor) Start(ctx context.Context) {
 	if p == nil {
 		return
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	p.mu.Lock()
 	p.runCtx = ctx
 	p.mu.Unlock()
 	p.startOnce.Do(func() {
-		go p.loop(ctx)
+		go func() {
+			<-ctx.Done()
+			p.stopStatusEvalTimer()
+			p.stopRealtime()
+		}()
 	})
 	p.ensureRealtimeSubscribed()
-}
-
-func (p *PaneActor) loop(ctx context.Context) {
-	ticker := time.NewTicker(p.interval)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			p.tick(ctx)
-		}
-	}
+	p.mu.RLock()
+	snapshot := p.lastSnap
+	cursorX := p.lastCursorX
+	cursorY := p.lastCursorY
+	hasCursor := p.hasCursor
+	p.mu.RUnlock()
+	p.reportTaskState(time.Now().UTC(), snapshot, cursorX, cursorY, hasCursor)
 }
 
 func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...paneSubscribeOptions) {
@@ -210,17 +216,13 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...
 
 	p.mu.Lock()
 	p.subscribers[connID] = out
-	if opt.GapRecover {
-		p.resetPendingByConn[connID] = true
-		delete(p.pendingAppendByConn, connID)
-	}
+	p.resetPendingByConn[connID] = true
+	delete(p.pendingAppendByConn, connID)
 	p.mu.Unlock()
 
 	snapshot, cursorX, cursorY, hasCursor, err := p.captureResetSnapshotWithOptions(opt)
 	if err != nil {
-		if opt.GapRecover {
-			p.clearResetPending(connID)
-		}
+		p.clearResetPending(connID)
 		if isPaneTargetMissingError(err) {
 			p.sendToConn(connID, paneEndedEventMessage(p.target, err.Error()))
 		}
@@ -237,13 +239,15 @@ func (p *PaneActor) Subscribe(connID string, out chan protocol.Message, opts ...
 	for _, msg := range termOutputMessages(p.target, "reset", snapshot, cursorX, cursorY, hasCursor) {
 		p.sendToConn(connID, msg)
 	}
+	p.clearResetPending(connID)
 	if opt.GapRecover {
-		p.clearResetPending(connID)
+		p.clearPendingAppends(connID)
+	} else {
 		p.flushPendingAppends(connID)
 	}
 	p.ensureRealtimeSubscribed()
 
-	p.emitStatus(snapshot, time.Now().UTC())
+	p.onSnapshotUpdated(time.Now().UTC())
 }
 
 func (p *PaneActor) captureResetSnapshotWithOptions(opt paneSubscribeOptions) (string, int, int, bool, error) {
@@ -274,11 +278,20 @@ func (p *PaneActor) Unsubscribe(connID string) {
 	delete(p.subscribers, connID)
 	delete(p.resetPendingByConn, connID)
 	delete(p.pendingAppendByConn, connID)
-	noSubscribers := len(p.subscribers) == 0
 	p.mu.Unlock()
-	if noSubscribers {
-		p.stopRealtime()
+}
+
+func (p *PaneActor) NotifyEnded(reason string) {
+	if p == nil {
+		return
 	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "pane closed"
+	}
+	p.broadcast([]protocol.Message{paneEndedEventMessage(p.target, reason)})
+	p.stopStatusEvalTimer()
+	p.stopRealtime()
 }
 
 func (p *PaneActor) clearResetPending(connID string) {
@@ -337,53 +350,35 @@ func (p *PaneActor) flushPendingAppends(connID string) {
 	}
 }
 
-func (p *PaneActor) tick(ctx context.Context) {
-	snapshot, err := p.tmuxService.CapturePane(p.target)
-	if err != nil {
-		if isPaneTargetMissingError(err) {
-			p.broadcast([]protocol.Message{paneEndedEventMessage(p.target, err.Error())})
-		}
+func (p *PaneActor) clearPendingAppends(connID string) {
+	if p == nil {
 		return
 	}
-	snapshot = normalizeTermSnapshot(snapshot)
-	cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
-	hasCursor := cursorErr == nil
-
-	p.mu.RLock()
-	lastSnapshot := p.lastSnap
-	lastCursorX := p.lastCursorX
-	lastCursorY := p.lastCursorY
-	hasLastCursor := p.hasCursor
-	realtimeActive := p.realtimeActive
-	p.mu.RUnlock()
-
-	now := time.Now().UTC()
-	snapshotChanged := snapshot != lastSnapshot
-	cursorChanged := hasCursor && (!hasLastCursor || lastCursorX != cursorX || lastCursorY != cursorY)
-	// Fallback diff must stay enabled until realtime subscription is truly active.
-	if (snapshotChanged || cursorChanged) && !realtimeActive {
-		delta := streamdiff.DecideDelta(lastSnapshot, snapshot, snapshotChanged)
-		messages := termOutputMessages(p.target, delta.Mode, delta.Data, cursorX, cursorY, hasCursor)
-		p.broadcast(messages)
+	connID = strings.TrimSpace(connID)
+	if connID == "" {
+		return
 	}
-
 	p.mu.Lock()
-	p.lastSnap = snapshot
-	if hasCursor {
-		p.lastCursorX = cursorX
-		p.lastCursorY = cursorY
-		p.hasCursor = true
-	}
+	delete(p.pendingAppendByConn, connID)
 	p.mu.Unlock()
+}
+
+func (p *PaneActor) onSnapshotUpdated(now time.Time) {
+	if p == nil {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	p.mu.RLock()
+	snapshot := p.lastSnap
+	cursorX := p.lastCursorX
+	cursorY := p.lastCursorY
+	hasCursor := p.hasCursor
+	p.mu.RUnlock()
 
 	p.emitStatus(snapshot, now)
 	p.reportTaskState(now, snapshot, cursorX, cursorY, hasCursor)
-
-	select {
-	case <-ctx.Done():
-		return
-	default:
-	}
 }
 
 func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cursorY int, hasCursor bool) {
@@ -414,6 +409,9 @@ func (p *PaneActor) reportTaskState(now time.Time, snapshot string, cursorX, cur
 			currentCommand = strings.TrimSpace(cmd)
 		}
 	}
+	p.mu.Lock()
+	p.lastCurrentCommand = currentCommand
+	p.mu.Unlock()
 
 	p.taskStateSink.OnPaneReport(PaneStateReport{
 		PaneID:         p.target,
@@ -454,28 +452,31 @@ func (p *PaneActor) captureResetSnapshotConsistent(capture func() (string, error
 		return "", 0, 0, false, err
 	}
 	snapshot = normalizeTermSnapshot(snapshot)
-
-	cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
-	if cursorErr != nil {
-		if isPaneTargetMissingError(cursorErr) {
-			return "", 0, 0, false, cursorErr
+	const maxAttempts = 3
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		cursorX, cursorY, cursorErr := p.tmuxService.CursorPosition(p.target)
+		if cursorErr != nil {
+			if isPaneTargetMissingError(cursorErr) {
+				return "", 0, 0, false, cursorErr
+			}
+			return snapshot, 0, 0, false, nil
 		}
-		return snapshot, 0, 0, false, nil
-	}
 
-	// Guard against non-atomic tmux sampling (snapshot/cursor sampled at different moments).
-	snapshotCheck, checkErr := capture()
-	if checkErr != nil {
-		if isPaneTargetMissingError(checkErr) {
-			return "", 0, 0, false, checkErr
+		// Guard against non-atomic tmux sampling (snapshot/cursor sampled at different moments).
+		snapshotCheck, checkErr := capture()
+		if checkErr != nil {
+			if isPaneTargetMissingError(checkErr) {
+				return "", 0, 0, false, checkErr
+			}
+			return snapshot, cursorX, cursorY, true, nil
 		}
-		return snapshot, cursorX, cursorY, true, nil
+		snapshotCheck = normalizeTermSnapshot(snapshotCheck)
+		if snapshotCheck == snapshot {
+			return snapshot, cursorX, cursorY, true, nil
+		}
+		snapshot = snapshotCheck
 	}
-	snapshotCheck = normalizeTermSnapshot(snapshotCheck)
-	if snapshotCheck != snapshot {
-		return snapshotCheck, 0, 0, false, nil
-	}
-	return snapshot, cursorX, cursorY, true, nil
+	return snapshot, 0, 0, false, nil
 }
 
 func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
@@ -520,8 +521,16 @@ func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
 		statusInputIgnoreWindow,
 	)
 	p.statusState = next
+	nextEvalAt, hasNextEval := p.nextStatusEvalAtLocked(next, now, transitionDelay)
+	if hasNextEval {
+		p.scheduleStatusEvalTimerLocked(nextEvalAt)
+	} else {
+		p.stopStatusEvalTimerLocked()
+	}
 	hook := p.onStatus
+	currentCommand := p.lastCurrentCommand
 	autoProcessArmed := p.autoProcessArmed
+	p.statusHookLastAt = now
 	p.mu.Unlock()
 
 	nextStatus := normalizeSessionStatus(next.Emitted)
@@ -537,11 +546,12 @@ func (p *PaneActor) emitStatus(snapshot string, now time.Time) {
 			at = now
 		}
 		hook(paneStatusUpdate{
-			Target:   p.target,
-			Title:    sessionTitleFromTarget(p.target),
-			Status:   nextStatus,
-			At:       at,
-			Previous: prevStatus,
+			Target:         p.target,
+			Title:          sessionTitleFromTarget(p.target),
+			CurrentCommand: currentCommand,
+			Status:         nextStatus,
+			At:             at,
+			Previous:       prevStatus,
 		})
 	}
 }
@@ -630,10 +640,8 @@ func (p *PaneActor) ensureRealtimeSubscribed() {
 	target := p.target
 	ctx := p.runCtx
 	active := p.realtimeActive
-	subscriberCount := len(p.subscribers)
-	hasSubscribers := subscriberCount > 0
 	p.mu.RUnlock()
-	if source == nil || ctx == nil || active || !hasSubscribers {
+	if source == nil || ctx == nil || active {
 		return
 	}
 
@@ -654,7 +662,7 @@ func (p *PaneActor) ensureRealtimeSubscribed() {
 	p.realtimeActive = true
 	p.realtimeStop = stop
 	p.mu.Unlock()
-	p.logger.Debug("realtime output subscribed", "pane_target", target, "subscriber_count", subscriberCount)
+	p.logger.Debug("realtime output subscribed", "pane_target", target)
 
 	go p.realtimeLoop(ctx, ch)
 }
@@ -675,8 +683,30 @@ func (p *PaneActor) realtimeLoop(ctx context.Context, ch <-chan string) {
 			}
 			messages := termOutputMessages(p.target, "append", data, 0, 0, false)
 			p.broadcast(messages)
+			p.applyRealtimeOutput(data)
+			p.onSnapshotUpdated(time.Now().UTC())
 		}
 	}
+}
+
+func (p *PaneActor) applyRealtimeOutput(data string) {
+	if p == nil || data == "" {
+		return
+	}
+	p.mu.Lock()
+	p.lastSnap = appendRealtimeSnapshot(p.lastSnap, data, realtimeSnapshotMaxLen)
+	p.mu.Unlock()
+}
+
+func appendRealtimeSnapshot(prev, chunk string, limit int) string {
+	if chunk == "" {
+		return normalizeTermSnapshot(prev)
+	}
+	next := prev + chunk
+	if limit > 0 && len(next) > limit {
+		next = next[len(next)-limit:]
+	}
+	return normalizeTermSnapshot(next)
 }
 
 func (p *PaneActor) stopRealtime() {
@@ -692,6 +722,113 @@ func (p *PaneActor) stopRealtime() {
 		stop()
 		p.logger.Debug("realtime output unsubscribed", "pane_target", p.target)
 	}
+}
+
+func (p *PaneActor) nextStatusEvalAtLocked(state paneStatusState, now time.Time, transitionDelay time.Duration) (time.Time, bool) {
+	if p == nil {
+		return time.Time{}, false
+	}
+	emitted := normalizeSessionStatus(state.Emitted)
+	if emitted == SessionStatusUnknown {
+		return time.Time{}, false
+	}
+	if transitionDelay <= 0 || transitionDelay > toolHashTransitionFast {
+		transitionDelay = toolHashTransitionFast
+	}
+	if state.Candidate != emitted {
+		if state.CandidateSince.IsZero() {
+			return now.Add(transitionDelay), true
+		}
+		return state.CandidateSince.Add(transitionDelay), true
+	}
+	if emitted == SessionStatusRunning {
+		return now.Add(transitionDelay), true
+	}
+	return time.Time{}, false
+}
+
+func (p *PaneActor) scheduleStatusEvalTimerLocked(at time.Time) {
+	if p == nil {
+		return
+	}
+	if at.IsZero() {
+		p.stopStatusEvalTimerLocked()
+		return
+	}
+	if p.statusEvalTimer != nil && !p.statusEvalDueAt.IsZero() {
+		// Keep an already-scheduled earlier evaluation point; it can re-arm itself if needed.
+		if !at.Before(p.statusEvalDueAt) {
+			return
+		}
+		p.stopStatusEvalTimerLocked()
+	}
+	delay := time.Until(at)
+	if delay < 0 {
+		delay = 0
+	}
+	p.statusEvalSeq++
+	seq := p.statusEvalSeq
+	p.statusEvalDueAt = at
+	p.statusEvalTimer = time.AfterFunc(delay, func() {
+		p.onStatusEvalTimerFired(seq)
+	})
+}
+
+func (p *PaneActor) onStatusEvalTimerFired(seq uint64) {
+	if p == nil {
+		return
+	}
+	now := time.Now().UTC()
+	p.mu.Lock()
+	if seq != p.statusEvalSeq {
+		p.mu.Unlock()
+		return
+	}
+	p.statusEvalTimer = nil
+	p.statusEvalDueAt = time.Time{}
+	transitionDelay := statusTransitionDelay
+	if transitionDelay <= 0 || transitionDelay > toolHashTransitionFast {
+		transitionDelay = toolHashTransitionFast
+	}
+	if normalizeSessionStatus(p.statusState.Emitted) == SessionStatusRunning && !p.statusState.LastActiveAt.IsZero() {
+		nextEvalAt := p.statusState.LastActiveAt.Add(transitionDelay)
+		if now.Before(nextEvalAt) {
+			p.scheduleStatusEvalTimerLocked(nextEvalAt)
+			p.mu.Unlock()
+			return
+		}
+	}
+	ctx := p.runCtx
+	p.mu.Unlock()
+	if ctx != nil {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+	}
+	p.onSnapshotUpdated(now)
+}
+
+func (p *PaneActor) stopStatusEvalTimer() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopStatusEvalTimerLocked()
+}
+
+func (p *PaneActor) stopStatusEvalTimerLocked() {
+	if p == nil {
+		return
+	}
+	if p.statusEvalTimer != nil {
+		p.statusEvalTimer.Stop()
+		p.statusEvalTimer = nil
+	}
+	p.statusEvalDueAt = time.Time{}
+	p.statusEvalSeq++
 }
 
 func termOutputMessages(target, mode, data string, cursorX, cursorY int, hasCursor bool) []protocol.Message {

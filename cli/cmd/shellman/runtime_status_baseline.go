@@ -1,10 +1,12 @@
 package main
 
 import (
+	"encoding/json"
 	"io"
 	"log/slog"
 	"strings"
 
+	dbmodel "shellman/cli/internal/db"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
 )
@@ -27,10 +29,22 @@ func loadPaneRuntimeBaselineFromDB(logger *slog.Logger) map[string]paneRuntimeBa
 		logger.Warn("load pane baseline skipped: resolve config dir failed", "err", err)
 		return out
 	}
-	projects, err := global.NewProjectsStore(configDir).ListProjects()
+	projects, err := listProjectsForPaneBaseline(configDir, logger)
 	if err != nil {
 		logger.Warn("load pane baseline skipped: list projects failed", "err", err)
 		return out
+	}
+	runtimeIndex, runtimeErr := loadPaneRuntimeBaselineIndex(logger)
+	if runtimeErr != nil {
+		logger.Warn("load pane baseline: build pane_runtime index failed", "err", runtimeErr)
+	}
+	paneBindingsByRepo, paneBindingErr := loadPaneBindingsByRepo(logger)
+	if paneBindingErr != nil {
+		logger.Warn("load pane baseline: build pane bindings index failed", "err", paneBindingErr)
+	}
+	taskLastModifiedIndex, taskLastModifiedErr := loadTaskLastModifiedIndex(logger)
+	if taskLastModifiedErr != nil {
+		logger.Warn("load pane baseline: build task last_modified index failed", "err", taskLastModifiedErr)
 	}
 
 	for _, p := range projects {
@@ -38,20 +52,9 @@ func loadPaneRuntimeBaselineFromDB(logger *slog.Logger) map[string]paneRuntimeBa
 		if repoRoot == "" {
 			continue
 		}
-		store := projectstate.NewStore(repoRoot)
-		panes, err := store.LoadPanes()
-		if err != nil {
-			logger.Warn("load pane baseline: load panes failed", "project_id", p.ProjectID, "repo_root", repoRoot, "err", err)
+		panes := paneBindingsByRepo[repoRoot]
+		if len(panes) == 0 {
 			continue
-		}
-		rows, err := store.ListTasksByProject(p.ProjectID)
-		if err != nil {
-			logger.Warn("load pane baseline: list tasks failed", "project_id", p.ProjectID, "repo_root", repoRoot, "err", err)
-			continue
-		}
-		rowByTaskID := make(map[string]projectstate.TaskRecordRow, len(rows))
-		for _, row := range rows {
-			rowByTaskID[row.TaskID] = row
 		}
 
 		for taskID, binding := range panes {
@@ -59,8 +62,8 @@ func loadPaneRuntimeBaselineFromDB(logger *slog.Logger) map[string]paneRuntimeBa
 				LastActiveAt:  0,
 				RuntimeStatus: SessionStatusUnknown,
 			}
-			if row, ok := rowByTaskID[taskID]; ok && row.LastModified > 0 {
-				base.LastActiveAt = row.LastModified
+			if lastModified := taskLastModifiedIndex[taskLastModifiedKey(repoRoot, p.ProjectID, taskID)]; lastModified > 0 {
+				base.LastActiveAt = lastModified
 			}
 
 			for _, paneID := range []string{
@@ -71,8 +74,8 @@ func loadPaneRuntimeBaselineFromDB(logger *slog.Logger) map[string]paneRuntimeBa
 				if paneID == "" {
 					continue
 				}
-				row, found, runtimeErr := store.GetPaneRuntimeByPaneID(paneID)
-				if runtimeErr != nil || !found {
+				row, found := runtimeIndex[paneID]
+				if !found {
 					continue
 				}
 				if row.UpdatedAt > base.LastActiveAt {
@@ -94,6 +97,160 @@ func loadPaneRuntimeBaselineFromDB(logger *slog.Logger) map[string]paneRuntimeBa
 
 	logger.Info("pane baseline loaded from db", "targets_total", len(out))
 	return out
+}
+
+func loadPaneRuntimeBaselineIndex(logger *slog.Logger) (map[string]projectstate.PaneRuntimeRecord, error) {
+	out := map[string]projectstate.PaneRuntimeRecord{}
+	db, err := projectstate.GlobalDB()
+	if err != nil {
+		return out, nil
+	}
+	rows, err := db.Query(`
+SELECT pane_id, pane_target, runtime_status, snapshot_hash, updated_at
+FROM pane_runtime
+`)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	put := func(key string, row projectstate.PaneRuntimeRecord) {
+		key = strings.TrimSpace(key)
+		if key == "" {
+			return
+		}
+		prev, ok := out[key]
+		if !ok || row.UpdatedAt >= prev.UpdatedAt {
+			out[key] = row
+		}
+	}
+
+	for rows.Next() {
+		var row projectstate.PaneRuntimeRecord
+		if scanErr := rows.Scan(&row.PaneID, &row.PaneTarget, &row.RuntimeStatus, &row.SnapshotHash, &row.UpdatedAt); scanErr != nil {
+			return out, scanErr
+		}
+		put(row.PaneID, row)
+		put(row.PaneTarget, row)
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if logger != nil {
+		logger.Debug("load pane baseline: pane_runtime index ready", "keys_total", len(out))
+	}
+	return out, nil
+}
+
+func loadPaneBindingsByRepo(logger *slog.Logger) (map[string]projectstate.PanesIndex, error) {
+	out := map[string]projectstate.PanesIndex{}
+	db, err := projectstate.GlobalDB()
+	if err != nil {
+		return out, nil
+	}
+	rows, err := db.Query(`
+SELECT repo_root, state_json
+FROM legacy_state
+WHERE state_key = 'panes_json'
+`)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var repoRoot string
+		var stateJSON string
+		if scanErr := rows.Scan(&repoRoot, &stateJSON); scanErr != nil {
+			return out, scanErr
+		}
+		repoRoot = strings.TrimSpace(repoRoot)
+		if repoRoot == "" || strings.TrimSpace(stateJSON) == "" {
+			continue
+		}
+		var panes projectstate.PanesIndex
+		if unmarshalErr := json.Unmarshal([]byte(stateJSON), &panes); unmarshalErr != nil {
+			if logger != nil {
+				logger.Warn("load pane baseline: decode panes_json failed", "repo_root", repoRoot, "err", unmarshalErr)
+			}
+			continue
+		}
+		if panes == nil {
+			panes = projectstate.PanesIndex{}
+		}
+		out[repoRoot] = panes
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if logger != nil {
+		logger.Debug("load pane baseline: pane bindings index ready", "repos_total", len(out))
+	}
+	return out, nil
+}
+
+func taskLastModifiedKey(repoRoot, projectID, taskID string) string {
+	return strings.TrimSpace(repoRoot) + "\x00" + strings.TrimSpace(projectID) + "\x00" + strings.TrimSpace(taskID)
+}
+
+func loadTaskLastModifiedIndex(logger *slog.Logger) (map[string]int64, error) {
+	out := map[string]int64{}
+	db, err := projectstate.GlobalDB()
+	if err != nil {
+		return out, nil
+	}
+	rows, err := db.Query(`
+SELECT repo_root, project_id, task_id, last_modified
+FROM tasks
+WHERE archived = false
+`)
+	if err != nil {
+		return out, err
+	}
+	defer func() { _ = rows.Close() }()
+
+	for rows.Next() {
+		var repoRoot string
+		var projectID string
+		var taskID string
+		var lastModified int64
+		if scanErr := rows.Scan(&repoRoot, &projectID, &taskID, &lastModified); scanErr != nil {
+			return out, scanErr
+		}
+		if strings.TrimSpace(repoRoot) == "" || strings.TrimSpace(projectID) == "" || strings.TrimSpace(taskID) == "" {
+			continue
+		}
+		key := taskLastModifiedKey(repoRoot, projectID, taskID)
+		out[key] = lastModified
+	}
+	if err := rows.Err(); err != nil {
+		return out, err
+	}
+	if logger != nil {
+		logger.Debug("load pane baseline: task last_modified index ready", "rows_total", len(out))
+	}
+	return out, nil
+}
+
+func listProjectsForPaneBaseline(configDir string, logger *slog.Logger) ([]global.ActiveProject, error) {
+	if gdb, err := projectstate.GlobalDBGORM(); err == nil && gdb != nil {
+		rows := []dbmodel.Project{}
+		queryErr := gdb.Order("sort_order ASC").Order("updated_at DESC").Find(&rows).Error
+		if queryErr == nil {
+			out := make([]global.ActiveProject, 0, len(rows))
+			for _, row := range rows {
+				out = append(out, global.ActiveProject{
+					ProjectID: strings.TrimSpace(row.ProjectID),
+					RepoRoot:  strings.TrimSpace(row.RepoRoot),
+				})
+			}
+			return out, nil
+		}
+		if logger != nil {
+			logger.Warn("load pane baseline: list projects via global db failed; fallback to projects store", "err", queryErr)
+		}
+	}
+	return global.NewProjectsStore(configDir).ListProjects()
 }
 
 func normalizeBaselineRuntimeStatus(raw string) SessionStatus {

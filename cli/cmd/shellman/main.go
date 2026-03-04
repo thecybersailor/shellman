@@ -52,7 +52,6 @@ var buildTime = "unknown"
 var openBrowserURL = openBrowserURLWithSystem
 
 var streamPumpInterval = 200 * time.Millisecond
-var statusPumpInterval = 500 * time.Millisecond
 var statusTransitionDelay = 3 * time.Second
 var statusInputIgnoreWindow = 2 * time.Second
 var traceStreamEnabled = false
@@ -302,11 +301,9 @@ func runWSRuntime(
 	paneBaseline := loadPaneRuntimeBaselineFromDB(logger.With("module", "status_baseline"))
 	registry.SetPaneRuntimeBaseline(paneBaseline)
 	outputSource := NewControlModeHub(runtimeCtx, runtimeTmuxSocket, logger.With("module", "control_mode_hub"))
-	paneInterval := statusPumpInterval
-	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, autoCompleteExec, outputSource, paneInterval, taskStateActor)
+	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, autoCompleteExec, outputSource, taskStateActor)
 	bindMessageLoop(wsClient, handler, registry, inputTracker, logger.With("module", "message_loop"))
-	go runTaskStateActorLoop(runtimeCtx, taskStateActor, time.Second)
-	go runStatusPump(runtimeCtx, wsClient, tmuxService, httpExec, statusPumpInterval, inputTracker, logger.With("module", "status_pump"), paneBaseline)
+	go runTaskStateActorLoop(runtimeCtx, taskStateActor)
 	return wsClient.Run(runtimeCtx)
 }
 

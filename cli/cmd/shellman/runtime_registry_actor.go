@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"io"
 	"log/slog"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -20,8 +21,9 @@ type RegistryActor struct {
 	mu        sync.Mutex
 	conns     map[string]*ConnActor
 	panes     map[string]*PaneActor
+	paneItems map[string]sessionStatusItem
 	connLoops map[string]struct{}
-	discovery bool
+	paneBootstrapDone bool
 
 	runtimeCtx    context.Context
 	wsClient      *turn.WSClient
@@ -29,7 +31,6 @@ type RegistryActor struct {
 	inputTracker  *inputActivityTracker
 	autoComplete  paneAutoCompletionExecutor
 	outputSource  paneOutputRealtimeSource
-	paneInterval  time.Duration
 	taskStateSink TaskStateSink
 
 	paneRuntimeBaseline map[string]paneRuntimeBaseline
@@ -45,6 +46,7 @@ func NewRegistryActor(logger *slog.Logger) *RegistryActor {
 		logger:    logger,
 		conns:     map[string]*ConnActor{},
 		panes:     map[string]*PaneActor{},
+		paneItems: map[string]sessionStatusItem{},
 		connLoops: map[string]struct{}{},
 	}
 }
@@ -56,24 +58,21 @@ func (r *RegistryActor) ConfigureRuntime(
 	inputTracker *inputActivityTracker,
 	autoComplete paneAutoCompletionExecutor,
 	outputSource paneOutputRealtimeSource,
-	paneInterval time.Duration,
 	taskStateSinkOpt ...TaskStateSink,
 ) {
 	if r == nil {
 		return
 	}
-	if paneInterval <= 0 {
-		paneInterval = streamPumpInterval
-	}
 	r.mu.Lock()
-	defer r.mu.Unlock()
 	r.runtimeCtx = ctx
 	r.wsClient = wsClient
 	r.tmuxService = tmuxService
 	r.inputTracker = inputTracker
 	r.autoComplete = autoComplete
 	r.outputSource = outputSource
-	r.paneInterval = paneInterval
+	if lifecycleSource, ok := outputSource.(paneOutputLifecycleSource); ok {
+		lifecycleSource.SetPaneClosedHook(r.onPaneClosed)
+	}
 	if len(taskStateSinkOpt) > 0 {
 		r.taskStateSink = taskStateSinkOpt[0]
 	}
@@ -83,7 +82,15 @@ func (r *RegistryActor) ConfigureRuntime(
 	for _, pane := range r.panes {
 		pane.Start(ctx)
 	}
-	r.startPaneDiscoveryLoopLocked()
+	shouldBootstrap := !r.paneBootstrapDone && r.runtimeCtx != nil && r.tmuxService != nil
+	if shouldBootstrap {
+		r.paneBootstrapDone = true
+	}
+	r.mu.Unlock()
+	if shouldBootstrap {
+		r.bootstrapPanesFromTmux()
+		r.emitTmuxStatus()
+	}
 }
 
 func (r *RegistryActor) SetPaneRuntimeBaseline(baseline map[string]paneRuntimeBaseline) {
@@ -194,13 +201,14 @@ func (r *RegistryActor) getOrCreatePaneLocked(target string) *PaneActor {
 	pane := NewPaneActor(
 		target,
 		r.tmuxService,
-		r.paneInterval,
+		streamPumpInterval,
 		r.inputTracker,
 		r.autoComplete,
 		r.outputSource,
 		r.logger.With("module", "pane_actor", "pane_target", target),
 		r.taskStateSink,
 	)
+	pane.SetStatusHook(r.onPaneStatusUpdate)
 	if r.paneRuntimeBaseline != nil {
 		if baseline, ok := r.paneRuntimeBaseline[target]; ok {
 			pane.SetRuntimeBaseline(baseline)
@@ -210,6 +218,7 @@ func (r *RegistryActor) getOrCreatePaneLocked(target string) *PaneActor {
 		pane.Start(r.runtimeCtx)
 	}
 	r.panes[target] = pane
+	r.seedPaneStatusLocked(target)
 	return pane
 }
 
@@ -263,47 +272,25 @@ func (r *RegistryActor) startConnLoopLocked(conn *ConnActor) {
 	}()
 }
 
-func (r *RegistryActor) startPaneDiscoveryLoopLocked() {
-	if r == nil || r.discovery || r.runtimeCtx == nil || r.tmuxService == nil {
-		return
-	}
-	r.discovery = true
-	ctx := r.runtimeCtx
-	interval := r.paneInterval
-	logger := r.logger.With("module", "pane_discovery")
-	if interval <= 0 {
-		interval = 500 * time.Millisecond
-	}
-	go func() {
-		r.discoverPanesOnce(logger)
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case <-ticker.C:
-				r.discoverPanesOnce(logger)
-			}
-		}
-	}()
-}
-
-func (r *RegistryActor) discoverPanesOnce(logger *slog.Logger) {
+func (r *RegistryActor) bootstrapPanesFromTmux() {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	tmuxService := r.tmuxService
+	logger := r.logger
 	r.mu.Unlock()
 	if tmuxService == nil {
 		return
 	}
 	targets, err := tmuxService.ListSessions()
 	if err != nil {
-		if logger != nil {
-			logger.Warn("discover panes failed", "err", err)
+		log := logger
+		if log == nil {
+			log = newRuntimeLogger(io.Discard)
 		}
+		log = log.With("module", "pane_bootstrap")
+		log.Warn("bootstrap panes failed", "err", err)
 		return
 	}
 	for _, target := range targets {
@@ -313,4 +300,148 @@ func (r *RegistryActor) discoverPanesOnce(logger *slog.Logger) {
 		}
 		r.GetOrCreatePane(target)
 	}
+}
+
+func (r *RegistryActor) seedPaneStatusLocked(target string) {
+	if r == nil {
+		return
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	if _, ok := r.paneItems[target]; ok {
+		return
+	}
+	r.paneItems[target] = sessionStatusItem{
+		Target:    target,
+		Title:     sessionTitleFromTarget(target),
+		Status:    SessionStatusUnknown,
+		UpdatedAt: time.Now().UTC().Unix(),
+	}
+}
+
+func (r *RegistryActor) onPaneStatusUpdate(update paneStatusUpdate) {
+	if r == nil {
+		return
+	}
+	target := strings.TrimSpace(update.Target)
+	if target == "" {
+		return
+	}
+	title := strings.TrimSpace(update.Title)
+	if title == "" {
+		title = sessionTitleFromTarget(target)
+	}
+	status := normalizeSessionStatus(update.Status)
+	command := strings.TrimSpace(update.CurrentCommand)
+	updatedAt := update.At.UTC().Unix()
+	if update.At.IsZero() {
+		updatedAt = time.Now().UTC().Unix()
+	}
+
+	shouldEmit := false
+	r.mu.Lock()
+	prev, hasPrev := r.paneItems[target]
+	if command == "" {
+		command = strings.TrimSpace(prev.CurrentCommand)
+	}
+	item := sessionStatusItem{
+		Target:         target,
+		Title:          title,
+		CurrentCommand: command,
+		Status:         status,
+		UpdatedAt:      updatedAt,
+	}
+	r.paneItems[target] = item
+	if !hasPrev ||
+		prev.Status != item.Status ||
+		strings.TrimSpace(prev.Title) != strings.TrimSpace(item.Title) ||
+		strings.TrimSpace(prev.CurrentCommand) != strings.TrimSpace(item.CurrentCommand) {
+		shouldEmit = true
+	}
+	r.mu.Unlock()
+	if shouldEmit {
+		r.emitTmuxStatus()
+	}
+}
+
+func (r *RegistryActor) emitTmuxStatus() {
+	if r == nil {
+		return
+	}
+	r.mu.Lock()
+	wsClient := r.wsClient
+	ctx := r.runtimeCtx
+	items := make([]sessionStatusItem, 0, len(r.paneItems))
+	for _, item := range r.paneItems {
+		items = append(items, item)
+	}
+	r.mu.Unlock()
+	if wsClient == nil || ctx == nil {
+		return
+	}
+	sort.Slice(items, func(i, j int) bool {
+		return strings.TrimSpace(items[i].Target) < strings.TrimSpace(items[j].Target)
+	})
+	msgs, err := buildTmuxStatusMessages(items, tmuxStatusMaxMessageBytes, time.Now)
+	if err != nil {
+		r.logger.Error("build tmux.status from pane actor failed", "err", err)
+		return
+	}
+	for _, msg := range msgs {
+		raw, err := json.Marshal(msg)
+		if err != nil {
+			r.logger.Error("marshal tmux.status from pane actor failed", "err", err)
+			return
+		}
+		if err := wsClient.Send(ctx, string(raw)); err != nil {
+			r.logger.Warn("send tmux.status from pane actor failed", "err", err)
+			return
+		}
+	}
+}
+
+func (r *RegistryActor) onPaneClosed(target, reason string) {
+	if r == nil {
+		return
+	}
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return
+	}
+	reason = strings.TrimSpace(reason)
+	if reason == "" {
+		reason = "pane closed"
+	}
+
+	r.mu.Lock()
+	pane, hadPane := r.panes[target]
+	_, hadItem := r.paneItems[target]
+	delete(r.panes, target)
+	delete(r.paneItems, target)
+	conns := make([]*ConnActor, 0, len(r.conns))
+	connIDs := make([]string, 0, len(r.conns))
+	for connID, conn := range r.conns {
+		if conn == nil {
+			continue
+		}
+		conns = append(conns, conn)
+		connIDs = append(connIDs, connID)
+	}
+	r.mu.Unlock()
+
+	if !hadPane && !hadItem {
+		return
+	}
+	if pane != nil {
+		pane.NotifyEnded(reason)
+		for _, connID := range connIDs {
+			pane.Unsubscribe(connID)
+		}
+	}
+	for _, conn := range conns {
+		conn.DropWatch(target)
+	}
+	r.emitTmuxStatus()
 }

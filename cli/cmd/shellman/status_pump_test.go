@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"shellman/cli/internal/localapi"
-	"shellman/cli/internal/protocol"
 	"shellman/cli/internal/turn"
 )
 
@@ -80,220 +79,44 @@ func (s *statusPumpTmux) StopPipePane(string) error                  { return ni
 func (s *statusPumpTmux) CursorPosition(string) (int, int, error)    { return 0, 0, nil }
 func (s *statusPumpTmux) CreateSiblingPane(string) (string, error)   { return "e2e:0.1", nil }
 func (s *statusPumpTmux) CreateChildPane(string) (string, error)     { return "e2e:0.2", nil }
+func (s *statusPumpTmux) CreateRootPane() (string, error)            { return "e2e:0.0", nil }
+func (s *statusPumpTmux) CreateRootPaneInDir(string) (string, error) { return "e2e:0.0", nil }
+func (s *statusPumpTmux) CreateRootPaneInDirLoginShell(string) (string, error) {
+	return "e2e:0.0", nil
+}
+func (s *statusPumpTmux) CreateSiblingPaneInDir(string, string) (string, error) {
+	return "e2e:0.1", nil
+}
+func (s *statusPumpTmux) CreateSiblingPaneInDirLoginShell(string, string) (string, error) {
+	return "e2e:0.1", nil
+}
+func (s *statusPumpTmux) CreateChildPaneInDir(string, string) (string, error) { return "e2e:0.2", nil }
+func (s *statusPumpTmux) ClosePane(string) error                                { return nil }
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewJSONHandler(io.Discard, nil))
 }
 
-func TestStatusPump_EmitsTmuxStatusEvent(t *testing.T) {
-	oldDelay := statusTransitionDelay
-	oldInputWindow := statusInputIgnoreWindow
-	statusTransitionDelay = 10 * time.Millisecond
-	statusInputIgnoreWindow = 10 * time.Millisecond
-	defer func() {
-		statusTransitionDelay = oldDelay
-		statusInputIgnoreWindow = oldInputWindow
-	}()
-
+func TestStatusPump_Disabled_WaitsContextDoneWithoutPolling(t *testing.T) {
 	sock := &fakeSocket{}
 	wsClient := turn.NewWSClient(sock)
-	tmuxService := &statusPumpTmux{
-		lists:   [][]string{{"e2e:0.0"}, {"e2e:0.0"}},
-		shots:   map[string][]string{"e2e:0.0": {"bash$", "bash$ ls"}},
-		shotIdx: map[string]int{},
-	}
+	tmuxService := &statusPumpTmux{}
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	done := make(chan struct{})
 
-	go runStatusPump(ctx, wsClient, tmuxService, nil, 5*time.Millisecond, newInputActivityTracker(), testLogger())
-	time.Sleep(35 * time.Millisecond)
-	cancel()
-
-	found := false
-	for _, line := range sock.writes {
-		var msg protocol.Message
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Op != "tmux.status" {
-			continue
-		}
-		if strings.Contains(string(msg.Payload), `"target":"e2e:0.0"`) {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Fatal("expected tmux.status event")
-	}
-}
-
-func TestStatusPump_EmitsRunningThenReady(t *testing.T) {
-	oldDelay := statusTransitionDelay
-	oldInputWindow := statusInputIgnoreWindow
-	statusTransitionDelay = 10 * time.Millisecond
-	statusInputIgnoreWindow = 10 * time.Millisecond
-	defer func() {
-		statusTransitionDelay = oldDelay
-		statusInputIgnoreWindow = oldInputWindow
+	go func() {
+		runStatusPump(ctx, wsClient, tmuxService, nil, 5*time.Millisecond, newInputActivityTracker(), testLogger())
+		close(done)
 	}()
-
-	sock := &fakeSocket{}
-	wsClient := turn.NewWSClient(sock)
-	tmuxService := &statusPumpTmux{
-		lists:   [][]string{{"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"}},
-		shots:   map[string][]string{"e2e:0.0": {"bash$", "bash$ ls", "bash$ ls"}},
-		shotIdx: map[string]int{},
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go runStatusPump(ctx, wsClient, tmuxService, nil, 5*time.Millisecond, newInputActivityTracker(), testLogger())
-	time.Sleep(50 * time.Millisecond)
-	cancel()
-
-	statuses := make([]string, 0)
-	for _, line := range sock.writes {
-		var msg protocol.Message
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Op != "tmux.status" {
-			continue
-		}
-		var payload struct {
-			Items []struct {
-				Status string `json:"status"`
-			} `json:"items"`
-		}
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil {
-			continue
-		}
-		if len(payload.Items) > 0 {
-			statuses = append(statuses, payload.Items[0].Status)
-		}
-	}
-	if len(statuses) < 2 {
-		t.Fatalf("expected at least 2 status frames, got %d", len(statuses))
-	}
-	if statuses[0] != "running" {
-		t.Fatalf("expected first status running, got %s", statuses[0])
-	}
-	foundReady := false
-	for _, s := range statuses[1:] {
-		if s == "ready" {
-			foundReady = true
-			break
-		}
-	}
-	if !foundReady {
-		t.Fatalf("expected at least one ready status after first frame, got %#v", statuses)
-	}
-}
-
-func TestStatusPump_UsesDatabaseBaselineOnFirstFrame(t *testing.T) {
-	oldDelay := statusTransitionDelay
-	oldInputWindow := statusInputIgnoreWindow
-	statusTransitionDelay = 10 * time.Millisecond
-	statusInputIgnoreWindow = 10 * time.Millisecond
-	defer func() {
-		statusTransitionDelay = oldDelay
-		statusInputIgnoreWindow = oldInputWindow
-	}()
-
-	sock := &fakeSocket{}
-	wsClient := turn.NewWSClient(sock)
-	tmuxService := &statusPumpTmux{
-		lists:   [][]string{{"e2e:0.0"}, {"e2e:0.0"}},
-		shots:   map[string][]string{"e2e:0.0": {"hash_stable", "hash_stable"}},
-		shotIdx: map[string]int{},
-	}
-	baseline := map[string]paneRuntimeBaseline{
-		"e2e:0.0": {
-			LastActiveAt:  1771561411,
-			RuntimeStatus: SessionStatusReady,
-			SnapshotHash:  sha1Text(normalizeTermSnapshot("hash_stable")),
-		},
-	}
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go runStatusPump(ctx, wsClient, tmuxService, nil, 5*time.Millisecond, newInputActivityTracker(), testLogger(), baseline)
 	time.Sleep(30 * time.Millisecond)
+	if got := len(sock.writes); got != 0 {
+		t.Fatalf("expected no polled tmux.status frames, got %d", got)
+	}
 	cancel()
-
-	for _, line := range sock.writes {
-		var msg protocol.Message
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Op != "tmux.status" {
-			continue
-		}
-		var payload struct {
-			Items []struct {
-				Target    string `json:"target"`
-				Status    string `json:"status"`
-				UpdatedAt int64  `json:"updated_at"`
-			} `json:"items"`
-		}
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil || len(payload.Items) == 0 {
-			continue
-		}
-		if payload.Items[0].Target != "e2e:0.0" {
-			continue
-		}
-		if payload.Items[0].Status != "ready" {
-			t.Fatalf("expected first frame status ready from baseline, got %s", payload.Items[0].Status)
-		}
-		if payload.Items[0].UpdatedAt != 1771561411 {
-			t.Fatalf("expected baseline updated_at 1771561411, got %d", payload.Items[0].UpdatedAt)
-		}
-		return
-	}
-	t.Fatal("expected tmux.status frame for e2e:0.0")
-}
-
-func TestStatusPump_InputChangeDoesNotFlipToRunningImmediately(t *testing.T) {
-	oldDelay := statusTransitionDelay
-	oldInputWindow := statusInputIgnoreWindow
-	statusTransitionDelay = 20 * time.Millisecond
-	statusInputIgnoreWindow = 200 * time.Millisecond
-	defer func() {
-		statusTransitionDelay = oldDelay
-		statusInputIgnoreWindow = oldInputWindow
-	}()
-
-	sock := &fakeSocket{}
-	wsClient := turn.NewWSClient(sock)
-	tmuxService := &statusPumpTmux{
-		lists: [][]string{
-			{"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"}, {"e2e:0.0"},
-		},
-		shots: map[string][]string{
-			"e2e:0.0": {"bash$", "bash$", "bash$ l", "bash$ l"},
-		},
-		shotIdx: map[string]int{},
-	}
-	inputTracker := newInputActivityTracker()
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-	go runStatusPump(ctx, wsClient, tmuxService, nil, 10*time.Millisecond, inputTracker, testLogger())
-
-	time.Sleep(70 * time.Millisecond) // first stabilize to ready
-	inputTracker.Mark("e2e:0.0", time.Now())
-	time.Sleep(60 * time.Millisecond) // within ignore window
-	cancel()
-
-	var lastStatus string
-	for _, line := range sock.writes {
-		var msg protocol.Message
-		if err := json.Unmarshal([]byte(line), &msg); err != nil || msg.Op != "tmux.status" {
-			continue
-		}
-		var payload struct {
-			Items []struct {
-				Status string `json:"status"`
-			} `json:"items"`
-		}
-		if err := json.Unmarshal(msg.Payload, &payload); err != nil || len(payload.Items) == 0 {
-			continue
-		}
-		lastStatus = payload.Items[0].Status
-	}
-	if lastStatus != "ready" {
-		t.Fatalf("expected last status ready after input-echo change, got %s", lastStatus)
+	select {
+	case <-done:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("expected status pump to return after context cancel")
 	}
 }
 

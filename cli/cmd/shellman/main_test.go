@@ -158,10 +158,6 @@ func TestRun_EmitsTmuxStatusEvent(t *testing.T) {
 	}}
 	tmuxService := &fakeTmux{}
 
-	oldStatusInterval := statusPumpInterval
-	statusPumpInterval = 5 * time.Millisecond
-	defer func() { statusPumpInterval = oldStatusInterval }()
-
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
 	go func() {
@@ -239,7 +235,7 @@ func TestBindMessageLoop_SelectPaneSameTargetBumpsVersion(t *testing.T) {
 	wsClient := turn.NewWSClient(sock)
 	handler := bridge.NewHandler(&fakeTmux{})
 	registry := NewRegistryActor(nil)
-	registry.ConfigureRuntime(context.Background(), wsClient, &fakeTmux{}, nil, nil, nil, 10*time.Millisecond)
+	registry.ConfigureRuntime(context.Background(), wsClient, &fakeTmux{}, nil, nil, nil)
 	inputTracker := newInputActivityTracker()
 
 	bindMessageLoop(wsClient, handler, registry, inputTracker, nil)
@@ -283,7 +279,7 @@ func TestActorRuntime_ReSelectSamePaneAlwaysSendsResetToThatConn(t *testing.T) {
 	inputTracker := newInputActivityTracker()
 	runtimeCtx, runtimeCancel := context.WithCancel(context.Background())
 	defer runtimeCancel()
-	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, nil, nil, 5*time.Millisecond)
+	registry.ConfigureRuntime(runtimeCtx, wsClient, tmuxService, inputTracker, nil, nil)
 	bindMessageLoop(wsClient, handler, registry, inputTracker, nil)
 
 	selectReq := func(id string) string {

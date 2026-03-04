@@ -31,3 +31,29 @@ func TestConnActor_SelectAndWatch_KeepRecentLimit(t *testing.T) {
 		}
 	}
 }
+
+func TestConnActor_DropWatch_ClearsSelectedAndKeepsRecentFallback(t *testing.T) {
+	conn := NewConnActor("conn_1")
+	conn.SelectAndWatch("e2e:0.1", 5)
+	conn.SelectAndWatch("e2e:0.2", 5)
+	conn.SelectAndWatch("e2e:0.3", 5)
+
+	conn.DropWatch("e2e:0.3")
+	if got := conn.Selected(); got != "e2e:0.2" {
+		t.Fatalf("expected selected fallback to latest watched target, got %q", got)
+	}
+
+	conn.DropWatch("e2e:0.1")
+	got := conn.WatchedTargets()
+	if len(got) != 1 || got[0] != "e2e:0.2" {
+		t.Fatalf("unexpected watched targets after drop: %v", got)
+	}
+
+	conn.DropWatch("e2e:0.2")
+	if got := conn.Selected(); got != "" {
+		t.Fatalf("expected selected cleared when no watched targets, got %q", got)
+	}
+	if got := conn.WatchedTargets(); len(got) != 0 {
+		t.Fatalf("expected no watched targets, got %v", got)
+	}
+}
