@@ -12,8 +12,8 @@ import (
 )
 
 type reconnectDialer struct {
-	mu    sync.Mutex
-	calls int
+	mu     sync.Mutex
+	calls  int
 	onDial func(calls int)
 }
 
