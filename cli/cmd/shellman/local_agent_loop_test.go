@@ -14,12 +14,18 @@ import (
 type reconnectDialer struct {
 	mu    sync.Mutex
 	calls int
+	onDial func(calls int)
 }
 
 func (d *reconnectDialer) Dial(ctx context.Context, url string) (turn.Socket, error) {
 	d.mu.Lock()
 	d.calls++
+	calls := d.calls
+	onDial := d.onDial
 	d.mu.Unlock()
+	if onDial != nil {
+		onDial(calls)
+	}
 	return &eofSocket{}, nil
 }
 
@@ -55,9 +61,17 @@ func (t *noOpTmux) CreateChildPane(string) (string, error)     { return "botwork
 var _ bridge.TmuxService = (*noOpTmux)(nil)
 
 func TestStartLocalAgentLoop_ReconnectsUntilContextCanceled(t *testing.T) {
-	d := &reconnectDialer{}
-	ctx, cancel := context.WithTimeout(context.Background(), 260*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	timer := time.AfterFunc(2*time.Second, cancel)
+	defer timer.Stop()
+	d := &reconnectDialer{
+		onDial: func(calls int) {
+			if calls >= 2 {
+				cancel()
+			}
+		},
+	}
 
 	err := startLocalAgentLoop(ctx, 4621, d, &noOpTmux{}, nil, nil, testLogger())
 	if err != nil {

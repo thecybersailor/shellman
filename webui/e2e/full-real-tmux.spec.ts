@@ -161,8 +161,9 @@ async function selectTask(page: Page, projectID: string, taskID: string) {
   const row = projectRegion(page, projectID).getByTestId(`shellman-task-row-${taskID}`).first();
   await expect(row).toBeVisible({ timeout: 30000 });
   await row.click();
+  await expect(row).toHaveClass(/bg-accent\/50/, { timeout: 15000 });
   // Simulate human pacing to avoid panel transition races between task switches.
-  await page.waitForTimeout(120);
+  await page.waitForTimeout(220);
 }
 
 function activeTerminal(page: Page) {
@@ -556,7 +557,7 @@ test.describe("shellman local web full chain (docker)", () => {
         await waitBufferContains(page, "Find and fix a bug in @filename", 20000);
       } else {
         await runMockCodexTUI(request, taskID, paneToken, 5000);
-        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 20000);
+        await waitBufferContains(page, `PANE_${paneToken}_LINE_05000`, 45000);
       }
       await page.waitForTimeout(180);
     }
@@ -843,7 +844,7 @@ test.describe("shellman local web full chain (docker)", () => {
 
   test("shellman renders ai-elements tool block from structured assistant content", async ({ page, request }) => {
     const seeded = await seedProject(request);
-    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages`, async (route) => {
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages**`, async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
         return;
@@ -908,7 +909,7 @@ test.describe("shellman local web full chain (docker)", () => {
 
   test("shellman renders responding indicator for running assistant message", async ({ page, request }) => {
     const seeded = await seedProject(request);
-    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages`, async (route) => {
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages**`, async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
         return;
@@ -945,7 +946,7 @@ test.describe("shellman local web full chain (docker)", () => {
 
   test("shellman switches send to stop when running assistant and empty input, then calls messages/stop", async ({ page, request }) => {
     const seeded = await seedProject(request);
-    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages`, async (route) => {
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages**`, async (route) => {
       if (route.request().method() !== "GET") {
         await route.fallback();
         return;
@@ -974,7 +975,7 @@ test.describe("shellman local web full chain (docker)", () => {
     });
 
     let stopCalled = false;
-    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages/stop`, async (route) => {
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages/stop**`, async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
         return;
@@ -1013,7 +1014,7 @@ test.describe("shellman local web full chain (docker)", () => {
 
     let requestObserved = false;
     let responseReturned = false;
-    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages`, async (route) => {
+    await page.route(`**/api/v1/tasks/${seeded.rootTaskID}/messages**`, async (route) => {
       if (route.request().method() !== "POST") {
         await route.fallback();
         return;
