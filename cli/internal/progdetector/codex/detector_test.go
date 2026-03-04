@@ -2,6 +2,7 @@ package codex
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -46,5 +47,19 @@ func TestDetectorModeMatchAndExit(t *testing.T) {
 	}
 	if !exited {
 		t.Fatal("expected exited=true when current command is zsh")
+	}
+}
+
+func TestDetectorIsAvailable_RespectsCanceledContext(t *testing.T) {
+	d := New()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	ok, err := d.IsAvailable(ctx)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected context canceled error, got ok=%v err=%v", ok, err)
+	}
+	if ok {
+		t.Fatalf("expected ok=false when context already canceled")
 	}
 }

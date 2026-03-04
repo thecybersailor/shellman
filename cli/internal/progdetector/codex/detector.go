@@ -3,10 +3,10 @@ package codex
 import (
 	"context"
 	"errors"
-	"os/exec"
 	"strings"
 	"time"
 
+	"shellman/cli/internal/programadapter"
 	"shellman/cli/internal/progdetector"
 )
 
@@ -28,11 +28,8 @@ func (Detector) ProgramID() string {
 	return programID
 }
 
-func (Detector) IsAvailable(context.Context) (bool, error) {
-	if _, err := exec.LookPath(programID); err != nil {
-		return false, nil
-	}
-	return true, nil
+func (Detector) IsAvailable(ctx context.Context) (bool, error) {
+	return programadapter.CommandExists(ctx, programID)
 }
 
 func (Detector) MatchCurrentCommand(currentCommand string) bool {
