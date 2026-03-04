@@ -21,6 +21,7 @@ type TaskRecord struct {
 	ParentTaskID   string
 	Title          string
 	CurrentCommand string
+	ActiveAdapter  string
 	Status         string
 	SidecarMode    string
 	TaskRole       string
@@ -39,6 +40,7 @@ type TaskRecordRow struct {
 	ParentTaskID   string
 	Title          string
 	CurrentCommand string
+	ActiveAdapter  string
 	Status         string
 	SidecarMode    string
 	TaskRole       string
@@ -58,6 +60,7 @@ type TaskMetaUpsert struct {
 	ParentTaskID   *string
 	Title          *string
 	CurrentCommand *string
+	ActiveAdapter  *string
 	Status         *string
 	SidecarMode    *string
 	TaskRole       *string

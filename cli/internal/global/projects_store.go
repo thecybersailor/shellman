@@ -1,11 +1,13 @@
 package global
 
 import (
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"shellman/cli/internal/db"
 	"strings"
+	"sync"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,6 +25,9 @@ type ActiveProject struct {
 type ProjectsStore struct {
 	dir    string
 	dbPath string
+	mu     sync.Mutex
+	gdb    *gorm.DB
+	sqlDB  *sql.DB
 }
 
 func NewProjectsStore(dir string) *ProjectsStore {
@@ -146,8 +151,38 @@ func (s *ProjectsStore) SetProjectDisplayName(projectID, displayName string) err
 }
 
 func (s *ProjectsStore) openDB() (*gorm.DB, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.gdb != nil {
+		return s.gdb, nil
+	}
 	if err := os.MkdirAll(s.dir, 0o755); err != nil {
 		return nil, err
 	}
-	return db.OpenSQLiteGORMWithMigrations(s.dbPath)
+	gdb, err := db.OpenSQLiteGORMWithMigrations(s.dbPath)
+	if err != nil {
+		return nil, err
+	}
+	sqlDB, err := gdb.DB()
+	if err != nil {
+		return nil, err
+	}
+	s.gdb = gdb
+	s.sqlDB = sqlDB
+	return s.gdb, nil
+}
+
+func (s *ProjectsStore) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.sqlDB == nil {
+		s.gdb = nil
+		return nil
+	}
+	err := s.sqlDB.Close()
+	s.sqlDB = nil
+	s.gdb = nil
+	return err
 }

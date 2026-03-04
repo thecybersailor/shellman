@@ -98,6 +98,39 @@ describe("ConversationSession", () => {
     expect(localStorage.getItem(SIDECAR_USER_INPUT_HISTORY_KEY)).toBeNull();
   });
 
+  it("appends created_at time for runtime auto-complete message", async () => {
+    const wrapper = mount(ConversationSession, {
+      props: {
+        taskId: "t1",
+        modelValue: "",
+        taskMessages: [
+          {
+            id: 3,
+            task_id: "t1",
+            role: "user",
+            status: "completed",
+            created_at: 1700000000,
+            updated_at: 1700000000,
+            content: JSON.stringify({
+              text: "auto-complete: pane idle and output stable",
+              meta: {
+                display_type: "runtime",
+                source: "auto_progress",
+                event: "auto_progress"
+              }
+            })
+          }
+        ]
+      }
+    });
+
+    await nextTick();
+    await nextTick();
+
+    const content = wrapper.findComponent({ name: "MessageResponse" }).props("content");
+    expect(content).toBe("auto-complete: pane idle and output stable (2023-11-14 22:13:20Z)");
+  });
+
   it("navigates sidecar history with ArrowUp/ArrowDown and restores draft", async () => {
     localStorage.clear();
     localStorage.setItem(SIDECAR_USER_INPUT_HISTORY_KEY, JSON.stringify(["older", "newer"]));

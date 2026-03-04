@@ -120,6 +120,83 @@ func TestTaskStateStore_BatchUpsertRuntime_UpdatesTaskCurrentCommand(t *testing.
 	}
 }
 
+func TestTaskStateStore_BatchUpsertRuntime_PersistsActiveAdapterByDetectorStateMachine(t *testing.T) {
+	st := newTaskStateStore(t)
+	if err := st.InsertTask(TaskRecord{
+		TaskID:    "t1",
+		ProjectID: "p1",
+		Title:     "root",
+		Status:    StatusRunning,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+	if err := st.BatchUpsertRuntime(RuntimeBatchUpdate{
+		Tasks: []TaskRuntimeRecord{{
+			TaskID:         "t1",
+			SourcePaneID:   "e2e:0.0",
+			CurrentCommand: "codex (/Users/wanglei/.)",
+			RuntimeStatus:  "running",
+			SnapshotHash:   "h1",
+		}},
+	}); err != nil {
+		t.Fatalf("BatchUpsertRuntime(codex) failed: %v", err)
+	}
+	rows, err := st.ListTasksByProject("p1")
+	if err != nil {
+		t.Fatalf("ListTasksByProject failed: %v", err)
+	}
+	if got := rows[0].CurrentCommand; got != "codex (/Users/wanglei/.)" {
+		t.Fatalf("expected current_command=codex, got %q", got)
+	}
+	if got := rows[0].ActiveAdapter; got != "codex" {
+		t.Fatalf("expected active_adapter=codex after enter, got %q", got)
+	}
+
+	if err := st.BatchUpsertRuntime(RuntimeBatchUpdate{
+		Tasks: []TaskRuntimeRecord{{
+			TaskID:         "t1",
+			SourcePaneID:   "e2e:0.0",
+			CurrentCommand: "node",
+			RuntimeStatus:  "running",
+			SnapshotHash:   "h2",
+		}},
+	}); err != nil {
+		t.Fatalf("BatchUpsertRuntime(node) failed: %v", err)
+	}
+	rows, err = st.ListTasksByProject("p1")
+	if err != nil {
+		t.Fatalf("ListTasksByProject failed: %v", err)
+	}
+	if got := rows[0].CurrentCommand; got != "node" {
+		t.Fatalf("expected current_command=node in codex mode, got %q", got)
+	}
+	if got := rows[0].ActiveAdapter; got != "codex" {
+		t.Fatalf("expected active_adapter remain codex on node, got %q", got)
+	}
+
+	if err := st.BatchUpsertRuntime(RuntimeBatchUpdate{
+		Tasks: []TaskRuntimeRecord{{
+			TaskID:         "t1",
+			SourcePaneID:   "e2e:0.0",
+			CurrentCommand: "zsh",
+			RuntimeStatus:  "running",
+			SnapshotHash:   "h3",
+		}},
+	}); err != nil {
+		t.Fatalf("BatchUpsertRuntime(zsh) failed: %v", err)
+	}
+	rows, err = st.ListTasksByProject("p1")
+	if err != nil {
+		t.Fatalf("ListTasksByProject failed: %v", err)
+	}
+	if got := rows[0].CurrentCommand; got != "zsh" {
+		t.Fatalf("expected detector to accept shell exit command, got %q", got)
+	}
+	if got := rows[0].ActiveAdapter; got != "" {
+		t.Fatalf("expected active_adapter cleared after exit, got %q", got)
+	}
+}
+
 func TestTaskStateStore_ListTasksByProject_IncludesFlagReaded(t *testing.T) {
 	st := newTaskStateStore(t)
 	if err := st.InsertTask(TaskRecord{

@@ -567,20 +567,26 @@ const (
 )
 
 func resolveTaskAgentToolModeAndNames(store *projectstate.Store, projectID, taskID string) (string, string, []string) {
-	currentCommand, sidecarMode, taskRole := resolveTaskAgentModeInputs(store, projectID, taskID)
-	return resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode, taskRole)
+	currentCommand, sidecarMode, taskRole, activeAdapter := resolveTaskAgentModeInputs(store, projectID, taskID)
+	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
+	if progdetector.ResolveActiveAdapter(activeAdapter, currentCommand) != "" {
+		mode = taskAgentToolModeAIAgent
+	}
+	return string(mode), currentCommand, buildTaskAgentToolsForResolvedMode(mode, sidecarMode, taskRole, "")
 }
 
-func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID string) (string, string, string) {
+func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID string) (string, string, string, string) {
 	currentCommand := ""
 	sidecarMode := projectstate.SidecarModeAdvisor
 	taskRole := projectstate.TaskRoleFull
+	activeAdapter := ""
 	if store != nil && strings.TrimSpace(projectID) != "" && strings.TrimSpace(taskID) != "" {
 		if rows, err := store.ListTasksByProject(strings.TrimSpace(projectID)); err == nil {
 			targetTaskID := strings.TrimSpace(taskID)
 			for _, row := range rows {
 				if strings.TrimSpace(row.TaskID) == targetTaskID {
 					currentCommand = strings.TrimSpace(row.CurrentCommand)
+					activeAdapter = strings.TrimSpace(row.ActiveAdapter)
 					if validSidecarMode(row.SidecarMode) {
 						sidecarMode = normalizeSidecarMode(row.SidecarMode)
 					}
@@ -592,7 +598,7 @@ func resolveTaskAgentModeInputs(store *projectstate.Store, projectID, taskID str
 			}
 		}
 	}
-	return currentCommand, sidecarMode, taskRole
+	return currentCommand, sidecarMode, taskRole, activeAdapter
 }
 
 func resolveTaskAgentToolModeAndNamesFromInputs(currentCommand, sidecarMode, taskRole string) (string, string, []string) {
@@ -650,18 +656,33 @@ func isAutoProcessTurnSource(source string) bool {
 }
 
 func (s *Server) resolveTaskAgentToolModeAndNamesRealtime(store *projectstate.Store, projectID, taskID, source string) (string, string, []string) {
-	_, sidecarMode, taskRole := resolveTaskAgentModeInputs(store, projectID, taskID)
+	storedCommand, sidecarMode, taskRole, activeAdapter := resolveTaskAgentModeInputs(store, projectID, taskID)
 	currentCommand := strings.TrimSpace(s.detectTaskPaneCurrentCommand(store, taskID))
-	mode, gotCommand, tools := resolveTaskAgentToolModeAndNamesFromInputsForSource(currentCommand, sidecarMode, taskRole, source)
-	taskID = strings.TrimSpace(taskID)
-	if strings.TrimSpace(mode) == string(taskAgentToolModeDefault) && isNodeLikeCommand(currentCommand) {
-		if s.getTaskAgentMode(taskID) == taskAgentToolModeAIAgent {
-			mode = string(taskAgentToolModeAIAgent)
-			tools = buildTaskAgentToolsForResolvedMode(taskAgentToolModeAIAgent, sidecarMode, taskRole, source)
-		}
+	if currentCommand == "" {
+		currentCommand = strings.TrimSpace(storedCommand)
 	}
-	s.setTaskAgentMode(taskID, taskAgentToolMode(mode))
-	return mode, gotCommand, tools
+	nextActiveAdapter := progdetector.ResolveActiveAdapter(activeAdapter, currentCommand)
+
+	taskID = strings.TrimSpace(taskID)
+	projectID = strings.TrimSpace(projectID)
+	if store != nil && taskID != "" && projectID != "" &&
+		(strings.TrimSpace(activeAdapter) != nextActiveAdapter || strings.TrimSpace(storedCommand) != currentCommand) {
+		currentCommandCopy := currentCommand
+		activeAdapterCopy := nextActiveAdapter
+		_ = store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+			TaskID:         taskID,
+			ProjectID:      projectID,
+			CurrentCommand: &currentCommandCopy,
+			ActiveAdapter:  &activeAdapterCopy,
+		})
+	}
+
+	mode := resolveTaskAgentToolModeFromCommand(currentCommand)
+	if nextActiveAdapter != "" {
+		mode = taskAgentToolModeAIAgent
+	}
+	s.setTaskAgentMode(taskID, mode)
+	return string(mode), currentCommand, buildTaskAgentToolsForResolvedMode(mode, sidecarMode, taskRole, source)
 }
 
 func buildTaskAgentToolsForResolvedMode(mode taskAgentToolMode, sidecarMode, taskRole, source string) []string {
@@ -746,18 +767,6 @@ func keepTaskAgentTools(tools []string, allowed ...string) []string {
 	return filtered
 }
 
-func isNodeLikeCommand(command string) bool {
-	command = strings.TrimSpace(command)
-	if command == "" {
-		return false
-	}
-	parts := strings.Fields(command)
-	if len(parts) == 0 {
-		return false
-	}
-	return strings.EqualFold(strings.TrimSpace(parts[0]), "node")
-}
-
 func (s *Server) getTaskAgentMode(taskID string) taskAgentToolMode {
 	if s == nil {
 		return taskAgentToolModeDefault
@@ -788,6 +797,51 @@ func (s *Server) setTaskAgentMode(taskID string, mode taskAgentToolMode) {
 		s.taskAgentModeByTask = map[string]taskAgentToolMode{}
 	}
 	s.taskAgentModeByTask[taskID] = mode
+	s.taskAgentModeMu.Unlock()
+}
+
+func (s *Server) getTaskAgentDetector(taskID string) string {
+	if s == nil {
+		return ""
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return ""
+	}
+	s.taskAgentModeMu.Lock()
+	defer s.taskAgentModeMu.Unlock()
+	return strings.TrimSpace(s.taskAgentDetectorByTask[taskID])
+}
+
+func (s *Server) setTaskAgentDetector(taskID, detectorID string) {
+	if s == nil {
+		return
+	}
+	taskID = strings.TrimSpace(taskID)
+	detectorID = strings.TrimSpace(detectorID)
+	if taskID == "" || detectorID == "" {
+		return
+	}
+	s.taskAgentModeMu.Lock()
+	if s.taskAgentDetectorByTask == nil {
+		s.taskAgentDetectorByTask = map[string]string{}
+	}
+	s.taskAgentDetectorByTask[taskID] = detectorID
+	s.taskAgentModeMu.Unlock()
+}
+
+func (s *Server) clearTaskAgentDetector(taskID string) {
+	if s == nil {
+		return
+	}
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return
+	}
+	s.taskAgentModeMu.Lock()
+	if s.taskAgentDetectorByTask != nil {
+		delete(s.taskAgentDetectorByTask, taskID)
+	}
 	s.taskAgentModeMu.Unlock()
 }
 

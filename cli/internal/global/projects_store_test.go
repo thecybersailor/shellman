@@ -121,3 +121,21 @@ func TestProjectsStore_UpdateProjectDisplayName(t *testing.T) {
 		t.Fatalf("expected display name updated, got %q", list[0].DisplayName)
 	}
 }
+
+func TestProjectsStore_OpenDB_ReusesSingleHandle(t *testing.T) {
+	dir := t.TempDir()
+	s := NewProjectsStore(dir)
+
+	db1, err := s.openDB()
+	if err != nil {
+		t.Fatalf("first openDB failed: %v", err)
+	}
+	db2, err := s.openDB()
+	if err != nil {
+		t.Fatalf("second openDB failed: %v", err)
+	}
+
+	if db1 != db2 {
+		t.Fatalf("expected openDB to reuse same gorm handle")
+	}
+}

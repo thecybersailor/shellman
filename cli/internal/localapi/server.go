@@ -87,13 +87,14 @@ type Server struct {
 	mux  *http.ServeMux
 	hub  *WSHub
 
-	taskAgentSupervisor  *taskAgentLoopSupervisor
-	pmAgentSupervisor    *projectManagerLoopSupervisor
-	externalEventSink    func(topic, projectID, taskID string, payload map[string]any)
-	taskAgentModeMu      sync.Mutex
-	taskAgentModeByTask  map[string]taskAgentToolMode
-	taskMessageRunMu     sync.Mutex
-	taskMessageRunByTask map[string]taskMessageRunState
+	taskAgentSupervisor     *taskAgentLoopSupervisor
+	pmAgentSupervisor       *projectManagerLoopSupervisor
+	externalEventSink       func(topic, projectID, taskID string, payload map[string]any)
+	taskAgentModeMu         sync.Mutex
+	taskAgentModeByTask     map[string]taskAgentToolMode
+	taskAgentDetectorByTask map[string]string
+	taskMessageRunMu        sync.Mutex
+	taskMessageRunByTask    map[string]taskMessageRunState
 
 	taskCompletionContextMu    sync.Mutex
 	taskCompletionContextCache map[string]taskCompletionContextCacheEntry
@@ -107,6 +108,7 @@ func NewServer(deps Deps) *Server {
 	s.taskAgentSupervisor = newTaskAgentLoopSupervisor(nil, s.handleTaskAgentLoopEvent)
 	s.pmAgentSupervisor = newProjectManagerLoopSupervisor(s.handleProjectManagerLoopEvent)
 	s.taskAgentModeByTask = map[string]taskAgentToolMode{}
+	s.taskAgentDetectorByTask = map[string]string{}
 	s.taskMessageRunByTask = map[string]taskMessageRunState{}
 	s.skillIndexCache = map[string]skillIndexCacheEntry{}
 	s.registerConfigRoutes()

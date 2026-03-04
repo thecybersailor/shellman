@@ -4,6 +4,9 @@ import (
 	"database/sql"
 	"errors"
 	dbmodel "shellman/cli/internal/db"
+	"shellman/cli/internal/progdetector"
+	_ "shellman/cli/internal/progdetector/builtin"
+	"strings"
 	"time"
 
 	"gorm.io/gorm"
@@ -26,7 +29,7 @@ func (s *Store) listTasksByProject(projectID string, includeArchived bool) ([]Ta
 	defer func() { _ = release() }()
 
 	query := `
-SELECT task_id, project_id, parent_task_id, title, current_command, status, sidecar_mode, task_role, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
+SELECT task_id, project_id, parent_task_id, title, current_command, active_adapter, status, sidecar_mode, task_role, description, flag, flag_desc, flag_readed, checked, archived, created_at, last_modified
 FROM tasks
 WHERE repo_root = ? AND project_id = ?
 `
@@ -52,6 +55,7 @@ ORDER BY created_at ASC, task_id ASC
 			&row.ParentTaskID,
 			&row.Title,
 			&row.CurrentCommand,
+			&row.ActiveAdapter,
 			&row.Status,
 			&row.SidecarMode,
 			&row.TaskRole,
@@ -90,6 +94,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	hasParent := input.ParentTaskID != nil
 	hasTitle := input.Title != nil
 	hasCurrentCommand := input.CurrentCommand != nil
+	hasActiveAdapter := input.ActiveAdapter != nil
 	hasStatus := input.Status != nil
 	hasSidecarMode := input.SidecarMode != nil
 	hasTaskRole := input.TaskRole != nil
@@ -113,6 +118,7 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 		ParentTaskID:   strPtrOrDefault(input.ParentTaskID, ""),
 		Title:          strPtrOrDefault(input.Title, ""),
 		CurrentCommand: strPtrOrDefault(input.CurrentCommand, ""),
+		ActiveAdapter:  strPtrOrDefault(input.ActiveAdapter, ""),
 		Status:         strPtrOrDefault(input.Status, ""),
 		SidecarMode:    strPtrOrDefault(input.SidecarMode, SidecarModeAdvisor),
 		TaskRole:       strPtrOrDefault(input.TaskRole, TaskRoleFull),
@@ -138,6 +144,9 @@ func (s *Store) UpsertTaskMeta(input TaskMetaUpsert) error {
 	}
 	if hasCurrentCommand {
 		assignments["current_command"] = gorm.Expr("excluded.current_command")
+	}
+	if hasActiveAdapter {
+		assignments["active_adapter"] = gorm.Expr("excluded.active_adapter")
 	}
 	if hasStatus {
 		assignments["status"] = gorm.Expr("excluded.status")
@@ -262,9 +271,30 @@ func (s *Store) BatchUpsertRuntime(input RuntimeBatchUpdate) error {
 			}).Create(&row).Error; err != nil {
 				return err
 			}
+			currentCommand := strings.TrimSpace(task.CurrentCommand)
+			var existing struct {
+				CurrentCommand string
+				ActiveAdapter  string
+			}
+			if err := tx.Model(&dbmodel.Task{}).
+				Select("current_command", "active_adapter").
+				Where("repo_root = ? AND task_id = ?", s.repoRoot, task.TaskID).
+				Take(&existing).Error; err != nil {
+				if errors.Is(err, gorm.ErrRecordNotFound) {
+					continue
+				}
+				return err
+			}
+			if currentCommand == "" {
+				currentCommand = strings.TrimSpace(existing.CurrentCommand)
+			}
+			activeAdapter := progdetector.ResolveActiveAdapter(strings.TrimSpace(existing.ActiveAdapter), currentCommand)
 			if err := tx.Model(&dbmodel.Task{}).
 				Where("repo_root = ? AND task_id = ?", s.repoRoot, task.TaskID).
-				Update("current_command", task.CurrentCommand).Error; err != nil {
+				Updates(map[string]any{
+					"current_command": currentCommand,
+					"active_adapter":  activeAdapter,
+				}).Error; err != nil {
 				return err
 			}
 		}

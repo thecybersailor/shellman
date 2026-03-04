@@ -40,7 +40,15 @@ func (Detector) MatchCurrentCommand(currentCommand string) bool {
 }
 
 func (d Detector) HasExitedMode(_ context.Context, state progdetector.RuntimeState) (bool, error) {
-	return !d.MatchCurrentCommand(state.CurrentCommand), nil
+	return !isNodeCommand(state.CurrentCommand), nil
+}
+
+func isNodeCommand(command string) bool {
+	parts := strings.Fields(strings.TrimSpace(command))
+	if len(parts) == 0 {
+		return false
+	}
+	return strings.EqualFold(strings.TrimSpace(parts[0]), "node")
 }
 
 func (Detector) BuildInputPromptSteps(prompt string) ([]progdetector.PromptStep, error) {

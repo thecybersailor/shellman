@@ -234,6 +234,11 @@ const previewRawURL = computed(() => {
   return `/api/v1/tasks/${props.taskId}/files/raw?path=${encodeURIComponent(selectedFilePath.value)}`;
 });
 
+const selectedFileIcon = computed(() => {
+  if (!selectedFilePath.value) return null;
+  return resolveFileIcon(selectedFilePath.value);
+});
+
 async function selectFile(path: string, options?: { silentOnNotFound?: boolean }) {
   if (!props.taskId || !path) {
     return;
@@ -711,10 +716,22 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
 
         <ResizableHandle class="opacity-0" />
         <ResizablePanel :default-size="50" :min-size="20">
-          <div class="h-full min-h-0 flex flex-col gap-2">
-            <div class="h-8 border rounded-md px-2 flex items-center justify-between text-xs">
-              <span class="truncate font-mono" :title="selectedFilePath">{{ selectedFilePath || "未选择文件" }}</span>
-              <div class="flex items-center gap-1">
+          <div class="h-full min-h-0 flex flex-col border rounded-md overflow-hidden bg-background">
+            <div class="h-9 border-b border-border/50 bg-muted/30 px-3 flex items-center justify-between text-xs shrink-0">
+              <div 
+                class="flex items-center gap-2 overflow-hidden cursor-pointer hover:text-primary transition-colors" 
+                :title="selectedFilePath"
+                @click="emitEdit"
+              >
+                <img
+                  v-if="selectedFileIcon"
+                  :src="selectedFileIcon"
+                  class="h-4 w-4 shrink-0 opacity-80"
+                />
+                <File v-else class="h-4 w-4 shrink-0 opacity-70" />
+                <span class="truncate font-mono">{{ selectedFilePath || "未选择文件" }}</span>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
                 <Button
                   type="button"
                   variant="ghost"
@@ -739,7 +756,7 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                 </Button>
               </div>
             </div>
-            <ScrollArea class="flex-1 min-h-0 border rounded-md bg-muted/20" :horizontal="true">
+            <ScrollArea class="flex-1 min-h-0 bg-muted/10" :horizontal="true">
               <div v-if="previewLoading" class="text-xs text-muted-foreground p-3">loading...</div>
               <div v-else-if="!selectedFilePath" class="text-xs text-muted-foreground p-3">{{ t("filePanel.clickTreeToPreview") }}</div>
               <CodeMirrorEditor

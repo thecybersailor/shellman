@@ -55,6 +55,9 @@ func TestLoadConfig_Defaults(t *testing.T) {
 	if cfg.OpenAIEnableState {
 		t.Fatal("openai enable state should default to false")
 	}
+	if cfg.EnablePprof {
+		t.Fatal("pprof should default to disabled")
+	}
 }
 
 func TestLoadConfig_TurnEnabled(t *testing.T) {
@@ -86,6 +89,7 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 	t.Setenv("OPENAI_REASONING_EFFORT", "high")
 	t.Setenv("OPENAI_USE_RESPONSES_API", "0")
 	t.Setenv("OPENAI_ENABLE_STATE", "1")
+	t.Setenv("SHELLMAN_ENABLE_PPROF", "1")
 	cfg := LoadConfig()
 	if cfg.Mode != "turn" {
 		t.Fatalf("unexpected mode: %s", cfg.Mode)
@@ -122,6 +126,9 @@ func TestLoadConfig_ModeAndLocalPort(t *testing.T) {
 	}
 	if !cfg.OpenAIEnableState {
 		t.Fatal("expected openai enable state enabled")
+	}
+	if !cfg.EnablePprof {
+		t.Fatal("expected pprof enabled")
 	}
 }
 

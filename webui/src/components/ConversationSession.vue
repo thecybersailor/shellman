@@ -86,6 +86,8 @@ type ParsedMessageContent = {
   meta?: ParsedMessageMeta;
 };
 
+const AUTO_COMPLETE_RUNTIME_SUMMARY = "auto-complete: pane idle and output stable";
+
 function parseToolState(state?: string): ParsedToolCall["state"] | undefined {
   if (state === "output-available" || state === "output-error" || state === "input-available" || state === "input-streaming") {
     return state;
@@ -170,6 +172,37 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
   }
   return "";
 }
+
+function formatUnixSecondToUTC(unixSecond: number): string {
+  if (!Number.isFinite(unixSecond) || unixSecond <= 0) {
+    return "";
+  }
+  const date = new Date(unixSecond * 1000);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const iso = date.toISOString();
+  if (!iso || iso.length < 19) {
+    return "";
+  }
+  return `${iso.slice(0, 10)} ${iso.slice(11, 19)}Z`;
+}
+
+function messageResponseContent(m: TaskMessage): string {
+  const parsed = messageParsedContent(m);
+  const text = parsed.text || m.error_text || "";
+  if (parsed.meta?.displayType !== "runtime") {
+    return text;
+  }
+  if (parsed.text.trim() !== AUTO_COMPLETE_RUNTIME_SUMMARY) {
+    return text;
+  }
+  const formatted = formatUnixSecondToUTC(m.created_at);
+  if (!formatted) {
+    return text;
+  }
+  return `${text} (${formatted})`;
+}
 </script>
 
 <template>
@@ -213,7 +246,7 @@ function messageDisplayTypeLabel(m: TaskMessage): string {
             <Loader v-if="m.role === 'assistant' && m.status === 'running' && !messageParsedContent(m).text" data-test-id="shellman-shellman-responding" />
             <MessageResponse
               v-if="messageParsedContent(m).text || m.status !== 'running'"
-              :content="messageParsedContent(m).text || m.error_text || ''"
+              :content="messageResponseContent(m)"
               class="whitespace-pre-wrap break-words text-sm"
             />
           </MessageContent>

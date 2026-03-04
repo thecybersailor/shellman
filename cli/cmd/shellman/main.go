@@ -546,6 +546,7 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 	httpExecRef.Set(httpExec)
 	server, err := appserver.NewServer(appserver.Deps{
 		LocalAPIHandle: localServer.Handler(),
+		EnablePprof:    cfg.EnablePprof,
 		WebUI: appserver.WebUIConfig{
 			Mode:        cfg.WebUIMode,
 			DevProxyURL: cfg.WebUIDevProxyURL,
@@ -586,6 +587,9 @@ func runLocalLegacy(ctx context.Context, out io.Writer, cfg config.Config) error
 	})
 	mgr.AddShutdown("close-helper-config", func(context.Context) error {
 		return helperCfgStore.Close()
+	})
+	mgr.AddShutdown("close-projects-store", func(context.Context) error {
+		return projectsStore.Close()
 	})
 	mgr.AddShutdown("close-history-store", func(context.Context) error {
 		return historyStore.Close()

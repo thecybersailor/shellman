@@ -7,6 +7,7 @@ type Task struct {
 	ParentTaskID       string `gorm:"column:parent_task_id;not null;default:''"`
 	Title              string `gorm:"column:title;not null;default:''"`
 	CurrentCommand     string `gorm:"column:current_command;not null;default:''"`
+	ActiveAdapter      string `gorm:"column:active_adapter;not null;default:''"`
 	Status             string `gorm:"column:status;not null;default:''"`
 	SidecarMode        string `gorm:"column:sidecar_mode;not null;default:'advisor'"`
 	TaskRole           string `gorm:"column:task_role;not null;default:'full'"`

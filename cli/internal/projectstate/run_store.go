@@ -33,16 +33,17 @@ func (s *Store) InsertTask(task TaskRecord) error {
 		taskRole = TaskRoleFull
 	}
 	row := dbmodel.Task{
-		TaskID:       task.TaskID,
-		RepoRoot:     s.repoRoot,
-		ProjectID:    task.ProjectID,
-		ParentTaskID: task.ParentTaskID,
-		Title:        task.Title,
-		Status:       status,
-		SidecarMode:  sidecarMode,
-		TaskRole:     taskRole,
-		CreatedAt:    now,
-		LastModified: now,
+		TaskID:        task.TaskID,
+		RepoRoot:      s.repoRoot,
+		ProjectID:     task.ProjectID,
+		ParentTaskID:  task.ParentTaskID,
+		Title:         task.Title,
+		ActiveAdapter: strings.TrimSpace(task.ActiveAdapter),
+		Status:        status,
+		SidecarMode:   sidecarMode,
+		TaskRole:      taskRole,
+		CreatedAt:     now,
+		LastModified:  now,
 	}
 	return gdb.Create(&row).Error
 }
@@ -461,6 +462,7 @@ func (s *Store) TryMarkTaskAutoProgressObserved(task TaskRecord, observedAt int6
 		ProjectID:          strings.TrimSpace(task.ProjectID),
 		ParentTaskID:       strings.TrimSpace(task.ParentTaskID),
 		Title:              strings.TrimSpace(task.Title),
+		ActiveAdapter:      strings.TrimSpace(task.ActiveAdapter),
 		Status:             status,
 		CreatedAt:          now,
 		LastModified:       now,

@@ -12,6 +12,7 @@ type Config struct {
 	ListenLogLevel                  string
 	TmuxSocket                      string
 	TraceStream                     bool
+	EnablePprof                     bool
 	HistoryLines                    int
 	Mode                            string
 	TurnEnabled                     bool
@@ -87,6 +88,7 @@ func loadFromEnv() Config {
 
 	socket := os.Getenv("SHELLMAN_TMUX_SOCKET")
 	traceStream := os.Getenv("SHELLMAN_TRACE_STREAM") == "1"
+	enablePprof := parseBoolEnvDefault(os.Getenv("SHELLMAN_ENABLE_PPROF"), false)
 	historyLines := atoiOrDefault(os.Getenv("SHELLMAN_HISTORY_LINES"), 2000)
 	if historyLines < 1 {
 		historyLines = 2000
@@ -136,6 +138,7 @@ func loadFromEnv() Config {
 		ListenLogLevel:                  level,
 		TmuxSocket:                      socket,
 		TraceStream:                     traceStream,
+		EnablePprof:                     enablePprof,
 		HistoryLines:                    historyLines,
 		Mode:                            mode,
 		TurnEnabled:                     turnEnabled,

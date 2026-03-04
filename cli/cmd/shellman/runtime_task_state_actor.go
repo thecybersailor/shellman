@@ -75,6 +75,7 @@ type TaskStateActor struct {
 
 	paneLatest   map[string]PaneStateReport
 	dirtyPaneIDs map[string]struct{}
+	reportQueue  []PaneStateReport
 
 	projectProvider taskStateProjectProvider
 	storeFactory    taskStateStoreFactory
@@ -90,6 +91,7 @@ func NewTaskStateActor() *TaskStateActor {
 	return &TaskStateActor{
 		paneLatest:   map[string]PaneStateReport{},
 		dirtyPaneIDs: map[string]struct{}{},
+		reportQueue:  []PaneStateReport{},
 		storeFactory: func(repoRoot string) taskStateStore { return projectstate.NewStore(repoRoot) },
 		now:          time.Now,
 		projectCache: map[string]taskRowsCache{},
@@ -164,6 +166,7 @@ func (a *TaskStateActor) OnPaneReport(r PaneStateReport) {
 	}
 	a.paneLatest[paneID] = r
 	a.dirtyPaneIDs[paneID] = struct{}{}
+	a.reportQueue = append(a.reportQueue, r)
 }
 
 func (a *TaskStateActor) Tick(ctx context.Context) {
@@ -232,6 +235,7 @@ func (a *TaskStateActor) ClearDirtyForTest() {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.dirtyPaneIDs = map[string]struct{}{}
+	a.reportQueue = []PaneStateReport{}
 }
 
 func (a *TaskStateActor) DirtyCountForTest() int {
@@ -280,33 +284,13 @@ func (a *TaskStateActor) flushDirtyRuntime(projects []taskStateProject) projects
 	}
 
 	batchByRepo := map[string]projectstate.RuntimeBatchUpdate{}
-	paneSeenByRepo := map[string]map[string]struct{}{}
-	taskSeenByRepo := map[string]map[string]struct{}{}
 
 	appendPane := func(repoRoot string, pane projectstate.PaneRuntimeRecord) {
-		seen := paneSeenByRepo[repoRoot]
-		if seen == nil {
-			seen = map[string]struct{}{}
-			paneSeenByRepo[repoRoot] = seen
-		}
-		if _, ok := seen[pane.PaneID]; ok {
-			return
-		}
-		seen[pane.PaneID] = struct{}{}
 		batch := batchByRepo[repoRoot]
 		batch.Panes = append(batch.Panes, pane)
 		batchByRepo[repoRoot] = batch
 	}
 	appendTask := func(repoRoot string, task projectstate.TaskRuntimeRecord) {
-		seen := taskSeenByRepo[repoRoot]
-		if seen == nil {
-			seen = map[string]struct{}{}
-			taskSeenByRepo[repoRoot] = seen
-		}
-		if _, ok := seen[task.TaskID]; ok {
-			return
-		}
-		seen[task.TaskID] = struct{}{}
 		batch := batchByRepo[repoRoot]
 		batch.Tasks = append(batch.Tasks, task)
 		batchByRepo[repoRoot] = batch
@@ -451,15 +435,12 @@ func (a *TaskStateActor) swapDirtyReports() []PaneStateReport {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if len(a.dirtyPaneIDs) == 0 {
+	if len(a.reportQueue) == 0 {
 		return nil
 	}
-	reports := make([]PaneStateReport, 0, len(a.dirtyPaneIDs))
-	for paneID := range a.dirtyPaneIDs {
-		if report, ok := a.paneLatest[paneID]; ok {
-			reports = append(reports, report)
-		}
-	}
+	reports := make([]PaneStateReport, len(a.reportQueue))
+	copy(reports, a.reportQueue)
+	a.reportQueue = a.reportQueue[:0]
 	a.dirtyPaneIDs = map[string]struct{}{}
 	return reports
 }

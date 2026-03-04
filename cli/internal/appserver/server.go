@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	pprofhttp "net/http/pprof"
 	"strings"
 
 	"shellman/cli/internal/localapi"
@@ -19,12 +20,14 @@ type Deps struct {
 	LocalAPI       localapi.Deps
 	LocalAPIHandle http.Handler
 	WebUI          WebUIConfig
+	EnablePprof    bool
 }
 
 type Server struct {
 	local http.Handler
 	webui http.Handler
 	edge  *EdgeWSHub
+	pprof http.Handler
 }
 
 func NewServer(deps Deps) (*Server, error) {
@@ -36,10 +39,21 @@ func NewServer(deps Deps) (*Server, error) {
 	if local == nil {
 		local = localapi.NewServer(deps.LocalAPI).Handler()
 	}
+	var pprofHandler http.Handler
+	if deps.EnablePprof {
+		mux := http.NewServeMux()
+		mux.HandleFunc("/debug/pprof/", pprofhttp.Index)
+		mux.HandleFunc("/debug/pprof/cmdline", pprofhttp.Cmdline)
+		mux.HandleFunc("/debug/pprof/profile", pprofhttp.Profile)
+		mux.HandleFunc("/debug/pprof/symbol", pprofhttp.Symbol)
+		mux.HandleFunc("/debug/pprof/trace", pprofhttp.Trace)
+		pprofHandler = mux
+	}
 	return &Server{
 		local: local,
 		webui: webui,
 		edge:  NewEdgeWSHub(),
+		pprof: pprofHandler,
 	}, nil
 }
 
@@ -59,6 +73,13 @@ func (s *Server) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(p, "/ws/agent/") || strings.HasPrefix(p, "/ws/client/"):
 		s.edge.ServeHTTP(w, r)
+		return
+	case p == "/debug/pprof" || strings.HasPrefix(p, "/debug/pprof/"):
+		if s.pprof == nil {
+			http.NotFound(w, r)
+			return
+		}
+		s.pprof.ServeHTTP(w, r)
 		return
 	case p == "/ws" || p == "/healthz" || strings.HasPrefix(p, "/api/v1/"):
 		s.local.ServeHTTP(w, r)

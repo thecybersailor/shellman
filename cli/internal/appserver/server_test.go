@@ -114,6 +114,50 @@ func TestServer_LocalAPIAndMCPRoutes(t *testing.T) {
 	}
 }
 
+func TestServer_PprofRoute_DisabledByDefault(t *testing.T) {
+	srv, err := NewServer(makeDeps())
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/debug/pprof/")
+	if err != nil {
+		t.Fatalf("GET pprof index failed: %v", err)
+	}
+	if resp.StatusCode != http.StatusNotFound {
+		t.Fatalf("expected 404 when pprof disabled, got %d", resp.StatusCode)
+	}
+}
+
+func TestServer_PprofRoute_Enabled(t *testing.T) {
+	deps := makeDeps()
+	deps.EnablePprof = true
+	srv, err := NewServer(deps)
+	if err != nil {
+		t.Fatalf("NewServer failed: %v", err)
+	}
+	ts := httptest.NewServer(srv.Handler())
+	defer ts.Close()
+
+	indexResp, err := http.Get(ts.URL + "/debug/pprof/")
+	if err != nil {
+		t.Fatalf("GET pprof index failed: %v", err)
+	}
+	if indexResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from pprof index, got %d", indexResp.StatusCode)
+	}
+
+	goroutineResp, err := http.Get(ts.URL + "/debug/pprof/goroutine?debug=1")
+	if err != nil {
+		t.Fatalf("GET pprof goroutine failed: %v", err)
+	}
+	if goroutineResp.StatusCode != http.StatusOK {
+		t.Fatalf("expected 200 from pprof goroutine, got %d", goroutineResp.StatusCode)
+	}
+}
+
 func TestServer_EdgeWSBridge(t *testing.T) {
 	srv, err := NewServer(makeDeps())
 	if err != nil {

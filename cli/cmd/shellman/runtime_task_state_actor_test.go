@@ -126,6 +126,52 @@ func TestTaskStateActor_Tick_FlushesOnlyChangedAndEmitsTmuxStatusDelta(t *testin
 	}
 }
 
+func TestTaskStateActor_Tick_KeepsCommandTransitionSequencePerPane(t *testing.T) {
+	store := &fakeTaskStateStore{
+		panesByTask: projectstate.PanesIndex{
+			"t1": {TaskID: "t1", PaneID: "e2e:0.0", PaneTarget: "e2e:0.0"},
+		},
+		tasksByProject: map[string][]projectstate.TaskRecordRow{},
+		maxByProject:   map[string]int64{"p1": 0},
+	}
+	actor := NewTaskStateActor()
+	actor.SetProjectProvider(func() ([]taskStateProject, error) {
+		return []taskStateProject{{ProjectID: "p1", RepoRoot: "/tmp/p1"}}, nil
+	})
+	actor.SetStoreFactory(func(repoRoot string) taskStateStore {
+		return store
+	})
+
+	actor.OnPaneReport(PaneStateReport{
+		PaneID:         "e2e:0.0",
+		PaneTarget:     "e2e:0.0",
+		CurrentCommand: "codex",
+		RuntimeStatus:  "running",
+		SnapshotHash:   "h1",
+		UpdatedAt:      100,
+	})
+	actor.OnPaneReport(PaneStateReport{
+		PaneID:         "e2e:0.0",
+		PaneTarget:     "e2e:0.0",
+		CurrentCommand: "node",
+		RuntimeStatus:  "running",
+		SnapshotHash:   "h2",
+		UpdatedAt:      101,
+	})
+
+	actor.Tick(context.Background())
+
+	if store.batchCalls != 1 {
+		t.Fatalf("expected one runtime batch upsert, got %d", store.batchCalls)
+	}
+	if len(store.lastBatch.Tasks) != 2 {
+		t.Fatalf("expected two task runtime updates in order, got %#v", store.lastBatch.Tasks)
+	}
+	if store.lastBatch.Tasks[0].CurrentCommand != "codex" || store.lastBatch.Tasks[1].CurrentCommand != "node" {
+		t.Fatalf("unexpected command sequence: %#v", store.lastBatch.Tasks)
+	}
+}
+
 func TestTaskStateActor_Tick_TrimsSnapshotToRecentLines(t *testing.T) {
 	oldMaxLines := runtimeSnapshotMaxLines
 	runtimeSnapshotMaxLines = 3

@@ -33,7 +33,14 @@ func TestDetectorModeMatchAndExit(t *testing.T) {
 	if !d.MatchCurrentCommand("codex --ask") {
 		t.Fatal("expected codex command matched")
 	}
-	exited, err := d.HasExitedMode(context.Background(), progdetector.RuntimeState{CurrentCommand: "zsh"})
+	exited, err := d.HasExitedMode(context.Background(), progdetector.RuntimeState{CurrentCommand: "node"})
+	if err != nil {
+		t.Fatalf("has exited failed: %v", err)
+	}
+	if exited {
+		t.Fatal("expected exited=false when current command is node")
+	}
+	exited, err = d.HasExitedMode(context.Background(), progdetector.RuntimeState{CurrentCommand: "zsh"})
 	if err != nil {
 		t.Fatalf("has exited failed: %v", err)
 	}

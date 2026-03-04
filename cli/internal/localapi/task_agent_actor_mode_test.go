@@ -124,9 +124,9 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesLivePaneCommandInAutopilot
 	}); err != nil {
 		t.Fatalf("save panes failed: %v", err)
 	}
-	gotDBCommand, gotSidecarMode, gotTaskRole := resolveTaskAgentModeInputs(store, "p1", taskID)
-	if gotDBCommand != "zsh" || gotSidecarMode != projectstate.SidecarModeAutopilot || gotTaskRole != projectstate.TaskRoleFull {
-		t.Fatalf("unexpected db mode inputs: command=%q sidecar=%q task_role=%q", gotDBCommand, gotSidecarMode, gotTaskRole)
+	gotDBCommand, gotSidecarMode, gotTaskRole, gotActiveAdapter := resolveTaskAgentModeInputs(store, "p1", taskID)
+	if gotDBCommand != "zsh" || gotSidecarMode != projectstate.SidecarModeAutopilot || gotTaskRole != projectstate.TaskRoleFull || gotActiveAdapter != "" {
+		t.Fatalf("unexpected db mode inputs: command=%q sidecar=%q task_role=%q active_adapter=%q", gotDBCommand, gotSidecarMode, gotTaskRole, gotActiveAdapter)
 	}
 
 	srv := NewServer(Deps{
@@ -159,7 +159,7 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_UsesLivePaneCommandInAutopilot
 	}
 }
 
-func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissUsesDefaultMode(t *testing.T) {
+func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissFallsBackToStoredCommand(t *testing.T) {
 	store := projectstate.NewStore(t.TempDir())
 	taskID := fmt.Sprintf("t_mode_realtime_default_%d", time.Now().UTC().UnixNano())
 	mode := projectstate.SidecarModeAutopilot
@@ -191,10 +191,10 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissUsesDefaultMode(t *t
 		},
 	})
 	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
-	if gotMode != string(taskAgentToolModeDefault) {
+	if gotMode != string(taskAgentToolModeAIAgent) {
 		t.Fatalf("unexpected mode: got=%q", gotMode)
 	}
-	if gotCommand != "" {
+	if gotCommand != "codex" {
 		t.Fatalf("unexpected current command: got=%q", gotCommand)
 	}
 	if !reflect.DeepEqual(gotTools, []string{
@@ -204,6 +204,7 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_DetectMissUsesDefaultMode(t *t
 		"task.child.spawn",
 		"task.child.send_message",
 		"task.parent.report",
+		"task.input_prompt",
 		"readfile",
 		"write_stdin",
 	}) {
@@ -265,6 +266,53 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_StateMachineKeepsAIModeOnNode(
 	}
 }
 
+func TestResolveTaskAgentToolModeAndNamesRealtime_StateMachineExitsOnNonNode(t *testing.T) {
+	store := projectstate.NewStore(t.TempDir())
+	taskID := fmt.Sprintf("t_mode_realtime_exit_non_node_%d", time.Now().UTC().UnixNano())
+	mode := projectstate.SidecarModeAutopilot
+	dbCommand := "zsh"
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		SidecarMode:    &mode,
+		CurrentCommand: &dbCommand,
+	}); err != nil {
+		t.Fatalf("upsert task failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		taskID: {
+			TaskID:     taskID,
+			PaneID:     "1",
+			PaneTarget: "sess:1.1",
+		},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+	seq := []string{"pane-title\tcodex\tabc\n", "pane-title\tnpm test\tabc\n"}
+	call := 0
+	srv := NewServer(Deps{
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.TrimSpace(name) != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			if call >= len(seq) {
+				return []byte(seq[len(seq)-1]), nil
+			}
+			out := seq[call]
+			call++
+			return []byte(out), nil
+		},
+	})
+	gotMode1, _, _ := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode1 != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("first mode expected ai-agent, got=%q", gotMode1)
+	}
+	gotMode2, _, _ := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode2 != string(taskAgentToolModeDefault) {
+		t.Fatalf("second mode expected default after non-node command, got=%q", gotMode2)
+	}
+}
+
 func TestResolveTaskAgentToolModeAndNamesRealtime_NodeWithoutAIStateStaysDefault(t *testing.T) {
 	store := projectstate.NewStore(t.TempDir())
 	taskID := fmt.Sprintf("t_mode_realtime_plain_node_%d", time.Now().UTC().UnixNano())
@@ -298,6 +346,48 @@ func TestResolveTaskAgentToolModeAndNamesRealtime_NodeWithoutAIStateStaysDefault
 	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
 	if gotMode != string(taskAgentToolModeDefault) {
 		t.Fatalf("plain node without ai-enter state expected default, got=%q command=%q tools=%v", gotMode, gotCommand, gotTools)
+	}
+}
+
+func TestResolveTaskAgentToolModeAndNamesRealtime_NodeBootstrapsFromPersistedAIMode(t *testing.T) {
+	store := projectstate.NewStore(t.TempDir())
+	taskID := fmt.Sprintf("t_mode_realtime_bootstrap_%d", time.Now().UTC().UnixNano())
+	mode := projectstate.SidecarModeAutopilot
+	dbCommand := "codex (/Users/wanglei/.)"
+	activeAdapter := "codex"
+	if err := store.UpsertTaskMeta(projectstate.TaskMetaUpsert{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		SidecarMode:    &mode,
+		CurrentCommand: &dbCommand,
+		ActiveAdapter:  &activeAdapter,
+	}); err != nil {
+		t.Fatalf("upsert task failed: %v", err)
+	}
+	if err := store.SavePanes(projectstate.PanesIndex{
+		taskID: {
+			TaskID:     taskID,
+			PaneID:     "1",
+			PaneTarget: "sess:1.1",
+		},
+	}); err != nil {
+		t.Fatalf("save panes failed: %v", err)
+	}
+	srv := NewServer(Deps{
+		ExecuteCommand: func(_ context.Context, name string, args ...string) ([]byte, error) {
+			if strings.TrimSpace(name) != "tmux" {
+				t.Fatalf("unexpected command: %s", name)
+			}
+			return []byte("pane-title\tnode\tabc\n"), nil
+		},
+	})
+
+	gotMode, gotCommand, gotTools := srv.resolveTaskAgentToolModeAndNamesRealtime(store, "p1", taskID, "user_input")
+	if gotMode != string(taskAgentToolModeAIAgent) {
+		t.Fatalf("node with persisted ai command should bootstrap ai mode, got=%q command=%q tools=%v", gotMode, gotCommand, gotTools)
+	}
+	if !containsString(gotTools, "task.input_prompt") {
+		t.Fatalf("bootstrapped ai mode should include task.input_prompt, got tools=%v", gotTools)
 	}
 }
 
