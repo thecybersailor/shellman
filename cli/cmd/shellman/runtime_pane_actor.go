@@ -702,11 +702,27 @@ func appendRealtimeSnapshot(prev, chunk string, limit int) string {
 	if chunk == "" {
 		return normalizeTermSnapshot(prev)
 	}
-	next := prev + chunk
-	if limit > 0 && len(next) > limit {
-		next = next[len(next)-limit:]
+	prevPart := prev
+	chunkPart := chunk
+	if limit > 0 {
+		if len(chunkPart) >= limit {
+			chunkPart = chunkPart[len(chunkPart)-limit:]
+			prevPart = ""
+		} else {
+			keepPrev := limit - len(chunkPart)
+			if len(prevPart) > keepPrev {
+				prevPart = prevPart[len(prevPart)-keepPrev:]
+			}
+		}
 	}
-	return normalizeTermSnapshot(next)
+	buf := acquirePooledBuffer(len(prevPart) + len(chunkPart))
+	if prevPart != "" {
+		_, _ = buf.WriteString(prevPart)
+	}
+	_, _ = buf.WriteString(chunkPart)
+	out := normalizeTermSnapshot(buf.String())
+	releasePooledBuffer(buf)
+	return out
 }
 
 func (p *PaneActor) stopRealtime() {
