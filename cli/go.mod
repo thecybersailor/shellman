@@ -4,10 +4,12 @@ go 1.24.0
 
 require (
 	github.com/coder/websocket v1.8.14
-	github.com/flaboy/agentloop v0.0.0
+	github.com/flaboy/agentloop v0.0.0-20260303102352-8a7b84bd86c4
 	github.com/google/uuid v1.6.0
 	github.com/pelletier/go-toml/v2 v2.2.4
+	github.com/shirou/gopsutil/v4 v4.26.2
 	github.com/urfave/cli/v2 v2.27.7
+	golang.org/x/sys v0.41.0
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.0
 	modernc.org/sqlite v1.29.10
@@ -29,7 +31,6 @@ require (
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
 	github.com/remyoudompheng/bigfft v0.0.0-20230129092748-24d4a6f8daec // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
-	github.com/shirou/gopsutil/v4 v4.26.2 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
@@ -38,7 +39,6 @@ require (
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20240521201337-686a1a2994c1 // indirect
 	github.com/yusufpapurcu/wmi v1.2.4 // indirect
-	golang.org/x/sys v0.41.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.38.0 // indirect
 	modernc.org/gc/v3 v3.0.0-20240107210532-573471604cb6 // indirect
@@ -48,5 +48,3 @@ require (
 	modernc.org/strutil v1.2.0 // indirect
 	modernc.org/token v1.1.0 // indirect
 )
-
-replace github.com/flaboy/agentloop => ../../packages/agentloop
