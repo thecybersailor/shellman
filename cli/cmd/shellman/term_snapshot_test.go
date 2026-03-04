@@ -1,6 +1,8 @@
 package main
 
 import (
+	"crypto/sha1"
+	"encoding/hex"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -74,5 +76,21 @@ func TestChunkTermData_DoesNotSplitUTF8Rune(t *testing.T) {
 	}
 	if frames[0].Data+frames[1].Data != payload {
 		t.Fatal("payload changed after chunking")
+	}
+}
+
+func TestSha1Text_MatchesStandardLibrary(t *testing.T) {
+	inputs := []string{
+		"",
+		"hello",
+		"hello\nworld\n",
+		strings.Repeat("x", 8193),
+	}
+	for _, in := range inputs {
+		sum := sha1.Sum([]byte(in))
+		want := hex.EncodeToString(sum[:])
+		if got := sha1Text(in); got != want {
+			t.Fatalf("sha1Text mismatch for len=%d: got=%q want=%q", len(in), got, want)
+		}
 	}
 }

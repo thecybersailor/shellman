@@ -1043,3 +1043,31 @@ func TestPaneActor_ScheduleStatusEvalTimer_ReusesEarlierDueAt(t *testing.T) {
 		t.Fatalf("expected dueAt unchanged for later schedule, due1=%v due2=%v", due1, due2)
 	}
 }
+
+func TestAppendRealtimeSnapshot_RespectsLimit(t *testing.T) {
+	got := appendRealtimeSnapshot("12345", "6789", 6)
+	if got != "456789" {
+		t.Fatalf("expected trimmed tail snapshot, got %q", got)
+	}
+}
+
+func TestAppendRealtimeSnapshot_ChunkLongerThanLimit(t *testing.T) {
+	got := appendRealtimeSnapshot("abc", "0123456789", 4)
+	if got != "6789" {
+		t.Fatalf("expected chunk tail only, got %q", got)
+	}
+}
+
+func TestAppendRealtimeSnapshot_NoLimitKeepsAll(t *testing.T) {
+	got := appendRealtimeSnapshot("abc", "def", 0)
+	if got != "abcdef" {
+		t.Fatalf("expected full append snapshot, got %q", got)
+	}
+}
+
+func TestAppendRealtimeSnapshot_EmptyChunkKeepsPrevious(t *testing.T) {
+	got := appendRealtimeSnapshot("abc", "", 10)
+	if got != "abc" {
+		t.Fatalf("expected previous snapshot unchanged, got %q", got)
+	}
+}
