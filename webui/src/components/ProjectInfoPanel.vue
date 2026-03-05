@@ -38,6 +38,7 @@ const props = withDefaults(
     currentCommand?: string;
     aiLoading?: boolean;
     submitLoading?: boolean;
+    hideThreadFooter?: boolean;
   }>(),
   {
     taskId: "",
@@ -52,7 +53,8 @@ const props = withDefaults(
     paneUuid: "",
     currentCommand: "",
     aiLoading: false,
-    submitLoading: false
+    submitLoading: false,
+    hideThreadFooter: false
   }
 );
 
@@ -120,6 +122,7 @@ watch(
             :sidecar-mode="props.sidecarMode"
             :pane-uuid="props.paneUuid"
             :current-command="props.currentCommand"
+            :hide-footer="props.hideThreadFooter"
             @save-task-meta="(payload) => emit('save-task-meta', payload)"
             @send-message="(payload) => emit('send-message', { content: payload.content })"
             @set-sidecar-mode="(payload) => emit('set-sidecar-mode', payload)"

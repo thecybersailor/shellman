@@ -1,10 +1,11 @@
-export type FilePreviewMode = "txt" | "image" | "video" | "none";
+export type FilePreviewMode = "txt" | "markdown" | "image" | "video" | "none";
 
 const TXT_EXTENSIONS = new Set([
-  "txt", "md", "json", "yaml", "yml", "toml", "xml", "html", "css",
+  "txt", "json", "yaml", "yml", "toml", "xml", "html", "css",
   "js", "mjs", "cjs", "ts", "tsx", "jsx", "vue", "go", "py", "sh",
   "bash", "zsh", "sql", "ini", "conf", "log", "gitignore", "env"
 ]);
+const MARKDOWN_EXTENSIONS = new Set(["md", "markdown"]);
 
 const IMAGE_EXTENSIONS = new Set(["png", "jpg", "jpeg", "gif", "webp", "bmp", "svg"]);
 const VIDEO_EXTENSIONS = new Set(["mp4", "webm", "ogg", "mov", "m4v"]);
@@ -20,6 +21,9 @@ function getExtension(path: string): string {
 
 export function getFilePreviewMode(path: string): FilePreviewMode {
   const ext = getExtension(path);
+  if (MARKDOWN_EXTENSIONS.has(ext)) {
+    return "markdown";
+  }
   if (TXT_EXTENSIONS.has(ext)) {
     return "txt";
   }

@@ -10,6 +10,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
 import CodeMirrorEditor from "./CodeMirrorEditor.vue";
+import { Markdown } from "vue-stream-markdown";
+import "vue-stream-markdown/index.css";
 import { toast } from "vue-sonner";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
 import tsIconURL from "file-icon-vectors/dist/icons/vivid/ts.svg?url";
@@ -246,7 +248,7 @@ async function selectFile(path: string, options?: { silentOnNotFound?: boolean }
   selectedFilePath.value = path;
   selectedFileContent.value = "";
   const mode = getFilePreviewMode(path);
-  if (mode !== "txt") {
+  if (mode !== "txt" && mode !== "markdown") {
     previewLoading.value = false;
     return;
   }
@@ -759,6 +761,13 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
             <ScrollArea class="flex-1 min-h-0 bg-muted/10" :horizontal="true">
               <div v-if="previewLoading" class="text-xs text-muted-foreground p-3">loading...</div>
               <div v-else-if="!selectedFilePath" class="text-xs text-muted-foreground p-3">{{ t("filePanel.clickTreeToPreview") }}</div>
+              <div
+                v-else-if="previewMode === 'markdown'"
+                data-test-id="shellman-file-preview-markdown"
+                class="p-3 text-sm leading-6 shellman-markdown-compact [&>*:first-child]:mt-0! [&>*:last-child]:mb-0!"
+              >
+                <Markdown :content="selectedFileContent" />
+              </div>
               <CodeMirrorEditor
                 v-else-if="previewMode === 'txt'"
                 data-test-id="shellman-file-preview-codemirror"
@@ -767,13 +776,23 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                 :file-path="selectedFilePath"
                 :readonly="true"
               />
-              <div v-else-if="previewMode === 'image'" class="p-3">
+              <div v-else-if="previewMode === 'image'" class="p-3" data-test-id="shellman-file-preview-image">
                 <img :src="previewRawURL" :alt="t('filePanel.previewImage')" class="max-w-full max-h-[52vh] object-contain" />
               </div>
-              <div v-else-if="previewMode === 'video'" class="p-3">
+              <div v-else-if="previewMode === 'video'" class="p-3" data-test-id="shellman-file-preview-video">
                 <video :src="previewRawURL" controls class="max-w-full max-h-[52vh]" />
               </div>
-              <div v-else class="text-xs text-muted-foreground p-3">{{ t("filePanel.previewNotSupported") }}</div>
+              <div v-else class="text-xs text-muted-foreground p-3 space-y-2" data-test-id="shellman-file-preview-download-hint">
+                <p>{{ t("filePanel.previewNotSupported") }}</p>
+                <a
+                  :href="previewRawURL"
+                  class="underline text-primary hover:opacity-80"
+                  data-test-id="shellman-file-preview-download"
+                  :download="selectedFilePath.split('/').pop() || 'download'"
+                >
+                  {{ t("filePanel.downloadFile") }}
+                </a>
+              </div>
             </ScrollArea>
           </div>
         </ResizablePanel>

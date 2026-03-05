@@ -187,7 +187,7 @@ describe("FilePanel", () => {
     expect(menuText.includes("Delete")).toBe(true);
   });
 
-  it("renders codemirror preview for .md files", async () => {
+  it("renders markdown preview for .md files", async () => {
     const fakeFetch = vi.fn(async (url: string) => {
       if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
         return {
@@ -219,9 +219,140 @@ describe("FilePanel", () => {
     await wrapper.get("[data-test-id='shellman-file-item-README.md']").trigger("click");
     await flushPromises();
 
+    expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(false);
+    expect(wrapper.text()).toContain("Title");
+  });
+
+  it("renders codemirror preview for plain text files", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "notes.txt", path: "notes.txt", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      if (url.includes("/api/v1/tasks/t1/files/content?path=notes.txt")) {
+        return {
+          json: async () => ({ ok: true, data: { content: "plain text content" } })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-notes.txt']").trigger("click");
+    await flushPromises();
+
     expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(true);
     expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(false);
-    expect(wrapper.find("pre").exists()).toBe(false);
+  });
+
+  it("shows download prompt for non-previewable files", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "archive.zip", path: "archive.zip", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-archive.zip']").trigger("click");
+    await flushPromises();
+
+    const downloadLink = wrapper.get("[data-test-id='shellman-file-preview-download']");
+    expect(wrapper.find("[data-test-id='shellman-file-preview-download-hint']").exists()).toBe(true);
+    expect(downloadLink.attributes("href")).toContain("/api/v1/tasks/t1/files/raw?path=archive.zip");
+    expect(downloadLink.text()).toBe("Download file");
+  });
+
+  it("renders image preview for image files", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "diagram.png", path: "diagram.png", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-diagram.png']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-test-id='shellman-file-preview-image']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(false);
+  });
+
+  it("renders video preview for video files", async () => {
+    const fakeFetch = vi.fn(async (url: string) => {
+      if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
+        return {
+          json: async () => ({
+            ok: true,
+            data: {
+              entries: [{ name: "demo.mp4", path: "demo.mp4", is_dir: false }]
+            }
+          })
+        } as Response;
+      }
+      return { json: async () => ({ ok: true, data: { entries: [] } }) } as Response;
+    });
+    vi.stubGlobal("fetch", fakeFetch);
+
+    const wrapper = mount(FilePanel, {
+      props: {
+        taskId: "t1",
+        projectId: "p1",
+        repoRoot: "/repo"
+      }
+    });
+    await flushPromises();
+    await wrapper.get("[data-test-id='shellman-file-item-demo.mp4']").trigger("click");
+    await flushPromises();
+
+    expect(wrapper.find("[data-test-id='shellman-file-preview-video']").exists()).toBe(true);
+    expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(false);
   });
 
   it("emits file-open on double click file item", async () => {

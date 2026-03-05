@@ -16,6 +16,7 @@ const props = defineProps<{
   currentCommand?: string;
   taskMessages?: TaskMessage[];
   sidecarMode?: "advisor" | "observer" | "autopilot";
+  hideFooter?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -190,7 +191,7 @@ function onSidecarModeUpdate(value: string | number) {
       </div>
     </div>
 
-    <div class="px-2 text-[11px] text-muted-foreground/80 font-mono mt-0.5 flex items-center justify-between gap-2">
+    <div v-if="!props.hideFooter" class="px-2 text-[11px] text-muted-foreground/80 font-mono mt-0.5 flex items-center justify-between gap-2">
       <div class="flex items-center gap-2 flex-wrap">
         <SidecarModeSelect
           :model-value="sidecarMode"

@@ -106,7 +106,8 @@
     "noFiles": "No files.",
     "clickTreeToPreview": "Click the file tree to preview",
     "previewImage": "preview image",
-    "previewNotSupported": "Preview not supported",
+    "previewNotSupported": "Preview is not available for this file type.",
+    "downloadFile": "Download file",
     "contextMenu": {
       "cut": "Cut",
       "copy": "Copy",

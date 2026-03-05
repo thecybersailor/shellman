@@ -1011,10 +1011,10 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div v-if="!isMobileLayout" class="shellman-desktop h-screen w-full bg-background text-foreground">
+  <div v-if="!isMobileLayout" class="shellman-desktop fixed top-0 bottom-0 left-0 right-0 w-full bg-background text-foreground">
     <ResizablePanelGroup direction="horizontal" class="h-full items-stretch">
       <!-- Left Panel -->
-      <ResizablePanel :default-size="20" :min-size="15" :max-size="30" class="min-w-[340px]">
+      <ResizablePanel :default-size="20" :min-size="15" :max-size="30">
         <aside class="h-full flex flex-col bg-sidebar">
           <!-- Top Global Actions (Theme Toggle for Shellman) -->
           <header class="flex items-center justify-between px-4 py-4 opacity-50 hover:opacity-100 transition-opacity">
@@ -1112,7 +1112,7 @@ onBeforeUnmount(() => {
       <ResizableHandle />
 
       <!-- Right Panel (ProjectInfo) -->
-      <ResizablePanel :default-size="32" :min-size="15" :max-size="40" class="min-w-[260px]">
+      <ResizablePanel :default-size="32" :min-size="15" :max-size="40">
         <aside class="h-full bg-sidebar border-l border-border">
           <ProjectInfoPanel
             :task-id="selectedTaskId"

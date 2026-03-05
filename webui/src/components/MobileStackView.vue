@@ -195,7 +195,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="shellman-mobile h-screen flex flex-col bg-background text-foreground overflow-hidden">
+  <div class="shellman-mobile left-0 right-0 bottom-0 top-0 fixed flex flex-col bg-background text-foreground overflow-hidden">
     <!-- Explorer Screen -->
     <template v-if="!props.selectedTaskId">
       <header class="h-14 shrink-0 flex items-center justify-between px-4 border-b border-border/50 bg-background/80 backdrop-blur-md z-10">
@@ -374,6 +374,7 @@ onBeforeUnmount(() => {
                :current-command="props.selectedCurrentCommand ?? ''"
                :ai-loading="Boolean(props.scmAiLoading)"
                :submit-loading="Boolean(props.scmSubmitLoading)"
+               :hide-thread-footer="true"
                @update:active-tab="onProjectPanelActiveTabChange"
                @save-task-meta="(payload) => emit('save-task-meta', payload)"
                @send-message="(payload) => emit('send-message', payload)"
