@@ -5,7 +5,7 @@ import SCMPanel from "./SCMPanel.vue";
 import FilePanel from "./FilePanel.vue";
 import ThreadPanel from "./ThreadPanel.vue";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import shellmanIcon from "@/asserts/icon.svg";
+import { FileText, GitCompare, MessageSquareText } from "lucide-vue-next";
 import type { TaskMessage } from "@/stores/shellman";
 const { t } = useI18n();
 
@@ -103,9 +103,24 @@ watch(
   <div class="h-full p-2">
     <Tabs :model-value="effectiveTab" class="h-full flex flex-col" @update:model-value="onTabChange">
       <TabsList class="w-full grid" :class="canShowDiff ? 'grid-cols-3' : 'grid-cols-2'">
-        <TabsTrigger value="thread" class="text-xs">{{ t("projectInfo.thread") }}</TabsTrigger>
-        <TabsTrigger v-if="canShowDiff" value="diff" class="text-xs">{{ t("projectInfo.diff") }}</TabsTrigger>
-        <TabsTrigger value="file" class="text-xs">{{ t("projectInfo.file") }}</TabsTrigger>
+        <TabsTrigger value="thread" class="text-xs">
+          <span class="inline-flex items-center gap-1.5">
+            <MessageSquareText class="h-3.5 w-3.5" />
+            <span>{{ t("projectInfo.thread") }}</span>
+          </span>
+        </TabsTrigger>
+        <TabsTrigger v-if="canShowDiff" value="diff" class="text-xs">
+          <span class="inline-flex items-center gap-1.5">
+            <GitCompare class="h-3.5 w-3.5" />
+            <span>{{ t("projectInfo.diff") }}</span>
+          </span>
+        </TabsTrigger>
+        <TabsTrigger value="file" class="text-xs">
+          <span class="inline-flex items-center gap-1.5">
+            <FileText class="h-3.5 w-3.5" />
+            <span>{{ t("projectInfo.file") }}</span>
+          </span>
+        </TabsTrigger>
       </TabsList>
       <TabsContent value="thread" force-mount class="flex-1 min-h-0 mt-2">
         <div

@@ -74,7 +74,7 @@ describe("FilePanel", () => {
     expect(nextSnapshot.searchQuery).toBe("next-query");
   });
 
-  it("renders mapped file icons with O(1) extension lookup and keeps folder icons unchanged", async () => {
+  it("renders atom file icons and keeps folder icons unchanged", async () => {
     const fakeFetch = vi.fn(async (url: string) => {
       if (url.includes("/api/v1/tasks/t1/files/tree?path=.")) {
         return {
@@ -84,7 +84,7 @@ describe("FilePanel", () => {
               entries: [
                 { name: "src", path: "src", is_dir: true },
                 { name: "main.ts", path: "main.ts", is_dir: false },
-                { name: "README.unknownext", path: "README.unknownext", is_dir: false }
+                { name: "artifact.unknownext", path: "artifact.unknownext", is_dir: false }
               ]
             }
           })
@@ -103,8 +103,15 @@ describe("FilePanel", () => {
     });
     await flushPromises();
 
-    expect(wrapper.get("[data-test-id='shellman-file-item-main.ts'] [data-test-id='shellman-file-icon-kind']").attributes("data-icon-kind")).toBe("mapped");
-    expect(wrapper.get("[data-test-id='shellman-file-item-README.unknownext'] [data-test-id='shellman-file-icon-kind']").attributes("data-icon-kind")).toBe("default");
+    const tsIcon = wrapper.get("[data-test-id='shellman-file-item-main.ts'] [data-test-id='shellman-file-icon-kind']");
+    expect(tsIcon.attributes("data-icon-kind")).toBe("atom-mapped");
+    expect(tsIcon.classes()).toContain("icon");
+    expect(tsIcon.classes()).toContain("ts-icon");
+
+    const unknownIcon = wrapper.get("[data-test-id='shellman-file-item-artifact.unknownext'] [data-test-id='shellman-file-icon-kind']");
+    expect(unknownIcon.attributes("data-icon-kind")).toBe("atom-default");
+    expect(unknownIcon.classes()).toContain("text-icon");
+
     expect(wrapper.get("[data-test-id='shellman-file-item-src'] .lucide-folder").exists()).toBe(true);
   });
 
@@ -221,7 +228,7 @@ describe("FilePanel", () => {
 
     expect(wrapper.find("[data-test-id='shellman-file-preview-markdown']").exists()).toBe(true);
     expect(wrapper.find("[data-test-id='shellman-file-preview-codemirror']").exists()).toBe(false);
-    expect(wrapper.text()).toContain("Title");
+    expect(fakeFetch).toHaveBeenCalledWith(expect.stringContaining("/api/v1/tasks/t1/files/content?path=README.md"));
   });
 
   it("renders codemirror preview for plain text files", async () => {

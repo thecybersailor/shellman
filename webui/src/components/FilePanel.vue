@@ -8,22 +8,14 @@ import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/componen
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "@/components/ui/context-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Copy, FilePenLine, Folder, FolderOpen, File, Loader2 } from "lucide-vue-next";
+import { Copy, FilePenLine, Folder, FolderOpen, Loader2 } from "lucide-vue-next";
 import CodeMirrorEditor from "./CodeMirrorEditor.vue";
 import { Markdown } from "vue-stream-markdown";
 import "vue-stream-markdown/index.css";
+import "file-icons-js/css/style.css";
 import { toast } from "vue-sonner";
+import { getClassWithColor } from "file-icons-js";
 import { getFilePreviewMode, type FilePreviewMode } from "./file_preview_whitelist";
-import tsIconURL from "file-icon-vectors/dist/icons/vivid/ts.svg?url";
-import jsIconURL from "file-icon-vectors/dist/icons/vivid/js.svg?url";
-import jsonIconURL from "file-icon-vectors/dist/icons/vivid/json.svg?url";
-import mdIconURL from "file-icon-vectors/dist/icons/vivid/md.svg?url";
-import ymlIconURL from "file-icon-vectors/dist/icons/vivid/yml.svg?url";
-import yamlIconURL from "file-icon-vectors/dist/icons/vivid/yaml.svg?url";
-import htmlIconURL from "file-icon-vectors/dist/icons/vivid/html.svg?url";
-import cssIconURL from "file-icon-vectors/dist/icons/vivid/css.svg?url";
-import shIconURL from "file-icon-vectors/dist/icons/vivid/sh.svg?url";
-import goIconURL from "file-icon-vectors/dist/icons/vivid/go.svg?url";
 const { t } = useI18n();
 
 type FileTreeEntry = {
@@ -120,30 +112,20 @@ type FlatNode = {
   key: string;
   entry: FileTreeEntry;
   depth: number;
-  fileIconURL: string | null;
+  fileIcon: FileIconMeta | null;
 };
 
-const FILE_ICON_BY_EXT: Record<string, string> = {
-  ts: tsIconURL,
-  js: jsIconURL,
-  json: jsonIconURL,
-  md: mdIconURL,
-  yml: ymlIconURL,
-  yaml: yamlIconURL,
-  html: htmlIconURL,
-  css: cssIconURL,
-  sh: shIconURL,
-  go: goIconURL
+type FileIconMeta = {
+  className: string;
+  kind: "atom-mapped" | "atom-default";
 };
 
-function resolveFileIcon(path: string): string | null {
-  const normalized = String(path).trim().toLowerCase();
-  const dotIndex = normalized.lastIndexOf(".");
-  if (dotIndex <= 0 || dotIndex === normalized.length - 1) {
-    return null;
+function resolveFileIcon(path: string): FileIconMeta {
+  const atomClass = String(getClassWithColor(path) ?? "").trim();
+  if (atomClass) {
+    return { className: atomClass, kind: "atom-mapped" };
   }
-  const ext = normalized.slice(dotIndex + 1);
-  return FILE_ICON_BY_EXT[ext] ?? null;
+  return { className: "text-icon", kind: "atom-default" };
 }
 
 function isExpanded(path: string) {
@@ -340,7 +322,7 @@ function collectVisible(path: string, depth: number, out: FlatNode[]) {
       key: `${entry.path}-${depth}`,
       entry,
       depth,
-      fileIconURL: entry.is_dir ? null : resolveFileIcon(entry.path)
+      fileIcon: entry.is_dir ? null : resolveFileIcon(entry.path)
     });
     if (entry.is_dir && isExpanded(entry.path)) {
       collectVisible(entry.path, depth + 1, out);
@@ -362,7 +344,7 @@ const displayNodes = computed<FlatNode[]>(() => {
     key: `search-${entry.path}-${idx}`,
     entry,
     depth: 0,
-    fileIconURL: entry.is_dir ? null : resolveFileIcon(entry.path)
+    fileIcon: entry.is_dir ? null : resolveFileIcon(entry.path)
   }));
 });
 
@@ -652,17 +634,13 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                       />
                       <FolderOpen v-else-if="node.entry.is_dir && isExpanded(node.entry.path)" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
                       <Folder v-else-if="node.entry.is_dir" class="mr-1.5 h-3.5 w-3.5 opacity-70" />
-                      <template v-else>
-                        <img
-                          v-if="node.fileIconURL"
-                          :src="node.fileIconURL"
-                          :alt="`${node.entry.name} icon`"
-                          class="mr-1.5 h-3.5 w-3.5 opacity-80 shrink-0"
-                          data-test-id="shellman-file-icon-kind"
-                          data-icon-kind="mapped"
-                        />
-                        <File v-else class="mr-1.5 h-3.5 w-3.5 opacity-70" data-test-id="shellman-file-icon-kind" data-icon-kind="default" />
-                      </template>
+                      <i
+                        v-else
+                        :class="['icon shellman-filetype-icon mr-1.5 h-3.5 w-3.5 shrink-0 opacity-80', node.fileIcon?.className]"
+                        data-test-id="shellman-file-icon-kind"
+                        :data-icon-kind="node.fileIcon?.kind || 'atom-default'"
+                        aria-hidden="true"
+                      />
                       <span class="truncate">{{ node.entry.name }}</span>
                     </Button>
                   </ContextMenuTrigger>
@@ -725,12 +703,12 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
                 :title="selectedFilePath"
                 @click="emitEdit"
               >
-                <img
+                <i
                   v-if="selectedFileIcon"
-                  :src="selectedFileIcon"
-                  class="h-4 w-4 shrink-0 opacity-80"
+                  :class="['icon shellman-filetype-icon h-4 w-4 shrink-0 opacity-80', selectedFileIcon.className]"
+                  :data-icon-kind="selectedFileIcon.kind"
+                  aria-hidden="true"
                 />
-                <File v-else class="h-4 w-4 shrink-0 opacity-70" />
                 <span class="truncate font-mono">{{ selectedFilePath || "未选择文件" }}</span>
               </div>
               <div class="flex items-center gap-1 shrink-0">
@@ -881,3 +859,12 @@ watch([searchQuery, expandedDirs, selectedFilePath], persistDraftSnapshot, { dee
     <p v-if="error" class="text-xs text-destructive px-1">{{ error }}</p>
   </div>
 </template>
+
+<style scoped>
+.shellman-filetype-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+</style>
