@@ -7,15 +7,16 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
-	"os"
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
-	"time"
 )
 
 type staticConfigStore struct{}
@@ -67,9 +68,10 @@ func (f *fakeTaskPromptSender) SendInput(target, text string) error {
 }
 
 type fakeTaskMessageRunner struct {
-	reply string
-	err   error
-	calls []string
+	reply    string
+	err      error
+	calls    []string
+	requests []agentloop.ContextBuildRequest
 }
 
 func (f *fakeTaskMessageRunner) Run(_ context.Context, userPrompt string) (string, error) {
@@ -80,11 +82,21 @@ func (f *fakeTaskMessageRunner) Run(_ context.Context, userPrompt string) (strin
 	return f.reply, nil
 }
 
+func (f *fakeTaskMessageRunner) RunWithContextResult(_ context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	f.requests = append(f.requests, req)
+	f.calls = append(f.calls, req.Inbound.Content)
+	if f.err != nil {
+		return agentloop.RunResult{}, f.err
+	}
+	return agentloop.RunResult{FinalText: f.reply, FinalResponseID: "resp-task-route-fake"}, nil
+}
+
 type blockingTaskMessageRunner struct {
-	reply   string
-	started chan struct{}
-	release chan struct{}
-	calls   []string
+	reply    string
+	started  chan struct{}
+	release  chan struct{}
+	calls    []string
+	requests []agentloop.ContextBuildRequest
 }
 
 func (f *blockingTaskMessageRunner) Run(_ context.Context, userPrompt string) (string, error) {
@@ -98,10 +110,23 @@ func (f *blockingTaskMessageRunner) Run(_ context.Context, userPrompt string) (s
 	return f.reply, nil
 }
 
+func (f *blockingTaskMessageRunner) RunWithContextResult(_ context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	f.requests = append(f.requests, req)
+	f.calls = append(f.calls, req.Inbound.Content)
+	select {
+	case <-f.started:
+	default:
+		close(f.started)
+	}
+	<-f.release
+	return agentloop.RunResult{FinalText: f.reply, FinalResponseID: "resp-task-route-block"}, nil
+}
+
 type cancelAwareTaskMessageRunner struct {
-	started chan struct{}
-	done    chan error
-	calls   []string
+	started  chan struct{}
+	done     chan error
+	calls    []string
+	requests []agentloop.ContextBuildRequest
 }
 
 func (f *cancelAwareTaskMessageRunner) Run(ctx context.Context, userPrompt string) (string, error) {
@@ -118,6 +143,23 @@ func (f *cancelAwareTaskMessageRunner) Run(ctx context.Context, userPrompt strin
 	default:
 	}
 	return "", err
+}
+
+func (f *cancelAwareTaskMessageRunner) RunWithContextResult(ctx context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	f.requests = append(f.requests, req)
+	f.calls = append(f.calls, req.Inbound.Content)
+	select {
+	case <-f.started:
+	default:
+		close(f.started)
+	}
+	<-ctx.Done()
+	err := ctx.Err()
+	select {
+	case f.done <- err:
+	default:
+	}
+	return agentloop.RunResult{}, err
 }
 
 func postRunReportResult(t *testing.T, srv *Server, ts *httptest.Server, repo, taskID, summary string, headers map[string]string) (AutoCompleteByPaneResult, *AutoCompleteByPaneError) {
@@ -711,14 +753,18 @@ func TestTaskMessages_SecondTurnPromptContainsFirstTurnHistory(t *testing.T) {
 	}
 
 	secondPrompt := runner.calls[1]
-	if !strings.Contains(secondPrompt, "conversation_history:") {
-		t.Fatalf("expected second prompt contains conversation_history, got %q", secondPrompt)
+	if strings.Contains(secondPrompt, "conversation_history:") {
+		t.Fatalf("expected second prompt history to be attached out-of-band, got %q", secondPrompt)
 	}
-	if !strings.Contains(secondPrompt, firstMarker) {
-		t.Fatalf("expected second prompt contains first user marker, got %q", secondPrompt)
+	if len(runner.requests) < 2 {
+		t.Fatalf("expected second structured request, got %d", len(runner.requests))
 	}
-	if !strings.Contains(secondPrompt, "assistant-one") {
-		t.Fatalf("expected second prompt contains first assistant output, got %q", secondPrompt)
+	secondReq := runner.requests[1]
+	if !strings.Contains(secondReq.ConversationHistory, firstMarker) {
+		t.Fatalf("expected structured history contains first user marker, got %#v", secondReq)
+	}
+	if !strings.Contains(secondReq.ConversationHistory, "assistant-one") {
+		t.Fatalf("expected structured history contains first assistant output, got %#v", secondReq)
 	}
 }
 

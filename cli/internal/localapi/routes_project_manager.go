@@ -148,13 +148,14 @@ func (s *Server) handleProjectManagerSendMessage(w http.ResponseWriter, r *http.
 	if source == "" {
 		source = "user_input"
 	}
-	agentPrompt, promptMeta := s.buildPMUserPromptWithMeta(store, sessionID, content)
+	agentPrompt, historyBlock, promptMeta := s.buildPMUserPromptWithHistoryMeta(store, sessionID, content)
 	if err := s.sendProjectManagerLoop(r.Context(), PMAgentLoopEvent{
 		SessionID:      sessionID,
 		ProjectID:      strings.TrimSpace(projectID),
 		Source:         source,
 		DisplayContent: content,
 		AgentPrompt:    agentPrompt,
+		HistoryBlock:   historyBlock,
 		TriggerMeta: map[string]any{
 			"op":               "project.pm.messages.send",
 			"history_total":    promptMeta.TotalMessages,

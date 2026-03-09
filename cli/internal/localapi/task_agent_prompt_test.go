@@ -64,8 +64,6 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 	})
 	required := []string{
 		"TTY_OUTPUT_EVENT",
-		"conversation_history:",
-		"[assistant#2] done",
 		"terminal_screen_state_json:",
 		"\"terminal_screen_state\"",
 		"\"prev_flag\":\"notify\"",
@@ -87,6 +85,9 @@ func TestBuildTaskAgentAutoProgressPrompt_AlwaysInjectsRequiredContext(t *testin
 			t.Fatalf("expected prompt contains %q, got %q", s, prompt)
 		}
 	}
+	if strings.Contains(prompt, "conversation_history:") || strings.Contains(prompt, "[assistant#2] done") {
+		t.Fatalf("expected prompt history to be attached out-of-band, got %q", prompt)
+	}
 }
 
 func TestBuildTaskAgentUserPrompt_IncludesConversationHistoryBlock(t *testing.T) {
@@ -101,14 +102,15 @@ func TestBuildTaskAgentUserPrompt_IncludesConversationHistoryBlock(t *testing.T)
 	)
 	required := []string{
 		"USER_INPUT_EVENT",
-		"conversation_history:",
-		"[user#1] hi",
 		"terminal_screen_state_json:",
 	}
 	for _, s := range required {
 		if !strings.Contains(prompt, s) {
 			t.Fatalf("expected prompt contains %q, got %q", s, prompt)
 		}
+	}
+	if strings.Contains(prompt, "conversation_history:") || strings.Contains(prompt, "[user#1] hi") {
+		t.Fatalf("expected prompt history to be attached out-of-band, got %q", prompt)
 	}
 }
 
@@ -118,11 +120,8 @@ func TestBuildTaskAgentAutoProgressPrompt_IncludesConversationHistoryBlock(t *te
 		Summary:      "idle",
 		HistoryBlock: "[assistant#2] done",
 	})
-	if !strings.Contains(prompt, "conversation_history:") {
-		t.Fatalf("expected conversation_history section, got %q", prompt)
-	}
-	if !strings.Contains(prompt, "[assistant#2] done") {
-		t.Fatalf("expected history content in prompt, got %q", prompt)
+	if strings.Contains(prompt, "conversation_history:") || strings.Contains(prompt, "[assistant#2] done") {
+		t.Fatalf("expected prompt history to be attached out-of-band, got %q", prompt)
 	}
 }
 

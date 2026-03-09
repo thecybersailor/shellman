@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/fsbrowser"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/helperconfig"
@@ -64,6 +65,27 @@ type TaskPromptSender interface {
 
 type AgentLoopRunner interface {
 	Run(ctx context.Context, userPrompt string) (string, error)
+}
+
+type agentLoopContextResultRunner interface {
+	RunWithContextResult(ctx context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error)
+}
+
+type agentLoopStreamingWithContextResultRunner interface {
+	RunStreamWithContextResult(
+		ctx context.Context,
+		req agentloop.ContextBuildRequest,
+		onTextDelta func(string),
+	) (agentloop.RunResult, error)
+}
+
+type agentLoopStreamingWithContextAndToolsResultRunner interface {
+	RunStreamWithContextAndToolsResult(
+		ctx context.Context,
+		req agentloop.ContextBuildRequest,
+		onTextDelta func(string),
+		onToolEvent func(map[string]any),
+	) (agentloop.RunResult, error)
 }
 
 type Deps struct {

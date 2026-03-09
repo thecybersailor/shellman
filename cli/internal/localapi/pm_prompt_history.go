@@ -7,6 +7,11 @@ import (
 )
 
 func (s *Server) buildPMUserPromptWithMeta(store *projectstate.Store, sessionID, userInput string) (string, TaskPromptHistoryMeta) {
+	prompt, _, meta := s.buildPMUserPromptWithHistoryMeta(store, sessionID, userInput)
+	return prompt, meta
+}
+
+func (s *Server) buildPMUserPromptWithHistoryMeta(store *projectstate.Store, sessionID, userInput string) (string, string, TaskPromptHistoryMeta) {
 	input := strings.TrimSpace(userInput)
 	historyBlock, historyMeta := s.buildPMHistoryBlock(store, sessionID)
 	var b strings.Builder
@@ -17,13 +22,7 @@ func (s *Server) buildPMUserPromptWithMeta(store *projectstate.Store, sessionID,
 	} else {
 		b.WriteString(input)
 	}
-	b.WriteString("\n\nconversation_history:\n")
-	if strings.TrimSpace(historyBlock) == "" {
-		b.WriteString("(none)")
-	} else {
-		b.WriteString(strings.TrimSpace(historyBlock))
-	}
-	return strings.TrimSpace(b.String()), historyMeta
+	return strings.TrimSpace(b.String()), strings.TrimSpace(historyBlock), historyMeta
 }
 
 func (s *Server) buildPMHistoryBlock(store *projectstate.Store, sessionID string) (string, TaskPromptHistoryMeta) {

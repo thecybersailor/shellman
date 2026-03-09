@@ -33,12 +33,15 @@ func TestBuildUserPromptWithMeta_ReturnsHistoryMetrics(t *testing.T) {
 		t.Fatalf("insert assistant message failed: %v", err)
 	}
 
-	prompt, meta := srv.buildUserPromptWithMeta(taskID, "next")
+	prompt, historyBlock, meta := srv.buildUserPromptWithHistoryMeta(taskID, "next")
 	if strings.TrimSpace(prompt) == "" {
 		t.Fatal("expected non-empty prompt")
 	}
-	if !strings.Contains(prompt, "conversation_history:") {
-		t.Fatalf("expected prompt contains conversation_history, got %q", prompt)
+	if !strings.Contains(prompt, "\"conversation_history_attached\":true") {
+		t.Fatalf("expected prompt marks attached history, got %q", prompt)
+	}
+	if !strings.Contains(historyBlock, "hello") || !strings.Contains(historyBlock, "world") {
+		t.Fatalf("expected history block contains prior exchange, got %q", historyBlock)
 	}
 	if meta.TotalMessages < 2 {
 		t.Fatalf("expected total messages >=2, got %d", meta.TotalMessages)

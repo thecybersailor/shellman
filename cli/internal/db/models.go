@@ -80,14 +80,15 @@ type Note struct {
 func (Note) TableName() string { return "notes" }
 
 type TaskMessage struct {
-	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	TaskID    string `gorm:"column:task_id;not null;index"`
-	Role      string `gorm:"column:role;not null;default:''"`
-	Content   string `gorm:"column:content;not null;default:''"`
-	Status    string `gorm:"column:status;not null;default:'completed'"`
-	ErrorText string `gorm:"column:error_text;not null;default:''"`
-	CreatedAt int64  `gorm:"column:created_at;not null;default:0"`
-	UpdatedAt int64  `gorm:"column:updated_at;not null;default:0"`
+	ID         int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	TaskID     string `gorm:"column:task_id;not null;index"`
+	Role       string `gorm:"column:role;not null;default:''"`
+	Content    string `gorm:"column:content;not null;default:''"`
+	ResponseID string `gorm:"column:response_id;not null;default:''"`
+	Status     string `gorm:"column:status;not null;default:'completed'"`
+	ErrorText  string `gorm:"column:error_text;not null;default:''"`
+	CreatedAt  int64  `gorm:"column:created_at;not null;default:0"`
+	UpdatedAt  int64  `gorm:"column:updated_at;not null;default:0"`
 }
 
 func (TaskMessage) TableName() string { return "task_messages" }
@@ -106,14 +107,15 @@ type PMSession struct {
 func (PMSession) TableName() string { return "pm_sessions" }
 
 type PMMessage struct {
-	ID        int64  `gorm:"column:id;primaryKey;autoIncrement"`
-	SessionID string `gorm:"column:session_id;not null;index"`
-	Role      string `gorm:"column:role;not null;default:''"`
-	Content   string `gorm:"column:content;not null;default:''"`
-	Status    string `gorm:"column:status;not null;default:'completed'"`
-	ErrorText string `gorm:"column:error_text;not null;default:''"`
-	CreatedAt int64  `gorm:"column:created_at;not null;default:0"`
-	UpdatedAt int64  `gorm:"column:updated_at;not null;default:0"`
+	ID         int64  `gorm:"column:id;primaryKey;autoIncrement"`
+	SessionID  string `gorm:"column:session_id;not null;index"`
+	Role       string `gorm:"column:role;not null;default:''"`
+	Content    string `gorm:"column:content;not null;default:''"`
+	ResponseID string `gorm:"column:response_id;not null;default:''"`
+	Status     string `gorm:"column:status;not null;default:'completed'"`
+	ErrorText  string `gorm:"column:error_text;not null;default:''"`
+	CreatedAt  int64  `gorm:"column:created_at;not null;default:0"`
+	UpdatedAt  int64  `gorm:"column:updated_at;not null;default:0"`
 }
 
 func (PMMessage) TableName() string { return "pm_messages" }

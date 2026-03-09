@@ -69,6 +69,43 @@ func TestPMStateStore_ListPMMessages_ASC(t *testing.T) {
 	}
 }
 
+func TestPMStateStore_PersistResponseIDAndResolveLatestAssistantResponse(t *testing.T) {
+	store := newPMStateStore(t)
+
+	sid, err := store.CreatePMSession("p1", "Session")
+	if err != nil {
+		t.Fatalf("CreatePMSession failed: %v", err)
+	}
+	if _, err := store.InsertPMMessageWithResponseID(sid, "user", "u1", StatusCompleted, "", ""); err != nil {
+		t.Fatalf("InsertPMMessageWithResponseID user failed: %v", err)
+	}
+	assistantID, err := store.InsertPMMessageWithResponseID(sid, "assistant", "draft", StatusRunning, "", "")
+	if err != nil {
+		t.Fatalf("InsertPMMessageWithResponseID assistant failed: %v", err)
+	}
+	if err := store.UpdatePMMessageWithResponseID(assistantID, "a1", StatusCompleted, "", "resp-pm-1"); err != nil {
+		t.Fatalf("UpdatePMMessageWithResponseID failed: %v", err)
+	}
+
+	items, err := store.ListPMMessages(sid, 10)
+	if err != nil {
+		t.Fatalf("ListPMMessages failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(items))
+	}
+	if items[1].ResponseID != "resp-pm-1" {
+		t.Fatalf("expected response_id persisted, got %#v", items[1])
+	}
+	respID, err := store.GetLatestPMAssistantResponseID(sid)
+	if err != nil {
+		t.Fatalf("GetLatestPMAssistantResponseID failed: %v", err)
+	}
+	if respID != "resp-pm-1" {
+		t.Fatalf("expected latest response_id=resp-pm-1, got %q", respID)
+	}
+}
+
 func newPMStateStore(t *testing.T) *Store {
 	t.Helper()
 

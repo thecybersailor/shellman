@@ -391,9 +391,14 @@ func (s *Server) buildAutoProgressPromptInput(projectID, taskID, summary, runID 
 }
 
 func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, TaskPromptHistoryMeta) {
+	prompt, _, meta := s.buildUserPromptWithHistoryMeta(taskID, userInput)
+	return prompt, meta
+}
+
+func (s *Server) buildUserPromptWithHistoryMeta(taskID, userInput string) (string, string, TaskPromptHistoryMeta) {
 	projectID, store, entry, err := s.findTask(taskID)
 	if err != nil {
-		return buildTaskAgentUserPrompt(userInput, "", "", TaskAgentTTYContext{}, nil, nil, ""), TaskPromptHistoryMeta{}
+		return buildTaskAgentUserPrompt(userInput, "", "", TaskAgentTTYContext{}, nil, nil, ""), "", TaskPromptHistoryMeta{}
 	}
 	tty := s.buildTaskTTYContext(store, entry, strings.TrimSpace(taskID))
 	parent, children := s.buildTaskFamilyContext(store, strings.TrimSpace(projectID), strings.TrimSpace(taskID))
@@ -415,7 +420,7 @@ func (s *Server) buildUserPromptWithMeta(taskID, userInput string) (string, Task
 		taskContext,
 		skillIndex,
 		skillErrText,
-	), historyMeta
+	), strings.TrimSpace(historyBlock), historyMeta
 }
 
 func (s *Server) loadTaskCompletionContext(projectID string) []taskCompletionContextDocument {

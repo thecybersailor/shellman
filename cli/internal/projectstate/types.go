@@ -95,14 +95,15 @@ type TaskNoteRecord struct {
 }
 
 type TaskMessageRecord struct {
-	ID        int64  `json:"id"`
-	TaskID    string `json:"task_id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Status    string `json:"status"`
-	ErrorText string `json:"error_text,omitempty"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID         int64  `json:"id"`
+	TaskID     string `json:"task_id"`
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ResponseID string `json:"response_id,omitempty"`
+	Status     string `json:"status"`
+	ErrorText  string `json:"error_text,omitempty"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
 }
 
 type PMSessionRecord struct {
@@ -116,12 +117,13 @@ type PMSessionRecord struct {
 }
 
 type PMMessageRecord struct {
-	ID        int64  `json:"id"`
-	SessionID string `json:"session_id"`
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	Status    string `json:"status"`
-	ErrorText string `json:"error_text,omitempty"`
-	CreatedAt int64  `json:"created_at"`
-	UpdatedAt int64  `json:"updated_at"`
+	ID         int64  `json:"id"`
+	SessionID  string `json:"session_id"`
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	ResponseID string `json:"response_id,omitempty"`
+	Status     string `json:"status"`
+	ErrorText  string `json:"error_text,omitempty"`
+	CreatedAt  int64  `json:"created_at"`
+	UpdatedAt  int64  `json:"updated_at"`
 }

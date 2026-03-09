@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/global"
+	"shellman/cli/internal/projectstate"
 )
 
 func TestTaskAgentLoopSupervisor_SerializesEventsPerTask(t *testing.T) {
@@ -178,6 +180,25 @@ func (r *taskScopeAwareRunner) Run(ctx context.Context, _ string) (string, error
 	return "ok", nil
 }
 
+type taskContextResultRunner struct {
+	mu     sync.Mutex
+	req    agentloop.ContextBuildRequest
+	calls  int
+	result agentloop.RunResult
+}
+
+func (r *taskContextResultRunner) Run(_ context.Context, _ string) (string, error) {
+	return "", nil
+}
+
+func (r *taskContextResultRunner) RunWithContextResult(_ context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	r.mu.Lock()
+	r.req = req
+	r.calls++
+	r.mu.Unlock()
+	return r.result, nil
+}
+
 func TestTaskAgentActor_InjectsAdapterScopeAndAllowedTools(t *testing.T) {
 	repo := t.TempDir()
 	projects := &memProjectsStore{
@@ -217,4 +238,76 @@ func TestTaskAgentActor_InjectsAdapterScopeAndAllowedTools(t *testing.T) {
 	if len(runner.allowedTools) == 0 {
 		t.Fatal("expected allowed tools injected from adapter context")
 	}
+}
+
+func TestTaskAgentActor_UsesStructuredHistoryAndPersistsResponseID(t *testing.T) {
+	repo := t.TempDir()
+	projects := &memProjectsStore{
+		projects: []global.ActiveProject{{ProjectID: "p1", RepoRoot: filepath.Clean(repo)}},
+	}
+	runner := &taskContextResultRunner{
+		result: agentloop.RunResult{
+			FinalText:          "assistant reply",
+			FinalResponseID:    "resp-task-new-1",
+			AppliedHistoryMode: agentloop.HistoryModeProviderState,
+		},
+	}
+	srv := NewServer(Deps{ConfigStore: &staticConfigStore{}, ProjectsStore: projects, AgentLoopRunner: runner})
+	taskID, err := srv.createTask("p1", "", "root")
+	if err != nil {
+		t.Fatalf("createTask failed: %v", err)
+	}
+	store := projectstate.NewStore(repo)
+	if _, err := store.InsertTaskMessageWithResponseID(taskID, "user", "old user", projectstate.StatusCompleted, "", ""); err != nil {
+		t.Fatalf("insert old user failed: %v", err)
+	}
+	if _, err := store.InsertTaskMessageWithResponseID(taskID, "assistant", "old assistant", projectstate.StatusCompleted, "", "resp-task-prev-1"); err != nil {
+		t.Fatalf("insert old assistant failed: %v", err)
+	}
+
+	if err := srv.sendTaskAgentLoop(context.Background(), TaskAgentLoopEvent{
+		TaskID:         taskID,
+		ProjectID:      "p1",
+		Source:         "user_input",
+		DisplayContent: "hello",
+		AgentPrompt:    "hello",
+		HistoryBlock:   "[user#1] old user\n[assistant#2] old assistant",
+		SessionConfig: &TaskAgentSessionConfig{
+			ResponsesStore:      true,
+			DisableStoreContext: false,
+		},
+	}); err != nil {
+		t.Fatalf("sendTaskAgentLoop failed: %v", err)
+	}
+
+	waitUntil(t, 3*time.Second, func() bool {
+		runner.mu.Lock()
+		defer runner.mu.Unlock()
+		return runner.calls > 0
+	})
+
+	runner.mu.Lock()
+	req := runner.req
+	runner.mu.Unlock()
+	if req.HistoryMode != agentloop.HistoryModeHybridAuto {
+		t.Fatalf("expected hybrid history mode, got %#v", req)
+	}
+	if req.PreviousResponseID != "resp-task-prev-1" {
+		t.Fatalf("expected previous_response_id from latest assistant message, got %#v", req)
+	}
+	if strings.TrimSpace(req.ConversationHistory) == "" {
+		t.Fatalf("expected conversation history on context request, got %#v", req)
+	}
+	if req.Store == nil || !*req.Store {
+		t.Fatalf("expected store=true on context request, got %#v", req.Store)
+	}
+
+	waitUntil(t, 3*time.Second, func() bool {
+		items, err := store.ListTaskMessages(taskID, 10)
+		if err != nil || len(items) < 4 {
+			return false
+		}
+		last := items[len(items)-1]
+		return last.Role == "assistant" && last.ResponseID == "resp-task-new-1" && last.Status == projectstate.StatusCompleted
+	})
 }

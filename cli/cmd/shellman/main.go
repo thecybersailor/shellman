@@ -720,6 +720,13 @@ func (r *localAPIAgentLoopRunner) Run(ctx context.Context, userPrompt string) (s
 	return r.inner.Run(ctx, userPrompt)
 }
 
+func (r *localAPIAgentLoopRunner) RunWithContextResult(ctx context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	if r == nil || r.inner == nil {
+		return agentloop.RunResult{}, errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.RunWithContextResult(ctx, req)
+}
+
 func (r *localAPIAgentLoopRunner) RunStream(
 	ctx context.Context,
 	userPrompt string,
@@ -729,6 +736,17 @@ func (r *localAPIAgentLoopRunner) RunStream(
 		return "", errors.New("agent loop runner is unavailable")
 	}
 	return r.inner.RunStream(ctx, userPrompt, onTextDelta)
+}
+
+func (r *localAPIAgentLoopRunner) RunStreamWithContextResult(
+	ctx context.Context,
+	req agentloop.ContextBuildRequest,
+	onTextDelta func(string),
+) (agentloop.RunResult, error) {
+	if r == nil || r.inner == nil {
+		return agentloop.RunResult{}, errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.RunStreamWithContextResult(ctx, req, onTextDelta)
 }
 
 func (r *localAPIAgentLoopRunner) RunStreamWithTools(
@@ -741,6 +759,25 @@ func (r *localAPIAgentLoopRunner) RunStreamWithTools(
 		return "", errors.New("agent loop runner is unavailable")
 	}
 	return r.inner.RunStreamWithTools(ctx, userPrompt, onTextDelta, func(event agentloop.LoopEvent) {
+		if onToolEvent == nil {
+			return
+		}
+		if legacy, ok := agentloopadapter.ToLegacyToolEvent(event); ok {
+			onToolEvent(legacy)
+		}
+	})
+}
+
+func (r *localAPIAgentLoopRunner) RunStreamWithContextAndToolsResult(
+	ctx context.Context,
+	req agentloop.ContextBuildRequest,
+	onTextDelta func(string),
+	onToolEvent func(map[string]any),
+) (agentloop.RunResult, error) {
+	if r == nil || r.inner == nil {
+		return agentloop.RunResult{}, errors.New("agent loop runner is unavailable")
+	}
+	return r.inner.RunStreamWithContextAndToolsResult(ctx, req, onTextDelta, func(event agentloop.LoopEvent) {
 		if onToolEvent == nil {
 			return
 		}

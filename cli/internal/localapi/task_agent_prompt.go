@@ -93,13 +93,6 @@ func buildTaskAgentAutoProgressPrompt(input TaskAgentAutoProgressPromptInput) st
 	b.WriteString("event_context_json:\n")
 	b.WriteString(eventContextJSON)
 	b.WriteString("\n\n")
-	b.WriteString("conversation_history:\n")
-	if strings.TrimSpace(input.HistoryBlock) == "" {
-		b.WriteString("(none)\n\n")
-	} else {
-		b.WriteString(strings.TrimSpace(input.HistoryBlock))
-		b.WriteString("\n\n")
-	}
 	b.WriteString("terminal_screen_state_json:\n")
 	b.WriteString(taskContextJSON)
 	b.WriteString("\n\n")
@@ -140,13 +133,6 @@ func buildTaskAgentUserPromptWithContexts(
 	b.WriteString("event_context_json:\n")
 	b.WriteString(eventContextJSON)
 	b.WriteString("\n\n")
-	b.WriteString("conversation_history:\n")
-	if strings.TrimSpace(historyBlock) == "" {
-		b.WriteString("(none)\n\n")
-	} else {
-		b.WriteString(strings.TrimSpace(historyBlock))
-		b.WriteString("\n\n")
-	}
 	b.WriteString("terminal_screen_state_json:\n")
 	b.WriteString(taskContextJSON)
 	b.WriteString("\n")
@@ -253,10 +239,10 @@ func mustBuildTaskEventContextJSON(eventType, userInput, summary, historyBlock, 
 		eventType = "user_input"
 	}
 	event := map[string]any{
-		"event_type":           eventType,
-		"user_input":           strings.TrimSpace(userInput),
-		"summary":              strings.TrimSpace(summary),
-		"conversation_history": strings.TrimSpace(historyBlock),
+		"event_type":                    eventType,
+		"user_input":                    strings.TrimSpace(userInput),
+		"summary":                       strings.TrimSpace(summary),
+		"conversation_history_attached": strings.TrimSpace(historyBlock) != "",
 	}
 	var taskContext map[string]any
 	if err := json.Unmarshal([]byte(strings.TrimSpace(taskContextJSON)), &taskContext); err == nil {

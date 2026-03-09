@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/agentloopadapter"
 	"shellman/cli/internal/progdetector"
 	_ "shellman/cli/internal/progdetector/builtin"
@@ -27,6 +28,7 @@ type TaskAgentLoopEvent struct {
 	Source         string
 	DisplayContent string
 	AgentPrompt    string
+	HistoryBlock   string
 	TriggerMeta    map[string]any
 	SessionConfig  *TaskAgentSessionConfig
 }
@@ -208,6 +210,7 @@ func (s *Server) sendTaskAgentLoop(ctx context.Context, evt TaskAgentLoopEvent) 
 	evt.Source = strings.TrimSpace(evt.Source)
 	evt.DisplayContent = strings.TrimSpace(evt.DisplayContent)
 	evt.AgentPrompt = strings.TrimSpace(evt.AgentPrompt)
+	evt.HistoryBlock = strings.TrimSpace(evt.HistoryBlock)
 	if evt.DisplayContent == "" {
 		evt.DisplayContent = evt.AgentPrompt
 	}
@@ -226,13 +229,15 @@ func (s *Server) handleTaskAgentLoopEvent(ctx context.Context, evt TaskAgentLoop
 	if err != nil {
 		return err
 	}
-	return s.runTaskAgentLoopEvent(ctx, projectID, store, TaskAgentLoopEvent{
+	return s.runTaskAgentLoopEventHybrid(ctx, projectID, store, TaskAgentLoopEvent{
 		TaskID:         taskID,
 		ProjectID:      strings.TrimSpace(projectID),
 		Source:         strings.TrimSpace(evt.Source),
 		DisplayContent: strings.TrimSpace(evt.DisplayContent),
 		AgentPrompt:    strings.TrimSpace(evt.AgentPrompt),
+		HistoryBlock:   strings.TrimSpace(evt.HistoryBlock),
 		TriggerMeta:    evt.TriggerMeta,
+		SessionConfig:  evt.SessionConfig,
 	})
 }
 
@@ -249,7 +254,6 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 	if agentPrompt == "" {
 		return errors.New("agent_prompt is required")
 	}
-
 	logger := newTaskMessagesAuditLogger()
 	defer logger.Close()
 
@@ -553,6 +557,360 @@ func (s *Server) runTaskAgentLoopEvent(ctx context.Context, projectID string, st
 		"source":               strings.TrimSpace(evt.Source),
 		"user_message_id":      userMessageID,
 		"assistant_message_id": assistantMessageID,
+	})
+	s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+	return nil
+}
+
+func (s *Server) runTaskAgentLoopEventHybrid(ctx context.Context, projectID string, store *projectstate.Store, evt TaskAgentLoopEvent) error {
+	taskID := strings.TrimSpace(evt.TaskID)
+	displayContent := strings.TrimSpace(evt.DisplayContent)
+	agentPrompt := strings.TrimSpace(evt.AgentPrompt)
+	historyBlock := strings.TrimSpace(evt.HistoryBlock)
+	if taskID == "" {
+		return errors.New("task_id is required")
+	}
+	if displayContent == "" {
+		return errors.New("display_content is required")
+	}
+	if agentPrompt == "" {
+		return errors.New("agent_prompt is required")
+	}
+
+	logger := newTaskMessagesAuditLogger()
+	defer logger.Close()
+
+	previousResponseID, err := store.GetLatestTaskAssistantResponseID(taskID)
+	if err != nil {
+		return err
+	}
+	userMessageID, err := store.InsertTaskMessage(taskID, "user", displayContent, "completed", "")
+	if err != nil {
+		return err
+	}
+	assistantMessageID, err := store.InsertTaskMessage(taskID, "assistant", "", "running", "")
+	if err != nil {
+		return err
+	}
+	startedFields := map[string]any{
+		"task_id":               taskID,
+		"source":                strings.TrimSpace(evt.Source),
+		"user_message_id":       userMessageID,
+		"assistant_message_id":  assistantMessageID,
+		"user_content_preview":  clipTaskAuditText(displayContent, 400),
+		"agent_prompt_preview":  clipTaskAuditText(agentPrompt, 200),
+		"agent_loop_configured": s.deps.AgentLoopRunner != nil,
+	}
+	for k, v := range evt.TriggerMeta {
+		startedFields[k] = v
+	}
+	logger.Log("task.message.send.started", startedFields)
+	s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+
+	if s.deps.AgentLoopRunner == nil {
+		errText := ErrTaskAgentLoopUnavailable.Error()
+		_ = store.UpdateTaskMessage(assistantMessageID, "", "error", errText)
+		logger.Log("task.message.send.failed", map[string]any{
+			"task_id": taskID,
+			"error":   errText,
+			"stage":   "agent_loop_unavailable",
+			"source":  strings.TrimSpace(evt.Source),
+		})
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		return ErrTaskAgentLoopUnavailable
+	}
+	if _, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithContextAndToolsResultRunner); !ok {
+		if _, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithContextResultRunner); !ok {
+			if _, ok := s.deps.AgentLoopRunner.(agentLoopContextResultRunner); !ok {
+				return s.runTaskAgentLoopEvent(ctx, projectID, store, evt)
+			}
+		}
+	}
+
+	responsesStore := evt.SessionConfig != nil && evt.SessionConfig.ResponsesStore
+	disableStoreContext := evt.SessionConfig != nil && evt.SessionConfig.DisableStoreContext
+	scopeCtx := agentloopadapter.WithTaskScope(ctx, agentloopadapter.TaskScope{
+		TaskID:              taskID,
+		ProjectID:           projectID,
+		Source:              strings.TrimSpace(evt.Source),
+		ResponsesStore:      responsesStore,
+		DisableStoreContext: disableStoreContext,
+	})
+	toolMode, currentCommand, allowedToolNames := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
+	scopeCtx = agentloopadapter.WithAllowedToolNamesResolver(scopeCtx, func() []string {
+		_, _, names := s.resolveTaskAgentToolModeAndNamesRealtime(store, projectID, taskID, evt.Source)
+		return names
+	})
+	runCtx, cancel := context.WithCancel(scopeCtx)
+	s.setTaskMessageRun(taskID, assistantMessageID, cancel)
+	defer s.clearTaskMessageRun(taskID)
+	defer cancel()
+
+	markCanceled := func() error {
+		if err := store.UpdateTaskMessage(assistantMessageID, "", projectstate.StatusCanceled, ""); err != nil {
+			return err
+		}
+		logger.Log("task.message.send.canceled", map[string]any{
+			"task_id":              taskID,
+			"source":               strings.TrimSpace(evt.Source),
+			"user_message_id":      userMessageID,
+			"assistant_message_id": assistantMessageID,
+		})
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		return nil
+	}
+
+	storePtr := (*bool)(nil)
+	if !disableStoreContext {
+		storeValue := responsesStore
+		storePtr = &storeValue
+	}
+	contextReq := buildAgentLoopContextRequest(agentPrompt, historyBlock, previousResponseID, storePtr)
+
+	reply := ""
+	finalResponseID := ""
+	runErr := error(nil)
+	if streamRunner, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithContextAndToolsResultRunner); ok {
+		invokeFields := map[string]any{
+			"task_id":               taskID,
+			"source":                strings.TrimSpace(evt.Source),
+			"user_message_id":       userMessageID,
+			"assistant_message_id":  assistantMessageID,
+			"mode":                  "stream_with_context_and_tools",
+			"tool_mode":             toolMode,
+			"current_command":       currentCommand,
+			"allowed_tools":         allowedToolNames,
+			"responses_store":       responsesStore,
+			"disable_store_context": disableStoreContext,
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
+		var (
+			streamState   = assistantStructuredContent{Text: "", Tools: []map[string]any{}}
+			lastPublishAt time.Time
+			toolIndexByID = map[string]int{}
+		)
+		flushRunning := func(force bool) {
+			now := time.Now()
+			if !force && !lastPublishAt.IsZero() && now.Sub(lastPublishAt) < 120*time.Millisecond {
+				return
+			}
+			next := marshalAssistantStructuredContent(streamState)
+			if err := store.UpdateTaskMessage(assistantMessageID, next, "running", ""); err != nil {
+				return
+			}
+			lastPublishAt = now
+			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		}
+		var out agentloop.RunResult
+		out, runErr = streamRunner.RunStreamWithContextAndToolsResult(runCtx, contextReq, func(delta string) {
+			if delta == "" {
+				return
+			}
+			streamState.Text += delta
+			flushRunning(false)
+		}, func(event map[string]any) {
+			if strings.TrimSpace(fmt.Sprint(event["type"])) == "agent-debug" {
+				logger.Log("task.message.send.agentloop.debug", map[string]any{
+					"task_id":              taskID,
+					"source":               strings.TrimSpace(evt.Source),
+					"user_message_id":      userMessageID,
+					"assistant_message_id": assistantMessageID,
+					"stage":                strings.TrimSpace(fmt.Sprint(event["stage"])),
+					"iteration":            intFromAny(event["iteration"]),
+					"request":              strings.TrimSpace(fmt.Sprint(event["request"])),
+					"response_id":          strings.TrimSpace(fmt.Sprint(event["response_id"])),
+					"tool_calls":           intFromAny(event["tool_calls"]),
+					"tool_calls_summary":   strings.TrimSpace(fmt.Sprint(event["tool_calls_summary"])),
+					"final_text_len":       intFromAny(event["final_text_len"]),
+					"event_trace":          strings.TrimSpace(fmt.Sprint(event["event_trace"])),
+					"event_count":          intFromAny(event["event_count"]),
+					"previous_response":    strings.TrimSpace(fmt.Sprint(event["previous_response"])),
+					"previous_response_id": strings.TrimSpace(fmt.Sprint(event["previous_response_id"])),
+					"call_id":              strings.TrimSpace(fmt.Sprint(event["call_id"])),
+					"tool_name":            strings.TrimSpace(fmt.Sprint(event["tool_name"])),
+					"items_count":          intFromAny(event["items_count"]),
+					"items_summary":        strings.TrimSpace(fmt.Sprint(event["items_summary"])),
+					"output_len":           intFromAny(event["output_len"]),
+					"function_output":      strings.TrimSpace(fmt.Sprint(event["function_output"])),
+					"request_raw":          fmt.Sprint(event["request_raw"]),
+					"response_raw":         fmt.Sprint(event["response_raw"]),
+					"event_raw":            fmt.Sprint(event["event_raw"]),
+				})
+				return
+			}
+			toolEvent, ok := agentloopadapter.ParseLegacyToolEvent(event)
+			if !ok {
+				return
+			}
+			callID := strings.TrimSpace(toolEvent.CallID)
+			next := toolEvent.ToToolStatePatch()
+			if idx, ok := toolIndexByID[callID]; ok && idx >= 0 && idx < len(streamState.Tools) {
+				streamState.Tools[idx] = agentloopadapter.MergeToolStatePatch(streamState.Tools[idx], next)
+			} else {
+				streamState.Tools = append(streamState.Tools, next)
+				if callID != "" {
+					toolIndexByID[callID] = len(streamState.Tools) - 1
+				}
+			}
+			logger.Log("task.message.send.agentloop.tool.event", map[string]any{
+				"task_id":         taskID,
+				"source":          strings.TrimSpace(evt.Source),
+				"user_message_id": userMessageID,
+				"call_id":         callID,
+				"response_id":     strings.TrimSpace(toolEvent.ResponseID),
+				"tool_name":       strings.TrimSpace(toolEvent.ToolName),
+				"state":           strings.TrimSpace(toolEvent.State),
+				"has_input":       toolEvent.HasInput,
+				"input_raw_len":   toolEvent.InputLen,
+				"has_output":      toolEvent.HasOutput,
+				"has_error_text":  toolEvent.HasErrorText,
+				"input_preview":   strings.TrimSpace(toolEvent.InputPreview),
+				"output_len":      toolEvent.OutputLen,
+				"output_preview":  strings.TrimSpace(toolEvent.Output),
+				"error_preview":   strings.TrimSpace(toolEvent.ErrorText),
+			})
+			flushRunning(false)
+		})
+		if runErr != nil {
+			if errors.Is(runErr, context.Canceled) {
+				return markCanceled()
+			}
+			partial := strings.TrimSpace(streamState.Text)
+			next := marshalAssistantStructuredContent(streamState)
+			if partial == "" {
+				next = streamState.Text
+			}
+			_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
+			logger.Log("task.message.send.failed", map[string]any{
+				"task_id": taskID,
+				"error":   runErr.Error(),
+				"source":  strings.TrimSpace(evt.Source),
+			})
+			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+			return runErr
+		}
+		finalResponseID = strings.TrimSpace(out.FinalResponseID)
+		reply = out.FinalText
+		if strings.TrimSpace(reply) == "" {
+			reply = streamState.Text
+		}
+		streamState.Text = strings.TrimSpace(reply)
+		reply = marshalAssistantStructuredContent(streamState)
+	} else if streamRunner, ok := s.deps.AgentLoopRunner.(agentLoopStreamingWithContextResultRunner); ok {
+		invokeFields := map[string]any{
+			"task_id":               taskID,
+			"source":                strings.TrimSpace(evt.Source),
+			"user_message_id":       userMessageID,
+			"assistant_message_id":  assistantMessageID,
+			"mode":                  "stream_with_context",
+			"tool_mode":             toolMode,
+			"current_command":       currentCommand,
+			"allowed_tools":         allowedToolNames,
+			"responses_store":       responsesStore,
+			"disable_store_context": disableStoreContext,
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
+		var (
+			streamText    strings.Builder
+			lastPublishAt time.Time
+		)
+		flushRunning := func(force bool) {
+			now := time.Now()
+			if !force && !lastPublishAt.IsZero() && now.Sub(lastPublishAt) < 120*time.Millisecond {
+				return
+			}
+			next := marshalAssistantStructuredContent(assistantStructuredContent{
+				Text: streamText.String(),
+			})
+			if err := store.UpdateTaskMessage(assistantMessageID, next, "running", ""); err != nil {
+				return
+			}
+			lastPublishAt = now
+			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		}
+		var out agentloop.RunResult
+		out, runErr = streamRunner.RunStreamWithContextResult(runCtx, contextReq, func(delta string) {
+			if delta == "" {
+				return
+			}
+			streamText.WriteString(delta)
+			flushRunning(false)
+		})
+		if runErr != nil {
+			if errors.Is(runErr, context.Canceled) {
+				return markCanceled()
+			}
+			partial := strings.TrimSpace(streamText.String())
+			next := marshalAssistantStructuredContent(assistantStructuredContent{Text: partial})
+			_ = store.UpdateTaskMessage(assistantMessageID, next, "error", runErr.Error())
+			logger.Log("task.message.send.failed", map[string]any{
+				"task_id": taskID,
+				"error":   runErr.Error(),
+				"source":  strings.TrimSpace(evt.Source),
+			})
+			s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+			return runErr
+		}
+		finalResponseID = strings.TrimSpace(out.FinalResponseID)
+		reply = out.FinalText
+		if strings.TrimSpace(reply) == "" {
+			reply = streamText.String()
+		}
+		reply = marshalAssistantStructuredContent(assistantStructuredContent{
+			Text: strings.TrimSpace(reply),
+		})
+	} else if contextRunner, ok := s.deps.AgentLoopRunner.(agentLoopContextResultRunner); ok {
+		invokeFields := map[string]any{
+			"task_id":               taskID,
+			"source":                strings.TrimSpace(evt.Source),
+			"user_message_id":       userMessageID,
+			"assistant_message_id":  assistantMessageID,
+			"mode":                  "run_with_context",
+			"tool_mode":             toolMode,
+			"current_command":       currentCommand,
+			"allowed_tools":         allowedToolNames,
+			"responses_store":       responsesStore,
+			"disable_store_context": disableStoreContext,
+		}
+		for k, v := range evt.TriggerMeta {
+			invokeFields[k] = v
+		}
+		logger.Log("task.message.send.agentloop.invoke", invokeFields)
+		var out agentloop.RunResult
+		out, runErr = contextRunner.RunWithContextResult(runCtx, contextReq)
+		reply = out.FinalText
+		finalResponseID = strings.TrimSpace(out.FinalResponseID)
+	} else {
+		return s.runTaskAgentLoopEvent(ctx, projectID, store, evt)
+	}
+	if runErr != nil {
+		if errors.Is(runErr, context.Canceled) {
+			return markCanceled()
+		}
+		_ = store.UpdateTaskMessage(assistantMessageID, "", "error", runErr.Error())
+		logger.Log("task.message.send.failed", map[string]any{
+			"task_id": taskID,
+			"error":   runErr.Error(),
+			"source":  strings.TrimSpace(evt.Source),
+		})
+		s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
+		return runErr
+	}
+	if err := store.UpdateTaskMessageWithResponseID(assistantMessageID, strings.TrimSpace(reply), "completed", "", finalResponseID); err != nil {
+		return err
+	}
+	logger.Log("task.message.send.completed", map[string]any{
+		"task_id":              taskID,
+		"source":               strings.TrimSpace(evt.Source),
+		"user_message_id":      userMessageID,
+		"assistant_message_id": assistantMessageID,
+		"response_id":          finalResponseID,
 	})
 	s.publishEvent("task.messages.updated", projectID, taskID, map[string]any{})
 	return nil

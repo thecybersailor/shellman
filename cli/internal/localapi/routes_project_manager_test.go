@@ -12,14 +12,16 @@ import (
 	"testing"
 	"time"
 
+	"github.com/flaboy/agentloop"
 	"shellman/cli/internal/global"
 	"shellman/cli/internal/projectstate"
 )
 
 type pmPromptCaptureRunner struct {
-	mu      sync.Mutex
-	calls   []string
-	replies []string
+	mu       sync.Mutex
+	calls    []string
+	replies  []string
+	requests []agentloop.ContextBuildRequest
 }
 
 func (r *pmPromptCaptureRunner) Run(_ context.Context, userPrompt string) (string, error) {
@@ -31,6 +33,18 @@ func (r *pmPromptCaptureRunner) Run(_ context.Context, userPrompt string) (strin
 		return r.replies[idx], nil
 	}
 	return "ok", nil
+}
+
+func (r *pmPromptCaptureRunner) RunWithContextResult(_ context.Context, req agentloop.ContextBuildRequest) (agentloop.RunResult, error) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.requests = append(r.requests, req)
+	r.calls = append(r.calls, req.Inbound.Content)
+	idx := len(r.calls) - 1
+	if idx >= 0 && idx < len(r.replies) {
+		return agentloop.RunResult{FinalText: r.replies[idx], FinalResponseID: "resp-pm-route"}, nil
+	}
+	return agentloop.RunResult{FinalText: "ok", FinalResponseID: "resp-pm-route"}, nil
 }
 
 func (r *pmPromptCaptureRunner) callCount() int {
@@ -46,6 +60,15 @@ func (r *pmPromptCaptureRunner) promptAt(index int) string {
 		return ""
 	}
 	return r.calls[index]
+}
+
+func (r *pmPromptCaptureRunner) requestAt(index int) agentloop.ContextBuildRequest {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if index < 0 || index >= len(r.requests) {
+		return agentloop.ContextBuildRequest{}
+	}
+	return r.requests[index]
 }
 
 func TestProjectManagerRoutes_CreateAndListSessions(t *testing.T) {
@@ -365,13 +388,14 @@ func TestProjectManagerRoutes_SecondMessagePromptIncludesHistory(t *testing.T) {
 		return runner.callCount() >= 2
 	})
 	secondPrompt := runner.promptAt(1)
-	if !strings.Contains(secondPrompt, "conversation_history:") {
-		t.Fatalf("expected second prompt contains conversation_history, got %q", secondPrompt)
+	if strings.Contains(secondPrompt, "conversation_history:") {
+		t.Fatalf("expected second prompt history to be attached out-of-band, got %q", secondPrompt)
 	}
-	if !strings.Contains(secondPrompt, "first sentence") {
-		t.Fatalf("expected second prompt contains first user content, got %q", secondPrompt)
+	secondReq := runner.requestAt(1)
+	if !strings.Contains(secondReq.ConversationHistory, "first sentence") {
+		t.Fatalf("expected structured history contains first user content, got %#v", secondReq)
 	}
-	if !strings.Contains(secondPrompt, "ack-first") {
-		t.Fatalf("expected second prompt contains first assistant content, got %q", secondPrompt)
+	if !strings.Contains(secondReq.ConversationHistory, "ack-first") {
+		t.Fatalf("expected structured history contains first assistant content, got %#v", secondReq)
 	}
 }

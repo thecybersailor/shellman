@@ -80,6 +80,10 @@ LIMIT ?
 }
 
 func (s *Store) InsertPMMessage(sessionID, role, content, status, errText string) (int64, error) {
+	return s.InsertPMMessageWithResponseID(sessionID, role, content, status, errText, "")
+}
+
+func (s *Store) InsertPMMessageWithResponseID(sessionID, role, content, status, errText, responseID string) (int64, error) {
 	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return 0, err
@@ -91,6 +95,7 @@ func (s *Store) InsertPMMessage(sessionID, role, content, status, errText string
 	content = strings.TrimSpace(content)
 	status = strings.TrimSpace(status)
 	errText = strings.TrimSpace(errText)
+	responseID = strings.TrimSpace(responseID)
 	if sessionID == "" || role == "" {
 		return 0, nil
 	}
@@ -102,13 +107,14 @@ func (s *Store) InsertPMMessage(sessionID, role, content, status, errText string
 	var insertedID int64
 	err = gdb.Transaction(func(tx *gorm.DB) error {
 		row := dbmodel.PMMessage{
-			SessionID: sessionID,
-			Role:      role,
-			Content:   content,
-			Status:    status,
-			ErrorText: errText,
-			CreatedAt: now,
-			UpdatedAt: now,
+			SessionID:  sessionID,
+			Role:       role,
+			Content:    content,
+			ResponseID: responseID,
+			Status:     status,
+			ErrorText:  errText,
+			CreatedAt:  now,
+			UpdatedAt:  now,
 		}
 		if err := tx.Create(&row).Error; err != nil {
 			return err
@@ -125,6 +131,10 @@ func (s *Store) InsertPMMessage(sessionID, role, content, status, errText string
 }
 
 func (s *Store) UpdatePMMessage(id int64, content, status, errText string) error {
+	return s.UpdatePMMessageWithResponseID(id, content, status, errText, "")
+}
+
+func (s *Store) UpdatePMMessageWithResponseID(id int64, content, status, errText, responseID string) error {
 	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
@@ -137,17 +147,22 @@ func (s *Store) UpdatePMMessage(id int64, content, status, errText string) error
 	content = strings.TrimSpace(content)
 	status = strings.TrimSpace(status)
 	errText = strings.TrimSpace(errText)
+	responseID = strings.TrimSpace(responseID)
 	if status == "" {
 		status = StatusCompleted
 	}
+	updates := map[string]any{
+		"content":    content,
+		"status":     status,
+		"error_text": errText,
+		"updated_at": time.Now().UTC().UnixMilli(),
+	}
+	if responseID != "" {
+		updates["response_id"] = responseID
+	}
 	return gdb.Model(&dbmodel.PMMessage{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"content":    content,
-			"status":     status,
-			"error_text": errText,
-			"updated_at": time.Now().UTC().UnixMilli(),
-		}).Error
+		Updates(updates).Error
 }
 
 func (s *Store) ListPMMessages(sessionID string, limit int) ([]PMMessageRecord, error) {
@@ -165,7 +180,7 @@ func (s *Store) ListPMMessages(sessionID string, limit int) ([]PMMessageRecord, 
 		limit = 200
 	}
 	rows, err := db.Query(`
-SELECT id, session_id, role, content, status, error_text, created_at, updated_at
+SELECT id, session_id, role, content, response_id, status, error_text, created_at, updated_at
 FROM pm_messages
 WHERE session_id = ?
 ORDER BY created_at ASC, id ASC
@@ -179,7 +194,7 @@ LIMIT ?
 	out := make([]PMMessageRecord, 0, limit)
 	for rows.Next() {
 		var item PMMessageRecord
-		if err := rows.Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &item.Status, &item.ErrorText, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.SessionID, &item.Role, &item.Content, &item.ResponseID, &item.Status, &item.ErrorText, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -188,6 +203,35 @@ LIMIT ?
 		return nil, err
 	}
 	return out, nil
+}
+
+func (s *Store) GetLatestPMAssistantResponseID(sessionID string) (string, error) {
+	db, release, err := s.db()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = release() }()
+
+	sessionID = strings.TrimSpace(sessionID)
+	if sessionID == "" {
+		return "", nil
+	}
+
+	var responseID string
+	err = db.QueryRow(`
+SELECT response_id
+FROM pm_messages
+WHERE session_id = ? AND role = 'assistant' AND response_id <> ''
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`, sessionID).Scan(&responseID)
+	if err == sql.ErrNoRows {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(responseID), nil
 }
 
 func (s *Store) GetPMSession(sessionID string) (PMSessionRecord, bool, error) {

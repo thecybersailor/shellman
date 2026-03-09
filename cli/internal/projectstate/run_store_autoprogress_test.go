@@ -161,6 +161,53 @@ func TestInsertAndListTaskMessages(t *testing.T) {
 	}
 }
 
+func TestTaskMessages_PersistResponseIDAndResolveLatestAssistantResponse(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "shellman.db")
+	if err := InitGlobalDB(dbPath); err != nil {
+		t.Fatalf("InitGlobalDB failed: %v", err)
+	}
+	repo := t.TempDir()
+	store := NewStore(repo)
+
+	if err := store.InsertTask(TaskRecord{
+		TaskID:    "t1",
+		ProjectID: "p1",
+		Title:     "root",
+		Status:    StatusRunning,
+	}); err != nil {
+		t.Fatalf("InsertTask failed: %v", err)
+	}
+
+	if _, err := store.InsertTaskMessageWithResponseID("t1", "user", "hello", StatusCompleted, "", ""); err != nil {
+		t.Fatalf("InsertTaskMessageWithResponseID user failed: %v", err)
+	}
+	assistantID, err := store.InsertTaskMessageWithResponseID("t1", "assistant", "draft", StatusRunning, "", "")
+	if err != nil {
+		t.Fatalf("InsertTaskMessageWithResponseID assistant failed: %v", err)
+	}
+	if err := store.UpdateTaskMessageWithResponseID(assistantID, "done", StatusCompleted, "", "resp-task-1"); err != nil {
+		t.Fatalf("UpdateTaskMessageWithResponseID failed: %v", err)
+	}
+
+	items, err := store.ListTaskMessages("t1", 10)
+	if err != nil {
+		t.Fatalf("ListTaskMessages failed: %v", err)
+	}
+	if len(items) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(items))
+	}
+	if items[1].ResponseID != "resp-task-1" {
+		t.Fatalf("expected response_id persisted, got %#v", items[1])
+	}
+	respID, err := store.GetLatestTaskAssistantResponseID("t1")
+	if err != nil {
+		t.Fatalf("GetLatestTaskAssistantResponseID failed: %v", err)
+	}
+	if respID != "resp-task-1" {
+		t.Fatalf("expected latest response_id=resp-task-1, got %q", respID)
+	}
+}
+
 func TestListTaskMessages_ReturnsLatestWindowAscending(t *testing.T) {
 	dbPath := filepath.Join(t.TempDir(), "shellman.db")
 	if err := InitGlobalDB(dbPath); err != nil {

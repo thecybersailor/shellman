@@ -665,13 +665,14 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 			respondError(w, http.StatusBadRequest, "NO_PARENT_TASK", "task has no parent")
 			return
 		}
-		parentPrompt, parentPromptMeta := s.buildUserPromptWithMeta(parentTaskID, content)
+		parentPrompt, parentHistoryBlock, parentPromptMeta := s.buildUserPromptWithHistoryMeta(parentTaskID, content)
 		if err := s.sendTaskAgentLoop(r.Context(), TaskAgentLoopEvent{
 			TaskID:         parentTaskID,
 			ProjectID:      projectID,
 			Source:         "child_report",
 			DisplayContent: displayContent,
 			AgentPrompt:    parentPrompt,
+			HistoryBlock:   parentHistoryBlock,
 			TriggerMeta: map[string]any{
 				"op":               "task.messages.send",
 				"reported_by":      taskID,
@@ -699,13 +700,14 @@ func (s *Server) handlePostTaskMessage(w http.ResponseWriter, r *http.Request, t
 		return
 	}
 
-	agentPrompt, promptMeta := s.buildUserPromptWithMeta(taskID, content)
+	agentPrompt, historyBlock, promptMeta := s.buildUserPromptWithHistoryMeta(taskID, content)
 	if err := s.sendTaskAgentLoop(r.Context(), TaskAgentLoopEvent{
 		TaskID:         taskID,
 		ProjectID:      projectID,
 		Source:         source,
 		DisplayContent: displayContent,
 		AgentPrompt:    agentPrompt,
+		HistoryBlock:   historyBlock,
 		TriggerMeta: map[string]any{
 			"op":               "task.messages.send",
 			"history_total":    promptMeta.TotalMessages,

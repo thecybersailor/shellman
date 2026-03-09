@@ -549,6 +549,10 @@ LIMIT ?
 }
 
 func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string) (int64, error) {
+	return s.InsertTaskMessageWithResponseID(taskID, role, content, status, errText, "")
+}
+
+func (s *Store) InsertTaskMessageWithResponseID(taskID, role, content, status, errText, responseID string) (int64, error) {
 	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return 0, err
@@ -560,6 +564,7 @@ func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string)
 	content = strings.TrimSpace(content)
 	status = strings.TrimSpace(status)
 	errText = strings.TrimSpace(errText)
+	responseID = strings.TrimSpace(responseID)
 	if taskID == "" || role == "" {
 		return 0, nil
 	}
@@ -568,13 +573,14 @@ func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string)
 	}
 	now := time.Now().UTC().Unix()
 	row := dbmodel.TaskMessage{
-		TaskID:    taskID,
-		Role:      role,
-		Content:   content,
-		Status:    status,
-		ErrorText: errText,
-		CreatedAt: now,
-		UpdatedAt: now,
+		TaskID:     taskID,
+		Role:       role,
+		Content:    content,
+		ResponseID: responseID,
+		Status:     status,
+		ErrorText:  errText,
+		CreatedAt:  now,
+		UpdatedAt:  now,
 	}
 	if err := gdb.Create(&row).Error; err != nil {
 		return 0, err
@@ -583,6 +589,10 @@ func (s *Store) InsertTaskMessage(taskID, role, content, status, errText string)
 }
 
 func (s *Store) UpdateTaskMessage(id int64, content, status, errText string) error {
+	return s.UpdateTaskMessageWithResponseID(id, content, status, errText, "")
+}
+
+func (s *Store) UpdateTaskMessageWithResponseID(id int64, content, status, errText, responseID string) error {
 	gdb, release, err := s.dbGORM()
 	if err != nil {
 		return err
@@ -595,17 +605,22 @@ func (s *Store) UpdateTaskMessage(id int64, content, status, errText string) err
 	content = strings.TrimSpace(content)
 	status = strings.TrimSpace(status)
 	errText = strings.TrimSpace(errText)
+	responseID = strings.TrimSpace(responseID)
 	if status == "" {
 		status = StatusCompleted
 	}
+	updates := map[string]any{
+		"content":    content,
+		"status":     status,
+		"error_text": errText,
+		"updated_at": time.Now().UTC().Unix(),
+	}
+	if responseID != "" {
+		updates["response_id"] = responseID
+	}
 	return gdb.Model(&dbmodel.TaskMessage{}).
 		Where("id = ?", id).
-		Updates(map[string]any{
-			"content":    content,
-			"status":     status,
-			"error_text": errText,
-			"updated_at": time.Now().UTC().Unix(),
-		}).Error
+		Updates(updates).Error
 }
 
 func (s *Store) ListTaskMessages(taskID string, limit int) ([]TaskMessageRecord, error) {
@@ -623,9 +638,9 @@ func (s *Store) ListTaskMessages(taskID string, limit int) ([]TaskMessageRecord,
 		limit = 200
 	}
 	rows, err := db.Query(`
-SELECT id, task_id, role, content, status, error_text, created_at, updated_at
+SELECT id, task_id, role, content, response_id, status, error_text, created_at, updated_at
 FROM (
-	SELECT id, task_id, role, content, status, error_text, created_at, updated_at
+	SELECT id, task_id, role, content, response_id, status, error_text, created_at, updated_at
 	FROM task_messages
 	WHERE task_id = ?
 	ORDER BY created_at DESC, id DESC
@@ -641,7 +656,7 @@ ORDER BY created_at ASC, id ASC
 	out := make([]TaskMessageRecord, 0, limit)
 	for rows.Next() {
 		var item TaskMessageRecord
-		if err := rows.Scan(&item.ID, &item.TaskID, &item.Role, &item.Content, &item.Status, &item.ErrorText, &item.CreatedAt, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.TaskID, &item.Role, &item.Content, &item.ResponseID, &item.Status, &item.ErrorText, &item.CreatedAt, &item.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
@@ -650,4 +665,33 @@ ORDER BY created_at ASC, id ASC
 		return nil, err
 	}
 	return out, nil
+}
+
+func (s *Store) GetLatestTaskAssistantResponseID(taskID string) (string, error) {
+	db, release, err := s.db()
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = release() }()
+
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return "", nil
+	}
+
+	var responseID string
+	err = db.QueryRow(`
+SELECT response_id
+FROM task_messages
+WHERE task_id = ? AND role = 'assistant' AND response_id <> ''
+ORDER BY created_at DESC, id DESC
+LIMIT 1
+`, taskID).Scan(&responseID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(responseID), nil
 }
