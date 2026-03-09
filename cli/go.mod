@@ -4,7 +4,7 @@ go 1.24.0
 
 require (
 	github.com/coder/websocket v1.8.14
-	github.com/flaboy/agentloop v0.0.0-20260303102352-8a7b84bd86c4
+	github.com/flaboy/agentloop v0.0.0-20260309003554-448a86565294
 	github.com/google/uuid v1.6.0
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/shirou/gopsutil/v4 v4.26.2

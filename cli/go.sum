@@ -10,6 +10,8 @@ github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
 github.com/flaboy/agentloop v0.0.0-20260303102352-8a7b84bd86c4 h1:GuOI7ieiTgOdef8WPQcyXZNWeAIzq0uh4swYxmUFxTI=
 github.com/flaboy/agentloop v0.0.0-20260303102352-8a7b84bd86c4/go.mod h1:UmLLyduCshjPhkN+OeeamlBI/l0S4+tEs6g1Ixw1wcQ=
+github.com/flaboy/agentloop v0.0.0-20260309003554-448a86565294 h1:04YojWO15VMuwwpHNLgl43YHsqIE0y7EChqq6aLS4dk=
+github.com/flaboy/agentloop v0.0.0-20260309003554-448a86565294/go.mod h1:UmLLyduCshjPhkN+OeeamlBI/l0S4+tEs6g1Ixw1wcQ=
 github.com/go-ole/go-ole v1.2.6 h1:/Fpf6oFPoeFik9ty7siob0G6Ke8QvQEuVcuChpwXzpY=
 github.com/go-ole/go-ole v1.2.6/go.mod h1:pprOEPIfldk/42T2oK7lQ4v4JSDwmV0As9GaiUsvbm0=
 github.com/google/go-cmp v0.5.6/go.mod h1:v8dTdLbMG2kIc/vJvl+f65V22dbkXbowE6jgT/gNBxE=
