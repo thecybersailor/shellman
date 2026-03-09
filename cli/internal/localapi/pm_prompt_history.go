@@ -6,11 +6,6 @@ import (
 	"shellman/cli/internal/projectstate"
 )
 
-func (s *Server) buildPMUserPromptWithMeta(store *projectstate.Store, sessionID, userInput string) (string, TaskPromptHistoryMeta) {
-	prompt, _, meta := s.buildPMUserPromptWithHistoryMeta(store, sessionID, userInput)
-	return prompt, meta
-}
-
 func (s *Server) buildPMUserPromptWithHistoryMeta(store *projectstate.Store, sessionID, userInput string) (string, string, TaskPromptHistoryMeta) {
 	input := strings.TrimSpace(userInput)
 	historyBlock, historyMeta := s.buildPMHistoryBlock(store, sessionID)
